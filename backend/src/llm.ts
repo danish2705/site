@@ -6,10 +6,33 @@ import type {
   RecommendationResult,
 } from "./types.js";
 
-const MODEL = process.env.OPENAI_MODEL || "gpt-4.1";
-const client = process.env.OPENAI_API_KEY
-  ? new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
-  : null;
+// Supports either a plain OpenAI key (OPENAI_API_KEY) or an Azure OpenAI
+// deployment (AZURE_OPENAI_ENDPOINT / AZURE_OPENAI_API_KEY /
+// AZURE_OPENAI_LLM_DEPLOYMENT). Azure takes priority if both are present.
+const MODEL =
+  process.env.AZURE_OPENAI_LLM_DEPLOYMENT ||
+  process.env.OPENAI_MODEL ||
+  "gpt-4.1";
+
+const azureEndpoint = process.env.AZURE_OPENAI_ENDPOINT;
+const azureKey = process.env.AZURE_OPENAI_API_KEY;
+const openaiKey = process.env.OPENAI_API_KEY;
+
+let client: OpenAI | null = null;
+if (azureEndpoint && azureKey) {
+  // Azure's newer "v1" endpoint (…/openai/v1) is OpenAI-SDK-compatible: point
+  // baseURL at it and pass the Azure key both as apiKey and as the "api-key"
+  // header Azure expects. `model` in chat.completions.create must be the
+  // *deployment name*, not the underlying model name — that's what
+  // AZURE_OPENAI_LLM_DEPLOYMENT supplies via MODEL above.
+  client = new OpenAI({
+    apiKey: azureKey,
+    baseURL: azureEndpoint.endsWith("/") ? azureEndpoint : `${azureEndpoint}/`,
+    defaultHeaders: { "api-key": azureKey },
+  });
+} else if (openaiKey) {
+  client = new OpenAI({ apiKey: openaiKey });
+}
 
 interface RecommendationArgs {
   input: PipelineInput;
@@ -32,7 +55,7 @@ export async function generateRecommendation({
     return {
       llm: "mock",
       text:
-        `[MOCK RESPONSE — no OPENAI_API_KEY set in backend/.env, so GPT-4.1 was not called] ` +
+        `[MOCK RESPONSE — no OPENAI_API_KEY or AZURE_OPENAI_ENDPOINT/AZURE_OPENAI_API_KEY set in backend/.env, so the LLM was not called] ` +
         `Recommended site: ${top.siteName} (${top.siteId}) in ${topRegion.Region}, ${topRegion.Country}. ` +
         `Suitability Score ${top.suitabilityScore}/100, Risk Level: ${top.overallRisk}. ` +
         `Preferred based on enrollment history, investigator experience, and overall risk profile.`,
