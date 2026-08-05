@@ -1,12 +1,10 @@
+import "./env.js"; // must be the first import — loads .env before any module below reads process.env at import time
 import express, { type Request, type Response } from "express";
 import cors from "cors";
-import dotenv from "dotenv";
 import { loadStore, INDICATION_TO_SPECIALTY } from "./excelStore.js";
 import { runPipeline } from "./pipeline.js";
 import { llmStatus } from "./llm.js";
 import type { PipelineInput } from "./types.js";
-
-dotenv.config();
 
 const app = express();
 app.use(cors());
