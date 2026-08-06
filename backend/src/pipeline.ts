@@ -1,9 +1,265 @@
 import { loadStore, INDICATION_TO_SPECIALTY } from "./excelStore.js";
 import { generateRecommendation, llmStatus } from "./llm.js";
-import type { PipelineInput, SendFn, RankedSite, RiskLevel } from "./types.js";
+import { scoreSites, explainScore } from "./scoring.js";
+import type { ExtendedEvaluationRow } from "./scoring.js";
+import type {
+  PipelineInput,
+  SendFn,
+  RankedSite,
+  RiskLevel,
+  RiskRow,
+  RiskRecord,
+  RiskMatrix,
+  RiskDriver,
+  RiskExplanation,
+  SiteRow,
+  TrialRequirementRow,
+  RequirementCheck,
+} from "./types.js";
 
 const sleep = (ms: number): Promise<void> =>
   new Promise((resolve) => setTimeout(resolve, ms));
+
+// Formats a Risk_Register "Date Identified" cell for display, tolerating
+// the three shapes the xlsx library can hand back depending on how the
+// sheet's cells are formatted: a JS Date, a plain string, or (if the cell
+// wasn't read with cellDates) an Excel serial-day number.
+function formatRiskDate(value: string | Date | number): string {
+  if (value instanceof Date) return value.toISOString().slice(0, 10);
+  if (typeof value === "number") {
+    const EXCEL_EPOCH_OFFSET_DAYS = 25569; // days between 1899-12-30 and 1970-01-01
+    const ms = Math.round((value - EXCEL_EPOCH_OFFSET_DAYS) * 86400 * 1000);
+    return new Date(ms).toISOString().slice(0, 10);
+  }
+  return String(value);
+}
+
+// Camel-cases a raw Risk_Register row into the shape sent to the frontend,
+// so risks render as individual records (one row per risk) rather than
+// just an aggregate count/badge.
+function toRiskRecord(r: RiskRow): RiskRecord {
+  return {
+    riskId: r["Risk ID"],
+    siteId: r["Site ID"],
+    category: r["Risk Category"],
+    description: r.Description,
+    likelihood: r.Likelihood,
+    impact: r.Impact,
+    overallRisk: r["Overall Risk Rating"],
+    dateIdentified: formatRiskDate(r["Date Identified"]),
+    status: r.Status,
+    mitigationPlan: r["Mitigation Plan"],
+    owner: r.Owner,
+    riskScore: r["Risk Score (Numeric)"],
+  };
+}
+
+// Risk_Register Status values split into "still live" vs "resolved". An
+// unresolved High risk is a materially different proposition from one
+// that's already been mitigated or closed, so the explanation says which.
+const ACTIVE_STATUSES = new Set(["Open", "Monitoring"]);
+
+/**
+ * Explains WHY a site carries its Low/Medium/High rating instead of just
+ * asserting the level.
+ *
+ * Two derivation steps are made explicit:
+ *   1. Each individual record's rating comes from the Risk_Matrix sheet —
+ *      Likelihood x Impact -> rating (read from the workbook, not hardcoded,
+ *      so editing the matrix in Excel changes the explanation too).
+ *   2. The site's overall level is the worst rating among its records: one
+ *      High record makes the whole site High. That "weakest link" rule is
+ *      the thing users most often want justified, since a site with 11 Low
+ *      risks and 1 High still shows up as High.
+ */
+function explainRisk(risks: RiskRow[], matrix: RiskMatrix): RiskExplanation {
+  const at = (level: RiskLevel) =>
+    risks.filter((r) => r["Overall Risk Rating"] === level);
+
+  const highs = at("High");
+  const mediums = at("Medium");
+  const lows = at("Low");
+  const total = risks.length;
+
+  const level: RiskLevel =
+    highs.length > 0 ? "High" : mediums.length > 0 ? "Medium" : "Low";
+
+  // The records that actually decided the level.
+  const deciding =
+    level === "High" ? highs : level === "Medium" ? mediums : lows;
+  const activeAtLevel = deciding.filter((r) =>
+    ACTIVE_STATUSES.has(r.Status),
+  ).length;
+
+  const isActive = (r: RiskRow) => ACTIVE_STATUSES.has(r.Status);
+  const drivers: RiskDriver[] = [...deciding]
+    // Unresolved first, then by numeric score — the reader wants the live
+    // problems at the top, not an arbitrary Risk ID order.
+    .sort((a, b) => {
+      const activeDiff = Number(isActive(b)) - Number(isActive(a));
+      if (activeDiff !== 0) return activeDiff;
+      return b["Risk Score (Numeric)"] - a["Risk Score (Numeric)"];
+    })
+    .slice(0, 4)
+    .map((r) => {
+      const derived = matrix?.[r.Likelihood]?.[r.Impact];
+      return {
+        riskId: r["Risk ID"],
+        category: r["Risk Category"],
+        description: r.Description,
+        likelihood: r.Likelihood,
+        impact: r.Impact,
+        rating: r["Overall Risk Rating"],
+        status: r.Status,
+        active: isActive(r),
+        derivation:
+          `Likelihood ${r.Likelihood} × Impact ${r.Impact} → ` +
+          // Fall back to the record's own stored rating if the matrix sheet
+          // is missing or doesn't cover this combination.
+          `${derived ?? r["Overall Risk Rating"]}` +
+          (derived ? " (per the Risk Matrix)" : ""),
+      };
+    });
+
+  const categoryCounts = [...new Set(risks.map((r) => r["Risk Category"]))]
+    .map((category) => {
+      const inCat = risks.filter((r) => r["Risk Category"] === category);
+      return {
+        category,
+        high: inCat.filter((r) => r["Overall Risk Rating"] === "High").length,
+        medium: inCat.filter((r) => r["Overall Risk Rating"] === "Medium")
+          .length,
+        low: inCat.filter((r) => r["Overall Risk Rating"] === "Low").length,
+      };
+    })
+    // Worst-first so the categories driving the rating lead.
+    .sort((a, b) => b.high - a.high || b.medium - a.medium);
+
+  let rule: string;
+  if (total === 0) {
+    rule = "Rated Low by default — no risk records are on file for this site.";
+  } else if (level === "High") {
+    rule =
+      `Rated High because ${highs.length} of ${total} risk record(s) are individually rated High. ` +
+      `A site takes the worst rating among its records, so a single High record sets the whole site to High.`;
+  } else if (level === "Medium") {
+    rule =
+      `Rated Medium because no record is rated High, but ${mediums.length} of ${total} are rated Medium. ` +
+      `A site takes the worst rating among its records.`;
+  } else {
+    rule = `Rated Low because all ${total} risk record(s) are individually rated Low.`;
+  }
+
+  const topCategory = categoryCounts[0];
+  const concentration =
+    level !== "Low" &&
+    topCategory &&
+    topCategory[level === "High" ? "high" : "medium"] > 0
+      ? ` Most concentrated in ${topCategory.category}.`
+      : "";
+
+  const summary =
+    total === 0
+      ? "No risk records on file."
+      : `${deciding.length} ${level} record(s) of ${total} total — ` +
+        `${activeAtLevel} still open or being monitored, ` +
+        `${deciding.length - activeAtLevel} already mitigated or closed.${concentration}`;
+
+  return {
+    level,
+    rule,
+    summary,
+    totalRecords: total,
+    highCount: highs.length,
+    mediumCount: mediums.length,
+    lowCount: lows.length,
+    activeAtLevel,
+    drivers,
+    driverTotal: deciding.length,
+    categoryCounts,
+  };
+}
+
+/**
+ * Checks one site against a trial's acceptance thresholds from
+ * Trial_Requirements. Returns an empty list when the workbook has no
+ * requirements sheet, so an older dataset behaves exactly as before.
+ *
+ * A missing KPI is reported as an explicit "no data" FAIL rather than a
+ * silent pass. Passing a site because a field is blank is how you end up
+ * recommending a site nobody has measured.
+ */
+function checkRequirements(
+  site: SiteRow,
+  evalRow: ExtendedEvaluationRow,
+  requirement: TrialRequirementRow | undefined,
+): RequirementCheck[] {
+  if (!requirement) return [];
+
+  const checks: RequirementCheck[] = [];
+
+  const numeric = (
+    criterion: string,
+    actual: number | null | undefined,
+    limit: number | null,
+    cmp: "min" | "max",
+    unit: string,
+  ) => {
+    if (limit === null || limit === undefined) return;
+    const required = `${cmp === "min" ? "≥" : "≤"} ${limit}${unit}`;
+    if (actual === null || actual === undefined) {
+      checks.push({ criterion, required, actual: "no data", pass: false });
+      return;
+    }
+    checks.push({
+      criterion,
+      required,
+      actual: `${actual}${unit}`,
+      pass: cmp === "min" ? actual >= limit : actual <= limit,
+    });
+  };
+
+  numeric(
+    "Enrollment rate",
+    evalRow["Historical Enrollment Rate (pts/month)"],
+    requirement["Min Enrollment Rate (pts/month)"],
+    "min",
+    " pts/mo",
+  );
+  numeric(
+    "Dropout rate",
+    evalRow["Dropout Rate (%)"],
+    requirement["Max Acceptable Dropout (%)"],
+    "max",
+    "%",
+  );
+  numeric(
+    "Data quality",
+    evalRow["Data Quality Score (0-100)"],
+    requirement["Min Data Quality Score"],
+    "min",
+    "",
+  );
+  numeric(
+    "Screen failure rate",
+    evalRow["Screen Failure Rate (%)"],
+    requirement["Max Acceptable Screen Failure (%)"],
+    "max",
+    "%",
+  );
+
+  // "Preferred" is a soft requirement — recorded, but it doesn't exclude.
+  if (requirement["Accreditation Required"] === "Yes") {
+    checks.push({
+      criterion: "Accreditation",
+      required: "Required",
+      actual: site.Accreditation === "Yes" ? "Accredited" : "Not accredited",
+      pass: site.Accreditation === "Yes",
+    });
+  }
+
+  return checks;
+}
 
 // Small artificial pauses between structured stages so the progress bar is
 // actually visible — filtering an in-memory array takes milliseconds, but a
@@ -37,23 +293,72 @@ export async function runPipeline(
   }
   const specialty = INDICATION_TO_SPECIALTY[indication];
 
-  // ---- Stage 1 — Requirements (already given by the caller) ----
+  // ---- Stage 1 — Clinical Trial Requirements ----
+  // This used to just echo the form back. It now pulls the protocol's real
+  // acceptance thresholds from the Trial_Requirements sheet, which is what
+  // Stages 4-5 filter candidate sites against. Falls back to echoing the
+  // form when the workbook has no Trial_Requirements sheet.
+  const requirement = store.requirementByIndication.get(indication);
   send("stage", {
     stage: 1,
     name: STAGE_NAMES[1],
     status: "complete",
-    detail: `${indication} · ${phase || "n/a"} · target n=${sampleSize || "n/a"}`,
+    detail: requirement
+      ? `${indication} · ${phase || requirement.Phase} · target n=${sampleSize || requirement["Target Sample Size"]} · ${specialty} site required`
+      : `${indication} · ${phase || "n/a"} · target n=${sampleSize || "n/a"} (no Trial_Requirements sheet — thresholds not applied)`,
+    data: requirement
+      ? {
+          trialId: requirement["Trial ID"],
+          indication,
+          requiredSpecialty: specialty,
+          requiredInfrastructure: requirement["Required Infrastructure"],
+          phase: phase || requirement.Phase,
+          targetSampleSize: sampleSize || requirement["Target Sample Size"],
+          durationMonths:
+            input.durationMonths || requirement["Duration (months)"],
+          budgetTier: input.budgetTier || requirement["Budget Tier"],
+          thresholds: {
+            minEnrollmentRate: requirement["Min Enrollment Rate (pts/month)"],
+            maxDropout: requirement["Max Acceptable Dropout (%)"],
+            minDataQuality: requirement["Min Data Quality Score"],
+            maxScreenFailure: requirement["Max Acceptable Screen Failure (%)"],
+            accreditationRequired: requirement["Accreditation Required"],
+          },
+        }
+      : null,
   });
   await sleep(STEP_DELAY_MS);
 
   // ---- Stage 2 — Region / Country Selection ----
+  // Region/Country is now also a pipeline INPUT: the frontend lets the user
+  // multi-select candidate regions/countries. When present, we rank and pick
+  // only among that user-selected set; otherwise we fall back to ranking
+  // every region on file for the indication (previous behavior).
   send("stage", { stage: 2, name: STAGE_NAMES[2], status: "in-progress" });
-  const regionRows = store.regionData.filter(
-    (r) => r.Indication === indication,
-  );
+  let regionRows = store.regionData.filter((r) => r.Indication === indication);
   if (regionRows.length === 0) {
     throw new Error(`No Region_Data rows found for indication "${indication}"`);
   }
+
+  const userSelectedRegions = (input.regions || []).filter(
+    (r) => r && r.region && r.country,
+  );
+  if (userSelectedRegions.length > 0) {
+    const selectedSet = new Set(
+      userSelectedRegions.map((r) => `${r.region}||${r.country}`),
+    );
+    const filtered = regionRows.filter((r) =>
+      selectedSet.has(`${r.Region}||${r.Country}`),
+    );
+    if (filtered.length === 0) {
+      throw new Error(
+        `None of your selected Region/Country options have data for indication "${indication}". ` +
+          `Pick a different region/country combination for this indication.`,
+      );
+    }
+    regionRows = filtered;
+  }
+
   const rankedRegions = [...regionRows].sort((a, b) => {
     const scoreOf = (r: typeof a) =>
       r["Prevalence (per 100k)"] -
@@ -61,13 +366,42 @@ export async function runPipeline(
       r["Active Competing Trials"] * 3;
     return scoreOf(b) - scoreOf(a);
   });
-  const topRegion = rankedRegions[0];
+
+  // Region_Data intentionally covers more geography than Candidate_Sites
+  // has actual sites for (a broader landscape scan — see the dataset's
+  // README), so the top-scoring region by the formula above frequently
+  // has zero candidate sites for this indication's specialty. Picking it
+  // blindly would dead-end Stage 4 with "no candidate sites found" even
+  // though a lower-scoring — but still valid — region has sites. Walk the
+  // ranked list and take the first region that actually has a site.
+  const bestByFormula = rankedRegions[0];
+  const topRegion = rankedRegions.find((r) =>
+    store.sites.some(
+      (s) => s.Region === r.Region && s["Therapeutic Area"] === specialty,
+    ),
+  );
+  if (!topRegion) {
+    throw new Error(
+      `No candidate sites found for ${specialty} (required by "${indication}") in any of the ` +
+        `${rankedRegions.length} region(s) considered${
+          userSelectedRegions.length > 0
+            ? " among your selected Region/Country options"
+            : ""
+        }. Try a different indication or region/country selection.`,
+    );
+  }
   await sleep(STEP_DELAY_MS);
   send("stage", {
     stage: 2,
     name: STAGE_NAMES[2],
     status: "complete",
-    detail: `Selected ${topRegion.Region}, ${topRegion.Country}`,
+    detail:
+      (userSelectedRegions.length > 0
+        ? `Selected ${topRegion.Region}, ${topRegion.Country} (best fit with available sites among your ${userSelectedRegions.length} chosen option(s))`
+        : `Selected ${topRegion.Region}, ${topRegion.Country} (auto-picked — no region/country input given)`) +
+      (topRegion !== bestByFormula
+        ? ` — ${bestByFormula.Region}, ${bestByFormula.Country} scored higher but had no ${specialty} candidate sites`
+        : ""),
     data: rankedRegions.slice(0, 5).map((r) => ({
       region: r.Region,
       country: r.Country,
@@ -113,24 +447,65 @@ export async function runPipeline(
     );
   }
 
-  // ---- Stage 5 — Site Evaluation (score already computed by an Excel formula) ----
+  // ---- Stage 5 — Site Evaluation ----
+  // Scores now come from scoring.ts (the deck's 0.35/0.25/0.20/0.10/0.10
+  // weighting) rather than the Excel Suitability Score formula. Cost is
+  // scored relative to the peer set, so every candidate is scored in ONE
+  // call — scores from different runs aren't comparable.
   send("stage", { stage: 5, name: STAGE_NAMES[5], status: "in-progress" });
-  const evaluated = candidateSites.map((site) => {
-    const evalRow = store.evalBySiteId.get(site["Site ID"]);
-    return {
-      ...site,
-      siteId: site["Site ID"], // camelCase aliases — the Excel columns have spaces,
-      siteName: site["Site Name"], // which downstream code (and the LLM prompt) reads as .siteId/.siteName
-      suitabilityScore: evalRow ? evalRow["Suitability Score (0-100)"] : null,
-      evalRow: evalRow!,
-    };
-  });
+
+  const evalRows = candidateSites
+    .map((s) => store.evalBySiteId.get(s["Site ID"]))
+    .filter((e): e is NonNullable<typeof e> => !!e);
+  const scoredById = new Map(scoreSites(evalRows).map((s) => [s.siteId, s]));
+
+  const evaluated = candidateSites
+    .map((site) => {
+      const evalRow = store.evalBySiteId.get(site["Site ID"]);
+      const scored = evalRow ? scoredById.get(site["Site ID"]) : undefined;
+      if (!evalRow || !scored) return null; // no evaluation record on file
+      return {
+        ...site,
+        siteId: site["Site ID"], // camelCase aliases — the Excel columns have spaces,
+        siteName: site["Site Name"], // which downstream code (and the LLM prompt) reads as .siteId/.siteName
+        suitabilityScore: evalRow["Suitability Score (0-100)"],
+        scored,
+        evalRow,
+        requirementChecks: checkRequirements(site, evalRow, requirement),
+      };
+    })
+    .filter((s): s is NonNullable<typeof s> => s !== null);
+
+  const meetingRequirements = evaluated.filter((s) =>
+    s.requirementChecks.every((c) => c.pass),
+  );
+  const lowConfidence = evaluated.filter((s) => s.scored.confidence === "Low");
+
   await sleep(STEP_DELAY_MS);
   send("stage", {
     stage: 5,
     name: STAGE_NAMES[5],
     status: "complete",
-    detail: `Scored ${evaluated.length} site(s) using Site_Evaluation data`,
+    detail:
+      `Scored ${evaluated.length} site(s) on the weighted model` +
+      (requirement
+        ? ` — ${meetingRequirements.length} meet all protocol thresholds`
+        : "") +
+      (lowConfidence.length
+        ? `; ${lowConfidence.length} scored on incomplete data`
+        : ""),
+    data: evaluated.map((s) => ({
+      siteId: s.siteId,
+      siteName: s.siteName,
+      score: s.scored.score,
+      legacySuitabilityScore: s.suitabilityScore,
+      components: s.scored.components,
+      confidence: s.scored.confidence,
+      completeness: s.scored.completeness,
+      caveats: s.scored.caveats,
+      requirementChecks: s.requirementChecks,
+      meetsRequirements: s.requirementChecks.every((c) => c.pass),
+    })),
   });
 
   // ---- Stage 6 — AI Risk Assessment (records already computed by Excel formulas) ----
@@ -151,6 +526,7 @@ export async function runPipeline(
       highRiskCount: highCount,
       mediumRiskCount: medCount,
       overallRisk,
+      riskExplanation: explainRisk(risks, store.riskMatrix),
     };
   });
   await sleep(STEP_DELAY_MS);
@@ -159,26 +535,59 @@ export async function runPipeline(
     name: STAGE_NAMES[6],
     status: "complete",
     detail: `Risk-scored ${withRisk.length} site(s) across ${withRisk.reduce((n, s) => n + s.risks.length, 0)} risk records`,
+    // One row per candidate site with its full risk register (individual
+    // records), so the UI can render Stage 6's output — positioned above
+    // Stage 7's ranking output — before ranking/top-10 narrowing happens.
+    data: withRisk.map((s) => ({
+      siteId: s.siteId,
+      siteName: s.siteName,
+      region: s.Region,
+      overallRisk: s.overallRisk,
+      highRiskCount: s.highRiskCount,
+      mediumRiskCount: s.mediumRiskCount,
+      riskRecords: s.risks.map(toRiskRecord),
+    })),
   });
 
   // ---- Stage 7 — Site Ranking ----
   send("stage", { stage: 7, name: STAGE_NAMES[7], status: "in-progress" });
+  // Sites meeting every protocol threshold rank above those that don't, and
+  // within each group the deck-weighted score decides. Failing sites are
+  // still listed rather than dropped: a threshold may be worth relaxing, and
+  // that's a judgement call for the reader, not the pipeline.
   const ranked = [...withRisk]
-    .filter((s) => s.suitabilityScore !== null)
-    .sort(
-      (a, b) => (b.suitabilityScore as number) - (a.suitabilityScore as number),
-    )
+    .sort((a, b) => {
+      const aOk = a.requirementChecks.every((c) => c.pass);
+      const bOk = b.requirementChecks.every((c) => c.pass);
+      if (aOk !== bOk) return aOk ? -1 : 1;
+      return b.scored.score - a.scored.score;
+    })
     .slice(0, 10);
   await sleep(STEP_DELAY_MS);
   send("stage", {
     stage: 7,
     name: STAGE_NAMES[7],
     status: "complete",
+    detail:
+      `Ranked on the weighted model (Recruitment 35% · Quality 25% · ` +
+      `Retention 20% · Diversity 10% · Cost 10%)`,
+    // Individual risk records per site are already covered by Stage 6's
+    // output (rendered above this table) — this stays a lean summary row.
     data: ranked.map((s, i) => ({
       rank: i + 1,
       siteId: s.siteId,
       siteName: s.siteName,
       region: s.Region,
+      score: s.scored.score,
+      components: s.scored.components,
+      confidence: s.scored.confidence,
+      caveats: s.scored.caveats,
+      meetsRequirements: s.requirementChecks.every((c) => c.pass),
+      failedCriteria: s.requirementChecks
+        .filter((c) => !c.pass)
+        .map((c) => c.criterion),
+      // Kept alongside the new score so the two models can be compared
+      // during rollout.
       suitabilityScore: s.suitabilityScore,
       riskLevel: s.overallRisk,
       highRiskCount: s.highRiskCount,
@@ -187,7 +596,7 @@ export async function runPipeline(
 
   if (ranked.length === 0) {
     throw new Error(
-      "No sites had a computable Suitability Score — check Site_Evaluation formulas.",
+      "No candidate sites could be scored — every candidate is missing an evaluation record.",
     );
   }
 
@@ -205,21 +614,31 @@ export async function runPipeline(
     topRegion,
     estimatedPatients,
     top,
+    riskExplanation: top.riskExplanation,
   });
   send("stage", {
     stage: 8,
     name: STAGE_NAMES[8],
     status: "complete",
     llm: recommendation.llm,
+    // The recommended site's full risk register is already covered by
+    // Stage 6's output (tagged "Recommended" there) — no need to repeat it.
     data: {
       region: topRegion.Region,
       country: topRegion.Country,
       estimatedPatients,
       recommendedSite: top.siteName,
       siteId: top.siteId,
+      score: top.scored.score,
+      scoreExplanation: explainScore(top.scored),
+      components: top.scored.components,
+      confidence: top.scored.confidence,
+      meetsRequirements: top.requirementChecks.every((c) => c.pass),
+      requirementChecks: top.requirementChecks,
       suitabilityScore: top.suitabilityScore,
       riskLevel: top.overallRisk,
       highRiskCount: top.highRiskCount,
+      riskExplanation: top.riskExplanation,
       text: recommendation.text,
     },
   });

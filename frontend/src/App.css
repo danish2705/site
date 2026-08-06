@@ -1,9 +1,9 @@
 :root {
-  --bg: #f7f8fb;
+  --bg: #f5f6fa;
   --card: #ffffff;
   --ink: #1c2333;
   --sub: #5b6274;
-  --line: #dfe3ea;
+  --line: #e1e4ea;
   --accent: #3b5bfd;
   --accent-soft: #eef1ff;
   --low: #1a8f5a;
@@ -19,6 +19,12 @@
   box-sizing: border-box;
 }
 
+html,
+body,
+#root {
+  min-height: 100%;
+}
+
 body {
   margin: 0;
   background: var(--bg);
@@ -26,34 +32,78 @@ body {
   color: var(--ink);
 }
 
+/* Full-page shell — no artificial max-width, just breathing room that
+   scales with the viewport so the app fills wide screens instead of
+   sitting in a narrow centered column. */
 .wrap {
-  max-width: 900px;
+  width: 100%;
   margin: 0 auto;
-  padding: 40px 20px 80px;
+  padding: 32px clamp(20px, 4vw, 64px) 64px;
 }
 
 header {
   text-align: center;
-  margin-bottom: 32px;
+  margin-bottom: 28px;
+  padding-bottom: 20px;
+  border-bottom: 1px solid var(--line);
 }
 header h1 {
-  font-size: 24px;
+  font-size: 28px;
   font-weight: 700;
   margin: 0 0 8px;
+  letter-spacing: -0.01em;
 }
 header p {
   color: var(--sub);
-  font-size: 14px;
+  font-size: 14.5px;
   margin: 0;
+}
+
+/* ---- Two-pane layout: sticky form sidebar + results column ---- */
+.layout {
+  display: grid;
+  grid-template-columns: 380px minmax(0, 1fr);
+  gap: 28px;
+  align-items: start;
+}
+.sidebar {
+  position: sticky;
+  top: 24px;
+}
+.results {
+  min-width: 0;
+}
+@media (max-width: 980px) {
+  .layout {
+    grid-template-columns: 1fr;
+  }
+  .sidebar {
+    position: static;
+  }
 }
 
 .card {
   background: var(--card);
   border: 1px solid var(--line);
   border-radius: 14px;
-  padding: 20px 24px;
+  padding: 22px 26px;
   margin-bottom: 24px;
   box-shadow: var(--shadow);
+}
+.card h2 {
+  margin: 4px 0 4px;
+  font-size: 18px;
+}
+.section-hint {
+  color: var(--sub);
+  font-size: 12.5px;
+  margin: 0 0 14px;
+}
+.empty-state {
+  color: var(--sub);
+  font-size: 14px;
+  text-align: center;
+  padding: 48px 24px;
 }
 
 .tag {
@@ -67,15 +117,29 @@ header p {
   padding: 3px 9px;
   border-radius: 20px;
 }
+.tag-on-dark {
+  color: #fff;
+  background: rgba(255, 255, 255, 0.18);
+}
 
 /* ---- Form ---- */
+.form-card {
+  position: relative;
+}
 .form-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  grid-template-columns: 1fr;
   gap: 16px;
   margin-bottom: 18px;
 }
-.form-grid label {
+/* Direct-child selectors here on purpose: this used to be a plain
+   descendant selector ("`.form-grid label`") which also matched the
+   checkbox <label>s nested deep inside the Region dropdown's panel,
+   stacking each checkbox above its text and centering them (via the
+   flex-direction: column + gap it set, combined with the dropdown
+   option's own align-items: center). Scoping to direct children keeps
+   it targeting only the top-level field labels/inputs. */
+.form-grid > label {
   display: flex;
   flex-direction: column;
   gap: 6px;
@@ -83,26 +147,38 @@ header p {
   font-weight: 600;
   color: var(--sub);
 }
-.form-grid select,
-.form-grid input {
+.form-grid > label > select,
+.form-grid > label > input {
   font-size: 14px;
-  padding: 8px 10px;
+  padding: 9px 10px;
   border-radius: 8px;
   border: 1px solid var(--line);
   color: var(--ink);
   background: #fff;
 }
-.form-card button {
+.form-grid > label > select:focus,
+.form-grid > label > input:focus {
+  outline: 2px solid var(--accent-soft);
+  border-color: var(--accent);
+}
+.field-hint {
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--sub);
+  opacity: 0.85;
+}
+.form-card button[type="submit"] {
+  width: 100%;
   background: var(--accent);
   color: #fff;
   border: none;
-  padding: 10px 20px;
+  padding: 11px 20px;
   border-radius: 8px;
   font-size: 14px;
   font-weight: 600;
   cursor: pointer;
 }
-.form-card button:disabled {
+.form-card button[type="submit"]:disabled {
   opacity: 0.6;
   cursor: not-allowed;
 }
@@ -110,6 +186,98 @@ header p {
   color: var(--high);
   font-size: 13px;
   margin-top: 10px;
+}
+
+/* ---- Region / Country dropdown (multi-select) ---- */
+.dropdown {
+  position: relative;
+}
+.dropdown-toggle {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 14px;
+  padding: 9px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background: #fff;
+  color: var(--ink);
+  cursor: pointer;
+  text-align: left;
+}
+.dropdown-toggle:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+.dropdown-toggle-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.dropdown-caret {
+  color: var(--sub);
+  font-size: 11px;
+  flex-shrink: 0;
+}
+.dropdown-panel {
+  position: absolute;
+  z-index: 20;
+  top: calc(100% + 6px);
+  left: 0;
+  right: 0;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  box-shadow: var(--shadow);
+  padding: 8px;
+  max-height: 260px;
+  display: flex;
+  flex-direction: column;
+}
+.dropdown-actions {
+  display: flex;
+  gap: 6px;
+  padding: 2px 4px 8px;
+  border-bottom: 1px solid var(--line);
+  margin-bottom: 6px;
+}
+.dropdown-actions button {
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--accent);
+  background: var(--accent-soft);
+  border: none;
+  border-radius: 20px;
+  padding: 4px 10px;
+  cursor: pointer;
+}
+.dropdown-options {
+  overflow-y: auto;
+}
+.dropdown-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13.5px;
+  font-weight: 400;
+  color: var(--ink);
+  padding: 7px 6px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+.dropdown-option:hover {
+  background: var(--bg);
+}
+.dropdown-option input {
+  margin: 0;
+  accent-color: var(--accent);
+}
+.dropdown-empty {
+  color: var(--sub);
+  font-size: 12.5px;
+  padding: 8px 6px;
 }
 
 /* ---- Progress bar ---- */
@@ -150,15 +318,23 @@ header p {
   text-align: right;
 }
 
-/* ---- Stage stepper (mirrors the flow diagram look) ---- */
+/* ---- Stage stepper — laid out as columns on wide screens so it uses the
+   full width of the results pane instead of one cramped vertical line ---- */
 .flow {
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 18px 20px;
+}
+@media (max-width: 720px) {
+  .flow {
+    grid-template-columns: repeat(2, 1fr);
+  }
 }
 .stage {
   display: grid;
-  grid-template-columns: 40px 1fr;
-  gap: 14px;
+  grid-template-columns: 32px 1fr;
+  gap: 10px;
+  align-items: start;
 }
 .stage .rail {
   display: flex;
@@ -166,8 +342,8 @@ header p {
   align-items: center;
 }
 .stage .dot {
-  width: 30px;
-  height: 30px;
+  width: 28px;
+  height: 28px;
   border-radius: 50%;
   background: var(--line);
   color: var(--sub);
@@ -175,7 +351,7 @@ header p {
   align-items: center;
   justify-content: center;
   font-weight: 700;
-  font-size: 13px;
+  font-size: 12.5px;
   flex-shrink: 0;
   transition: background 0.2s, color 0.2s;
 }
@@ -189,15 +365,11 @@ header p {
   color: #fff;
 }
 .stage .connector {
-  width: 2px;
-  flex: 1;
-  background: var(--line);
-  margin: 2px 0;
-  min-height: 18px;
+  display: none;
 }
 .mini-card {
-  padding: 8px 0 18px;
-  font-size: 13.5px;
+  padding: 2px 0 4px;
+  font-size: 13px;
 }
 .mini-card-title {
   font-weight: 600;
@@ -214,8 +386,9 @@ header p {
 }
 .mini-card-detail {
   color: var(--sub);
-  font-size: 12.5px;
+  font-size: 12px;
   margin-top: 3px;
+  line-height: 1.4;
 }
 .spinner {
   width: 12px;
@@ -224,6 +397,7 @@ header p {
   border: 2px solid var(--accent-soft);
   border-top-color: var(--accent);
   animation: spin 0.7s linear infinite;
+  flex-shrink: 0;
 }
 @keyframes spin {
   to {
@@ -231,7 +405,10 @@ header p {
   }
 }
 
-/* ---- Ranking table ---- */
+/* ---- Ranking table / Risk register table ---- */
+.table-scroll {
+  overflow-x: auto;
+}
 table {
   width: 100%;
   border-collapse: collapse;
@@ -243,6 +420,14 @@ td {
   text-align: left;
   padding: 10px 12px;
   border-bottom: 1px solid var(--line);
+  white-space: nowrap;
+}
+td.col-wide {
+  white-space: normal;
+  min-width: 220px;
+}
+td {
+  vertical-align: top;
 }
 th {
   color: var(--sub);
@@ -261,6 +446,7 @@ th {
   border-radius: 20px;
   font-size: 12px;
   font-weight: 700;
+  white-space: nowrap;
 }
 .badge.low {
   color: var(--low);
@@ -275,6 +461,98 @@ th {
   background: var(--high-bg);
 }
 
+/* ---- Stage 6 — AI Risk Assessment accordion ---- */
+.risk-accordion {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  overflow: hidden;
+}
+.risk-accordion-item + .risk-accordion-item {
+  border-top: 1px solid var(--line);
+}
+/* A fixed grid template — not flexbox — so every row's columns land at
+   the exact same x-position regardless of content width. Flexbox here
+   previously let a variable-width badge ("High" vs "Medium") shift
+   everything after it, and let the site-name column get squeezed to
+   nothing on narrower screens since it was the only column allowed to
+   shrink. Each column now has its own dedicated, consistently-sized grid
+   track; long text truncates with an ellipsis instead of disappearing. */
+.risk-accordion-header {
+  width: 100%;
+  display: grid;
+  grid-template-columns: minmax(140px, 1.6fr) minmax(100px, 0.9fr) 92px minmax(110px, 1fr) 18px;
+  align-items: center;
+  gap: 14px;
+  background: #fff;
+  border: none;
+  padding: 12px 16px;
+  cursor: pointer;
+  text-align: left;
+  font-family: inherit;
+  font-size: 13.5px;
+  color: var(--ink);
+}
+.risk-accordion-item.open .risk-accordion-header {
+  background: var(--accent-soft);
+}
+.risk-accordion-header:hover {
+  background: var(--bg);
+}
+.risk-accordion-item.open .risk-accordion-header:hover {
+  background: var(--accent-soft);
+}
+.risk-accordion-site {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-weight: 600;
+  min-width: 0;
+}
+.risk-accordion-site-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+.risk-accordion-region {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--sub);
+  font-size: 12.5px;
+}
+.risk-accordion-badge-col {
+  justify-self: start;
+}
+.risk-accordion-counts {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--sub);
+  font-size: 12px;
+  text-align: right;
+}
+.risk-accordion-caret {
+  text-align: center;
+  font-weight: 700;
+  color: var(--accent);
+}
+.risk-accordion-body {
+  padding: 4px 16px 16px;
+  background: #fbfbfd;
+}
+@media (max-width: 720px) {
+  .risk-accordion-header {
+    grid-template-columns: minmax(90px, 1.5fr) minmax(70px, 0.8fr) 76px minmax(84px, 0.9fr) 16px;
+    gap: 8px;
+    padding: 10px 12px;
+  }
+}
+
 /* ---- Final recommendation ---- */
 .final-summary {
   background: linear-gradient(135deg, #3b5bfd, #5b78ff);
@@ -285,8 +563,8 @@ th {
   box-shadow: var(--shadow);
 }
 .final-summary h2 {
-  margin: 0 0 14px;
-  font-size: 18px;
+  margin: 6px 0 14px;
+  font-size: 19px;
 }
 .final-grid {
   display: grid;
@@ -317,9 +595,641 @@ th {
   line-height: 1.5;
 }
 
+/* ---- AI Region Prediction section ----
+   Built entirely on the existing theme tokens (--accent / --accent-soft /
+   --line / --sub, the shared .card, .tag, .table-scroll and .spinner
+   rules) so it reads as part of the same app rather than a bolt-on. */
+.predict-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 20px;
+  flex-wrap: wrap;
+}
+/* Collapsed: drop the card's bottom padding so the header sits as a tidy
+   single bar rather than a mostly-empty box. */
+.predict-card.collapsed {
+  padding-bottom: 18px;
+}
+.predict-collapse-toggle {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  flex: 1;
+  min-width: 240px;
+  background: none;
+  border: none;
+  padding: 0;
+  margin: 0;
+  font-family: inherit;
+  color: var(--ink);
+  text-align: left;
+  cursor: pointer;
+  border-radius: 8px;
+}
+.predict-collapse-toggle:hover .predict-title {
+  color: var(--accent);
+}
+.predict-collapse-toggle:focus-visible {
+  outline: 2px solid var(--accent-soft);
+  outline-offset: 4px;
+}
+.predict-collapse-caret {
+  color: var(--accent);
+  font-size: 12px;
+  line-height: 1;
+  margin-top: 6px;
+  flex-shrink: 0;
+  transition: transform 0.15s ease;
+}
+.predict-head-text {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  min-width: 0;
+}
+/* Matches .card h2 — a real <h2> can't live inside the toggle <button>
+   (flow content inside phrasing-only content is invalid HTML). */
+.predict-title {
+  font-size: 18px;
+  font-weight: 700;
+  color: inherit;
+  transition: color 0.15s ease;
+}
+.predict-collapsed-summary {
+  font-size: 12.5px;
+  color: var(--sub);
+}
+.predict-head .section-hint {
+  margin-bottom: 0;
+  max-width: 560px;
+}
+.predict-head-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+}
+.predict-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--accent);
+  color: #fff;
+  border: none;
+  padding: 10px 18px;
+  border-radius: 8px;
+  font-size: 13.5px;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.predict-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+/* The shared .spinner is accent-on-accent-soft, which vanishes against the
+   filled button — invert it just for this placement. */
+.predict-btn .spinner {
+  border-color: rgba(255, 255, 255, 0.35);
+  border-top-color: #fff;
+}
+.predict-placeholder {
+  color: var(--sub);
+  font-size: 13px;
+  margin-top: 18px;
+  padding: 20px;
+  border: 1px dashed var(--line);
+  border-radius: 10px;
+  text-align: center;
+}
+
+.predict-hero {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  flex-wrap: wrap;
+  margin-top: 18px;
+  padding: 18px 20px;
+  border-radius: 12px;
+  background: var(--accent-soft);
+  border: 1px solid rgba(59, 91, 253, 0.18);
+}
+.predict-hero-label {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--accent);
+  margin-bottom: 4px;
+}
+.predict-hero-region {
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: var(--ink);
+}
+.predict-hero-meta {
+  font-size: 12.5px;
+  color: var(--sub);
+  margin-top: 3px;
+}
+.predict-hero-side {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+}
+/* Separate from .badge on purpose: on a risk badge "High" is bad (red),
+   but on a confidence badge "High" is good — reusing .badge here would
+   flip the color semantics and read as a warning. */
+.conf-badge {
+  display: inline-block;
+  padding: 4px 12px;
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.conf-high {
+  color: var(--low);
+  background: var(--low-bg);
+}
+.conf-medium {
+  color: var(--med);
+  background: var(--med-bg);
+}
+.conf-low {
+  color: var(--high);
+  background: var(--high-bg);
+}
+.apply-btn {
+  background: var(--accent);
+  color: #fff;
+  border: none;
+  padding: 8px 16px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.apply-btn:disabled {
+  opacity: 0.65;
+  cursor: default;
+}
+.apply-btn.ghost {
+  background: var(--accent-soft);
+  color: var(--accent);
+  padding: 6px 14px;
+  font-size: 12.5px;
+}
+
+.predict-rationale {
+  margin-top: 16px;
+  font-size: 13.5px;
+  line-height: 1.55;
+  color: var(--ink);
+}
+
+.predict-block {
+  margin-top: 20px;
+}
+.predict-block-title {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  flex-wrap: wrap;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: var(--sub);
+}
+.predict-block-note {
+  font-size: 11.5px;
+  font-weight: 400;
+  letter-spacing: 0;
+  text-transform: none;
+  opacity: 0.85;
+}
+
+.chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+.chip {
+  font-size: 12.5px;
+  color: var(--ink);
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 20px;
+  padding: 5px 12px;
+}
+
+.watch-list {
+  margin: 10px 0 0;
+  padding-left: 18px;
+  color: var(--sub);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.alt-list {
+  display: flex;
+  flex-direction: column;
+  margin-top: 10px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  overflow: hidden;
+}
+.alt-item + .alt-item {
+  border-top: 1px solid var(--line);
+}
+.alt-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 12px 16px;
+}
+.alt-item-main {
+  min-width: 0;
+}
+.alt-item-region {
+  font-weight: 600;
+  font-size: 13.5px;
+}
+.alt-item-why {
+  color: var(--sub);
+  font-size: 12.5px;
+  margin-top: 2px;
+  line-height: 1.45;
+}
+
+/* Inline score bar in the candidate table — same visual language as the
+   pipeline progress bar, shrunk to fit a table cell. */
+.score-cell {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 600;
+}
+.score-track {
+  width: 56px;
+  height: 6px;
+  background: var(--line);
+  border-radius: 20px;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+.score-fill {
+  height: 100%;
+  background: var(--accent);
+}
+tr.row-pick td {
+  background: var(--accent-soft);
+}
+.pick-tag {
+  display: inline-block;
+  margin-left: 8px;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: var(--accent);
+  background: #fff;
+  border: 1px solid rgba(59, 91, 253, 0.3);
+  border-radius: 20px;
+  padding: 1px 7px;
+}
+.link-btn {
+  margin-top: 10px;
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--accent);
+  font-size: 12.5px;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+}
+
+@media (max-width: 720px) {
+  .predict-head-actions {
+    width: 100%;
+  }
+  .predict-btn {
+    flex: 1;
+    justify-content: center;
+  }
+  .predict-hero-side {
+    width: 100%;
+    justify-content: space-between;
+  }
+}
+
+/* ---- "Why this rating" risk explanation ----
+   Shown inside each Stage 6 accordion row and in the Stage 8 summary. The
+   .on-dark variant is for the gradient final-summary card, where the normal
+   ink/line tokens would be invisible. */
+.why-risk {
+  margin: 12px 0 4px;
+  padding: 14px 16px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #fff;
+}
+.why-risk-head {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.why-risk-rule {
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--ink);
+  flex: 1;
+  min-width: 200px;
+}
+.why-risk-mix {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+  margin-top: 10px;
+  font-size: 12px;
+  color: var(--sub);
+}
+.why-risk-stat strong {
+  color: var(--ink);
+  font-weight: 700;
+}
+.why-risk-stat.high strong {
+  color: var(--high);
+}
+.why-risk-stat.medium strong {
+  color: var(--med);
+}
+.why-risk-stat.low strong {
+  color: var(--low);
+}
+.why-risk .link-btn {
+  margin-top: 10px;
+}
+
+.driver-list {
+  list-style: none;
+  margin: 10px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.driver-item {
+  border-left: 3px solid var(--line);
+  padding: 8px 0 8px 12px;
+}
+.driver-top {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  font-size: 11.5px;
+}
+.driver-id {
+  font-weight: 700;
+  color: var(--ink);
+}
+.driver-cat {
+  color: var(--sub);
+}
+.driver-status {
+  border-radius: 20px;
+  padding: 1px 8px;
+  background: var(--bg);
+  color: var(--sub);
+  font-weight: 600;
+}
+/* Open / Monitoring records are the ones that still need action, so they
+   get the warning treatment; Mitigated / Closed stay neutral grey. */
+.driver-status.active {
+  background: var(--med-bg);
+  color: var(--med);
+}
+.driver-desc {
+  font-size: 13px;
+  line-height: 1.45;
+  margin-top: 4px;
+}
+.driver-derivation {
+  font-size: 11.5px;
+  color: var(--sub);
+  margin-top: 3px;
+  font-variant-numeric: tabular-nums;
+}
+.why-risk-cats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 12px;
+}
+.why-risk-cats .chip {
+  font-size: 11.5px;
+  padding: 3px 10px;
+}
+
+/* On-dark variant for the gradient Stage 8 card */
+.final-why {
+  margin-top: 18px;
+}
+.final-why-title {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  opacity: 0.8;
+  margin-bottom: 8px;
+}
+.why-risk.on-dark {
+  background: rgba(255, 255, 255, 0.12);
+  border-color: rgba(255, 255, 255, 0.22);
+}
+.why-risk.on-dark .why-risk-rule,
+.why-risk.on-dark .driver-desc,
+.why-risk.on-dark .driver-id {
+  color: #fff;
+}
+.why-risk.on-dark .why-risk-mix,
+.why-risk.on-dark .driver-cat,
+.why-risk.on-dark .driver-derivation {
+  color: rgba(255, 255, 255, 0.75);
+}
+.why-risk.on-dark .why-risk-stat strong,
+.why-risk.on-dark .why-risk-stat.high strong,
+.why-risk.on-dark .why-risk-stat.medium strong,
+.why-risk.on-dark .why-risk-stat.low strong {
+  color: #fff;
+}
+.why-risk.on-dark .link-btn {
+  color: #fff;
+  text-decoration: underline;
+}
+.why-risk.on-dark .driver-item {
+  border-left-color: rgba(255, 255, 255, 0.3);
+}
+.why-risk.on-dark .driver-status {
+  background: rgba(255, 255, 255, 0.16);
+  color: #fff;
+}
+.why-risk.on-dark .chip {
+  background: rgba(255, 255, 255, 0.14);
+  border-color: rgba(255, 255, 255, 0.22);
+  color: #fff;
+}
+
+.conf-reason {
+  margin-top: 14px;
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--sub);
+}
+.conf-reason strong {
+  color: var(--ink);
+}
+
 footer {
   text-align: center;
   color: var(--sub);
   font-size: 12px;
   margin-top: 40px;
 }
+/* ---- Score breakdown (Stage 7 ranking table) ---------------------------
+   Per-component mini-bars for the weighted site score. A component with no
+   data renders as an empty track, not a zero-width fill — "unmeasured" and
+   "scored zero" must not look alike. */
+.score-breakdown {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 110px;
+}
+.score-component {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.score-component-label {
+  font-size: 9px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #8a8f98;
+  width: 26px;
+  flex-shrink: 0;
+}
+.score-component-track {
+  position: relative;
+  display: block;
+  height: 4px;
+  flex: 1;
+  border-radius: 2px;
+  background: #e8eaed;
+  overflow: hidden;
+}
+.score-component-fill {
+  display: block;
+  height: 100%;
+  border-radius: 2px;
+  background: #3b6cb7;
+}
+.score-confidence {
+  font-size: 10px;
+  color: #b06a1f;
+  white-space: nowrap;
+}
+
+/* ---- Saved runs -------------------------------------------------------- */
+.save-row {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.save-label {
+  flex: 1;
+  min-width: 220px;
+  padding: 9px 11px;
+  border: 1px solid #d6d9de;
+  border-radius: 6px;
+  font-size: 13px;
+  font-family: inherit;
+}
+.save-label:disabled { background: #f3f4f6; }
+.save-message {
+  margin: 10px 0 0;
+  font-size: 12px;
+  color: #4a5160;
+}
+.empty-note {
+  margin: 12px 0 0;
+  font-size: 13px;
+  color: #8a8f98;
+}
+.muted { color: #8a8f98; }
+.btn-link {
+  background: none;
+  border: none;
+  padding: 0;
+  color: #3b6cb7;
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+  text-decoration: underline;
+}
+.btn-secondary {
+  padding: 8px 14px;
+  border: 1px solid #d6d9de;
+  border-radius: 6px;
+  background: #fff;
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+.btn-secondary:disabled { opacity: 0.6; cursor: default; }
+
+/* Detail modal. Backdrop closes on click; the panel stops propagation so a
+   click inside doesn't dismiss it. */
+.run-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(17, 20, 26, 0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  z-index: 100;
+}
+.run-modal {
+  background: #fff;
+  border-radius: 10px;
+  padding: 22px 24px;
+  width: min(1000px, 100%);
+  max-height: 86vh;
+  overflow-y: auto;
+  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.28);
+}
+.run-modal-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+  margin-bottom: 6px;
+}
+.run-modal-head h2 { margin: 0 0 4px; }
+.run-modal-head p { margin: 0; font-size: 12px; }
