@@ -3,6 +3,7 @@ import express, { type Request, type Response } from "express";
 import cors from "cors";
 import { loadStore, INDICATION_TO_SPECIALTY } from "./excelStore.js";
 import { runPipeline } from "./pipeline.js";
+import { predictRegion } from "./regionPredictor.js";
 import { llmStatus } from "./llm.js";
 import type { PipelineInput } from "./types.js";
 
@@ -39,6 +40,19 @@ app.get("/api/meta", (_req: Request, res: Response) => {
     });
   } catch (err) {
     res.status(500).json({ error: (err as Error).message });
+  }
+});
+
+// Powers the frontend's "AI Region Prediction" section. Separate from
+// /api/run on purpose: it's a single fast request/response (no SSE, no
+// 8-stage walk) that the user can fire on its own to get a suggested
+// region *before* deciding what to feed the pipeline.
+app.post("/api/predict-region", async (req: Request, res: Response) => {
+  try {
+    const result = await predictRegion((req.body || {}) as PipelineInput);
+    res.json(result);
+  } catch (err) {
+    res.status(400).json({ error: (err as Error).message });
   }
 });
 

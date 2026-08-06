@@ -2,15 +2,27 @@ import xlsx from "xlsx";
 import path from "path";
 import fs from "fs";
 import { fileURLToPath } from "url";
-import type { Store, RegionRow, SiteRow, EvaluationRow, RiskRow } from "./types.js";
+import type {
+  Store,
+  RegionRow,
+  SiteRow,
+  EvaluationRow,
+  RiskRow,
+  RiskLevel,
+  RiskMatrix,
+} from "./types.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const DATA_DIR = path.join(__dirname, "..", "data");
 
 function findExcelFile(): string {
-  const files = fs.readdirSync(DATA_DIR).filter((f) => f.toLowerCase().endsWith(".xlsx"));
+  const files = fs
+    .readdirSync(DATA_DIR)
+    .filter((f) => f.toLowerCase().endsWith(".xlsx"));
   if (files.length === 0) {
-    throw new Error(`No .xlsx file found in ${DATA_DIR}. Put the dataset there first.`);
+    throw new Error(
+      `No .xlsx file found in ${DATA_DIR}. Put the dataset there first.`,
+    );
   }
   return path.join(DATA_DIR, files[0]);
 }
@@ -32,7 +44,7 @@ export const INDICATION_TO_SPECIALTY: Record<string, string> = {
   "Non-Small Cell Lung Cancer": "Oncology",
   "Colorectal Cancer": "Oncology",
   "Prostate Cancer": "Oncology",
-  "Hypertension": "Cardiology",
+  Hypertension: "Cardiology",
   "Heart Failure (HFrEF)": "Cardiology",
   "Atrial Fibrillation": "Cardiology",
   "Alzheimer's Disease (Early-stage)": "Neurology",
@@ -43,7 +55,7 @@ export const INDICATION_TO_SPECIALTY: Record<string, string> = {
   "Tuberculosis (Drug-sensitive)": "Infectious Disease",
   "Chronic Hepatitis C": "Infectious Disease",
   "Asthma (Moderate-Severe)": "Pulmonology",
-  "COPD": "Pulmonology",
+  COPD: "Pulmonology",
   "Rheumatoid Arthritis": "Rheumatology",
   "Psoriasis (Moderate-Severe)": "Dermatology",
   "Crohn's Disease": "Gastroenterology",
@@ -62,7 +74,8 @@ export function loadStore({ force = false }: { force?: boolean } = {}): Store {
 
   function sheetJson<T>(sheetName: string, range?: string): T[] {
     const sheet = wb.Sheets[sheetName];
-    if (!sheet) throw new Error(`Sheet "${sheetName}" not found in ${filePath}`);
+    if (!sheet)
+      throw new Error(`Sheet "${sheetName}" not found in ${filePath}`);
     return xlsx.utils.sheet_to_json<T>(sheet, { defval: null, range });
   }
 
@@ -79,7 +92,33 @@ export function loadStore({ force = false }: { force?: boolean } = {}): Store {
   const evaluations = sheetJson<EvaluationRow>("Site_Evaluation");
   const risks = sheetJson<RiskRow>("Risk_Register");
 
-  const evalBySiteId = new Map<string, EvaluationRow>(evaluations.map((e) => [e["Site ID"], e]));
+  // Risk_Matrix is a 3x3 Likelihood-by-Impact grid whose first column is the
+  // Likelihood label and whose header row is the Impact labels. Read it with
+  // header:1 (raw rows) rather than sheet_to_json's object mode, since the
+  // corner cell ("Likelihood \ Impact") isn't a usable property name. This
+  // is what lets the UI explain *why* a record is rated the way it is
+  // instead of asserting the rating as a bare fact.
+  const matrixRows = xlsx.utils.sheet_to_json<(string | null)[]>(
+    wb.Sheets["Risk_Matrix"],
+    { header: 1, defval: null },
+  );
+  const riskMatrix: RiskMatrix = {} as RiskMatrix;
+  if (matrixRows.length > 1) {
+    const impactHeaders = (matrixRows[0].slice(1) as RiskLevel[]) || [];
+    for (const row of matrixRows.slice(1)) {
+      const likelihood = row[0] as RiskLevel | null;
+      if (!likelihood) continue;
+      riskMatrix[likelihood] = {} as Record<RiskLevel, RiskLevel>;
+      impactHeaders.forEach((impact, i) => {
+        const cell = row[i + 1] as RiskLevel | null;
+        if (impact && cell) riskMatrix[likelihood][impact] = cell;
+      });
+    }
+  }
+
+  const evalBySiteId = new Map<string, EvaluationRow>(
+    evaluations.map((e) => [e["Site ID"], e]),
+  );
   const risksBySiteId = new Map<string, RiskRow[]>();
   for (const r of risks) {
     const list = risksBySiteId.get(r["Site ID"]) || [];
@@ -95,7 +134,11 @@ export function loadStore({ force = false }: { force?: boolean } = {}): Store {
     const key = `${r.Indication}||${r.Region}||${r.Country}`;
     if (!seenOptions.has(key)) {
       seenOptions.add(key);
-      acc.push({ indication: r.Indication, region: r.Region, country: r.Country });
+      acc.push({
+        indication: r.Indication,
+        region: r.Region,
+        country: r.Country,
+      });
     }
     return acc;
   }, []);
@@ -106,6 +149,7 @@ export function loadStore({ force = false }: { force?: boolean } = {}): Store {
     sites,
     evaluations,
     risks,
+    riskMatrix,
     evalBySiteId,
     risksBySiteId,
     indications: [...new Set(regionData.map((r) => r.Indication))],

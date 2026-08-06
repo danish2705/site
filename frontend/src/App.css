@@ -595,6 +595,515 @@ th {
   line-height: 1.5;
 }
 
+/* ---- AI Region Prediction section ----
+   Built entirely on the existing theme tokens (--accent / --accent-soft /
+   --line / --sub, the shared .card, .tag, .table-scroll and .spinner
+   rules) so it reads as part of the same app rather than a bolt-on. */
+.predict-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 20px;
+  flex-wrap: wrap;
+}
+/* Collapsed: drop the card's bottom padding so the header sits as a tidy
+   single bar rather than a mostly-empty box. */
+.predict-card.collapsed {
+  padding-bottom: 18px;
+}
+.predict-collapse-toggle {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  flex: 1;
+  min-width: 240px;
+  background: none;
+  border: none;
+  padding: 0;
+  margin: 0;
+  font-family: inherit;
+  color: var(--ink);
+  text-align: left;
+  cursor: pointer;
+  border-radius: 8px;
+}
+.predict-collapse-toggle:hover .predict-title {
+  color: var(--accent);
+}
+.predict-collapse-toggle:focus-visible {
+  outline: 2px solid var(--accent-soft);
+  outline-offset: 4px;
+}
+.predict-collapse-caret {
+  color: var(--accent);
+  font-size: 12px;
+  line-height: 1;
+  margin-top: 6px;
+  flex-shrink: 0;
+  transition: transform 0.15s ease;
+}
+.predict-head-text {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  min-width: 0;
+}
+/* Matches .card h2 — a real <h2> can't live inside the toggle <button>
+   (flow content inside phrasing-only content is invalid HTML). */
+.predict-title {
+  font-size: 18px;
+  font-weight: 700;
+  color: inherit;
+  transition: color 0.15s ease;
+}
+.predict-collapsed-summary {
+  font-size: 12.5px;
+  color: var(--sub);
+}
+.predict-head .section-hint {
+  margin-bottom: 0;
+  max-width: 560px;
+}
+.predict-head-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+}
+.predict-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--accent);
+  color: #fff;
+  border: none;
+  padding: 10px 18px;
+  border-radius: 8px;
+  font-size: 13.5px;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.predict-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+/* The shared .spinner is accent-on-accent-soft, which vanishes against the
+   filled button — invert it just for this placement. */
+.predict-btn .spinner {
+  border-color: rgba(255, 255, 255, 0.35);
+  border-top-color: #fff;
+}
+.predict-placeholder {
+  color: var(--sub);
+  font-size: 13px;
+  margin-top: 18px;
+  padding: 20px;
+  border: 1px dashed var(--line);
+  border-radius: 10px;
+  text-align: center;
+}
+
+.predict-hero {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  flex-wrap: wrap;
+  margin-top: 18px;
+  padding: 18px 20px;
+  border-radius: 12px;
+  background: var(--accent-soft);
+  border: 1px solid rgba(59, 91, 253, 0.18);
+}
+.predict-hero-label {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--accent);
+  margin-bottom: 4px;
+}
+.predict-hero-region {
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: var(--ink);
+}
+.predict-hero-meta {
+  font-size: 12.5px;
+  color: var(--sub);
+  margin-top: 3px;
+}
+.predict-hero-side {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+}
+/* Separate from .badge on purpose: on a risk badge "High" is bad (red),
+   but on a confidence badge "High" is good — reusing .badge here would
+   flip the color semantics and read as a warning. */
+.conf-badge {
+  display: inline-block;
+  padding: 4px 12px;
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.conf-high {
+  color: var(--low);
+  background: var(--low-bg);
+}
+.conf-medium {
+  color: var(--med);
+  background: var(--med-bg);
+}
+.conf-low {
+  color: var(--high);
+  background: var(--high-bg);
+}
+.apply-btn {
+  background: var(--accent);
+  color: #fff;
+  border: none;
+  padding: 8px 16px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.apply-btn:disabled {
+  opacity: 0.65;
+  cursor: default;
+}
+.apply-btn.ghost {
+  background: var(--accent-soft);
+  color: var(--accent);
+  padding: 6px 14px;
+  font-size: 12.5px;
+}
+
+.predict-rationale {
+  margin-top: 16px;
+  font-size: 13.5px;
+  line-height: 1.55;
+  color: var(--ink);
+}
+
+.predict-block {
+  margin-top: 20px;
+}
+.predict-block-title {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  flex-wrap: wrap;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: var(--sub);
+}
+.predict-block-note {
+  font-size: 11.5px;
+  font-weight: 400;
+  letter-spacing: 0;
+  text-transform: none;
+  opacity: 0.85;
+}
+
+.chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+.chip {
+  font-size: 12.5px;
+  color: var(--ink);
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 20px;
+  padding: 5px 12px;
+}
+
+.watch-list {
+  margin: 10px 0 0;
+  padding-left: 18px;
+  color: var(--sub);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.alt-list {
+  display: flex;
+  flex-direction: column;
+  margin-top: 10px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  overflow: hidden;
+}
+.alt-item + .alt-item {
+  border-top: 1px solid var(--line);
+}
+.alt-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 12px 16px;
+}
+.alt-item-main {
+  min-width: 0;
+}
+.alt-item-region {
+  font-weight: 600;
+  font-size: 13.5px;
+}
+.alt-item-why {
+  color: var(--sub);
+  font-size: 12.5px;
+  margin-top: 2px;
+  line-height: 1.45;
+}
+
+/* Inline score bar in the candidate table — same visual language as the
+   pipeline progress bar, shrunk to fit a table cell. */
+.score-cell {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 600;
+}
+.score-track {
+  width: 56px;
+  height: 6px;
+  background: var(--line);
+  border-radius: 20px;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+.score-fill {
+  height: 100%;
+  background: var(--accent);
+}
+tr.row-pick td {
+  background: var(--accent-soft);
+}
+.pick-tag {
+  display: inline-block;
+  margin-left: 8px;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: var(--accent);
+  background: #fff;
+  border: 1px solid rgba(59, 91, 253, 0.3);
+  border-radius: 20px;
+  padding: 1px 7px;
+}
+.link-btn {
+  margin-top: 10px;
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--accent);
+  font-size: 12.5px;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+}
+
+@media (max-width: 720px) {
+  .predict-head-actions {
+    width: 100%;
+  }
+  .predict-btn {
+    flex: 1;
+    justify-content: center;
+  }
+  .predict-hero-side {
+    width: 100%;
+    justify-content: space-between;
+  }
+}
+
+/* ---- "Why this rating" risk explanation ----
+   Shown inside each Stage 6 accordion row and in the Stage 8 summary. The
+   .on-dark variant is for the gradient final-summary card, where the normal
+   ink/line tokens would be invisible. */
+.why-risk {
+  margin: 12px 0 4px;
+  padding: 14px 16px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #fff;
+}
+.why-risk-head {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.why-risk-rule {
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--ink);
+  flex: 1;
+  min-width: 200px;
+}
+.why-risk-mix {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+  margin-top: 10px;
+  font-size: 12px;
+  color: var(--sub);
+}
+.why-risk-stat strong {
+  color: var(--ink);
+  font-weight: 700;
+}
+.why-risk-stat.high strong {
+  color: var(--high);
+}
+.why-risk-stat.medium strong {
+  color: var(--med);
+}
+.why-risk-stat.low strong {
+  color: var(--low);
+}
+.why-risk .link-btn {
+  margin-top: 10px;
+}
+
+.driver-list {
+  list-style: none;
+  margin: 10px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.driver-item {
+  border-left: 3px solid var(--line);
+  padding: 8px 0 8px 12px;
+}
+.driver-top {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  font-size: 11.5px;
+}
+.driver-id {
+  font-weight: 700;
+  color: var(--ink);
+}
+.driver-cat {
+  color: var(--sub);
+}
+.driver-status {
+  border-radius: 20px;
+  padding: 1px 8px;
+  background: var(--bg);
+  color: var(--sub);
+  font-weight: 600;
+}
+/* Open / Monitoring records are the ones that still need action, so they
+   get the warning treatment; Mitigated / Closed stay neutral grey. */
+.driver-status.active {
+  background: var(--med-bg);
+  color: var(--med);
+}
+.driver-desc {
+  font-size: 13px;
+  line-height: 1.45;
+  margin-top: 4px;
+}
+.driver-derivation {
+  font-size: 11.5px;
+  color: var(--sub);
+  margin-top: 3px;
+  font-variant-numeric: tabular-nums;
+}
+.why-risk-cats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 12px;
+}
+.why-risk-cats .chip {
+  font-size: 11.5px;
+  padding: 3px 10px;
+}
+
+/* On-dark variant for the gradient Stage 8 card */
+.final-why {
+  margin-top: 18px;
+}
+.final-why-title {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  opacity: 0.8;
+  margin-bottom: 8px;
+}
+.why-risk.on-dark {
+  background: rgba(255, 255, 255, 0.12);
+  border-color: rgba(255, 255, 255, 0.22);
+}
+.why-risk.on-dark .why-risk-rule,
+.why-risk.on-dark .driver-desc,
+.why-risk.on-dark .driver-id {
+  color: #fff;
+}
+.why-risk.on-dark .why-risk-mix,
+.why-risk.on-dark .driver-cat,
+.why-risk.on-dark .driver-derivation {
+  color: rgba(255, 255, 255, 0.75);
+}
+.why-risk.on-dark .why-risk-stat strong,
+.why-risk.on-dark .why-risk-stat.high strong,
+.why-risk.on-dark .why-risk-stat.medium strong,
+.why-risk.on-dark .why-risk-stat.low strong {
+  color: #fff;
+}
+.why-risk.on-dark .link-btn {
+  color: #fff;
+  text-decoration: underline;
+}
+.why-risk.on-dark .driver-item {
+  border-left-color: rgba(255, 255, 255, 0.3);
+}
+.why-risk.on-dark .driver-status {
+  background: rgba(255, 255, 255, 0.16);
+  color: #fff;
+}
+.why-risk.on-dark .chip {
+  background: rgba(255, 255, 255, 0.14);
+  border-color: rgba(255, 255, 255, 0.22);
+  color: #fff;
+}
+
+.conf-reason {
+  margin-top: 14px;
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--sub);
+}
+.conf-reason strong {
+  color: var(--ink);
+}
+
 footer {
   text-align: center;
   color: var(--sub);

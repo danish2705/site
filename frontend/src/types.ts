@@ -26,6 +26,86 @@ export interface MetaResponse {
   specialties: Record<string, string>;
 }
 
+// ---- AI Region Prediction (POST /api/predict-region) ----
+// One scored region option shown in the prediction section's candidate
+// table. Mirrors the backend's RegionCandidate.
+export interface RegionCandidate {
+  region: string;
+  country: string;
+  prevalence: number;
+  regulatoryWeeks: number;
+  competingTrials: number;
+  avgCostPerPatient: number;
+  siteCount: number;
+  avgSuitability: number;
+  bestSuitability: number;
+  highRiskCount: number;
+  highRiskPerSite: number;
+  avgEnrollmentRate: number;
+  estimatedPatients: number;
+  monthsToEnroll: number | null;
+  score: number;
+}
+
+export interface RegionAlternative {
+  region: string;
+  country: string;
+  why: string;
+}
+
+export interface RegionPrediction {
+  region: string;
+  country: string;
+  confidence: "Low" | "Medium" | "High";
+  confidenceReason: string;
+  rationale: string;
+  keyFactors: string[];
+  watchOuts: string[];
+  alternatives: RegionAlternative[];
+}
+
+export interface RegionPredictionResponse {
+  llm: string;
+  indication: string;
+  specialty: string;
+  prediction: RegionPrediction;
+  candidates: RegionCandidate[];
+  excludedNoSites: number;
+}
+
+// A risk record that drove a site's rating, with its matrix derivation.
+export interface RiskDriver {
+  riskId: string;
+  category: string;
+  description: string;
+  likelihood: "Low" | "Medium" | "High";
+  impact: "Low" | "Medium" | "High";
+  rating: "Low" | "Medium" | "High";
+  status: string;
+  active: boolean;
+  derivation: string;
+}
+
+// Explains WHY a site is Low/Medium/High rather than just asserting it.
+export interface RiskExplanation {
+  level: "Low" | "Medium" | "High";
+  rule: string;
+  summary: string;
+  totalRecords: number;
+  highCount: number;
+  mediumCount: number;
+  lowCount: number;
+  activeAtLevel: number;
+  drivers: RiskDriver[];
+  driverTotal: number;
+  categoryCounts: {
+    category: string;
+    high: number;
+    medium: number;
+    low: number;
+  }[];
+}
+
 export type StageStatus = "pending" | "in-progress" | "complete";
 
 export interface StageState {
@@ -84,6 +164,7 @@ export interface FinalResult {
   suitabilityScore: number;
   riskLevel: "Low" | "Medium" | "High";
   highRiskCount: number;
+  riskExplanation: RiskExplanation;
   text: string;
 }
 

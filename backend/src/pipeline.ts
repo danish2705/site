@@ -7,6 +7,9 @@ import type {
   RiskLevel,
   RiskRow,
   RiskRecord,
+  RiskMatrix,
+  RiskDriver,
+  RiskExplanation,
 } from "./types.js";
 
 const sleep = (ms: number): Promise<void> =>
@@ -43,6 +46,132 @@ function toRiskRecord(r: RiskRow): RiskRecord {
     mitigationPlan: r["Mitigation Plan"],
     owner: r.Owner,
     riskScore: r["Risk Score (Numeric)"],
+  };
+}
+
+// Risk_Register Status values split into "still live" vs "resolved". An
+// unresolved High risk is a materially different proposition from one
+// that's already been mitigated or closed, so the explanation says which.
+const ACTIVE_STATUSES = new Set(["Open", "Monitoring"]);
+
+/**
+ * Explains WHY a site carries its Low/Medium/High rating instead of just
+ * asserting the level.
+ *
+ * Two derivation steps are made explicit:
+ *   1. Each individual record's rating comes from the Risk_Matrix sheet —
+ *      Likelihood x Impact -> rating (read from the workbook, not hardcoded,
+ *      so editing the matrix in Excel changes the explanation too).
+ *   2. The site's overall level is the worst rating among its records: one
+ *      High record makes the whole site High. That "weakest link" rule is
+ *      the thing users most often want justified, since a site with 11 Low
+ *      risks and 1 High still shows up as High.
+ */
+function explainRisk(risks: RiskRow[], matrix: RiskMatrix): RiskExplanation {
+  const at = (level: RiskLevel) =>
+    risks.filter((r) => r["Overall Risk Rating"] === level);
+
+  const highs = at("High");
+  const mediums = at("Medium");
+  const lows = at("Low");
+  const total = risks.length;
+
+  const level: RiskLevel =
+    highs.length > 0 ? "High" : mediums.length > 0 ? "Medium" : "Low";
+
+  // The records that actually decided the level.
+  const deciding =
+    level === "High" ? highs : level === "Medium" ? mediums : lows;
+  const activeAtLevel = deciding.filter((r) =>
+    ACTIVE_STATUSES.has(r.Status),
+  ).length;
+
+  const isActive = (r: RiskRow) => ACTIVE_STATUSES.has(r.Status);
+  const drivers: RiskDriver[] = [...deciding]
+    // Unresolved first, then by numeric score — the reader wants the live
+    // problems at the top, not an arbitrary Risk ID order.
+    .sort((a, b) => {
+      const activeDiff = Number(isActive(b)) - Number(isActive(a));
+      if (activeDiff !== 0) return activeDiff;
+      return b["Risk Score (Numeric)"] - a["Risk Score (Numeric)"];
+    })
+    .slice(0, 4)
+    .map((r) => {
+      const derived = matrix?.[r.Likelihood]?.[r.Impact];
+      return {
+        riskId: r["Risk ID"],
+        category: r["Risk Category"],
+        description: r.Description,
+        likelihood: r.Likelihood,
+        impact: r.Impact,
+        rating: r["Overall Risk Rating"],
+        status: r.Status,
+        active: isActive(r),
+        derivation:
+          `Likelihood ${r.Likelihood} × Impact ${r.Impact} → ` +
+          // Fall back to the record's own stored rating if the matrix sheet
+          // is missing or doesn't cover this combination.
+          `${derived ?? r["Overall Risk Rating"]}` +
+          (derived ? " (per the Risk Matrix)" : ""),
+      };
+    });
+
+  const categoryCounts = [...new Set(risks.map((r) => r["Risk Category"]))]
+    .map((category) => {
+      const inCat = risks.filter((r) => r["Risk Category"] === category);
+      return {
+        category,
+        high: inCat.filter((r) => r["Overall Risk Rating"] === "High").length,
+        medium: inCat.filter((r) => r["Overall Risk Rating"] === "Medium")
+          .length,
+        low: inCat.filter((r) => r["Overall Risk Rating"] === "Low").length,
+      };
+    })
+    // Worst-first so the categories driving the rating lead.
+    .sort((a, b) => b.high - a.high || b.medium - a.medium);
+
+  let rule: string;
+  if (total === 0) {
+    rule = "Rated Low by default — no risk records are on file for this site.";
+  } else if (level === "High") {
+    rule =
+      `Rated High because ${highs.length} of ${total} risk record(s) are individually rated High. ` +
+      `A site takes the worst rating among its records, so a single High record sets the whole site to High.`;
+  } else if (level === "Medium") {
+    rule =
+      `Rated Medium because no record is rated High, but ${mediums.length} of ${total} are rated Medium. ` +
+      `A site takes the worst rating among its records.`;
+  } else {
+    rule = `Rated Low because all ${total} risk record(s) are individually rated Low.`;
+  }
+
+  const topCategory = categoryCounts[0];
+  const concentration =
+    level !== "Low" &&
+    topCategory &&
+    topCategory[level === "High" ? "high" : "medium"] > 0
+      ? ` Most concentrated in ${topCategory.category}.`
+      : "";
+
+  const summary =
+    total === 0
+      ? "No risk records on file."
+      : `${deciding.length} ${level} record(s) of ${total} total — ` +
+        `${activeAtLevel} still open or being monitored, ` +
+        `${deciding.length - activeAtLevel} already mitigated or closed.${concentration}`;
+
+  return {
+    level,
+    rule,
+    summary,
+    totalRecords: total,
+    highCount: highs.length,
+    mediumCount: mediums.length,
+    lowCount: lows.length,
+    activeAtLevel,
+    drivers,
+    driverTotal: deciding.length,
+    categoryCounts,
   };
 }
 
@@ -243,6 +372,7 @@ export async function runPipeline(
       highRiskCount: highCount,
       mediumRiskCount: medCount,
       overallRisk,
+      riskExplanation: explainRisk(risks, store.riskMatrix),
     };
   });
   await sleep(STEP_DELAY_MS);
@@ -311,6 +441,7 @@ export async function runPipeline(
     topRegion,
     estimatedPatients,
     top,
+    riskExplanation: top.riskExplanation,
   });
   send("stage", {
     stage: 8,
@@ -328,6 +459,7 @@ export async function runPipeline(
       suitabilityScore: top.suitabilityScore,
       riskLevel: top.overallRisk,
       highRiskCount: top.highRiskCount,
+      riskExplanation: top.riskExplanation,
       text: recommendation.text,
     },
   });

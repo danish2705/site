@@ -17,6 +17,8 @@ import type {
   StageEventPayload,
   RiskRecord,
   RegionOption,
+  RegionPredictionResponse,
+  RiskExplanation,
 } from "./types";
 
 // Composite key used by the Region / Country Selection dropdown, so each
@@ -39,6 +41,102 @@ function emptyStages(): StagesMap {
   for (const s of STAGE_LIST)
     obj[s.n] = { status: "pending", detail: null, data: null };
   return obj;
+}
+
+// Explains WHY the recommended site holds its Low/Medium/High rating.
+// Stage 8 only: the Stage 6 accordion shows each site's raw risk register,
+// where the Likelihood / Impact / Overall columns already speak for
+// themselves, so repeating the derivation above that table is just noise.
+function WhyThisRating({
+  explanation,
+  onDark = false,
+}: {
+  explanation: RiskExplanation;
+  onDark?: boolean;
+}) {
+  const [open, setOpen] = useState(false);
+  const e = explanation;
+
+  return (
+    <div className={`why-risk ${onDark ? "on-dark" : ""}`}>
+      <div className="why-risk-head">
+        <span className={`badge ${e.level.toLowerCase()}`}>{e.level}</span>
+        <span className="why-risk-rule">{e.rule}</span>
+      </div>
+
+      <div className="why-risk-mix">
+        <span className="why-risk-stat">
+          <strong>{e.totalRecords}</strong> record(s)
+        </span>
+        <span className="why-risk-stat high">
+          <strong>{e.highCount}</strong> High
+        </span>
+        <span className="why-risk-stat medium">
+          <strong>{e.mediumCount}</strong> Medium
+        </span>
+        <span className="why-risk-stat low">
+          <strong>{e.lowCount}</strong> Low
+        </span>
+        {e.totalRecords > 0 && (
+          <span className="why-risk-stat">
+            <strong>{e.activeAtLevel}</strong> of {e.driverTotal} deciding
+            record(s) still open
+          </span>
+        )}
+      </div>
+
+      {e.drivers.length > 0 && (
+        <>
+          <button
+            type="button"
+            className="link-btn"
+            onClick={() => setOpen((o) => !o)}
+            aria-expanded={open}
+          >
+            {open ? "Hide" : "Show"} the {e.level.toLowerCase()} record(s)
+            behind this rating
+            {e.driverTotal > e.drivers.length &&
+              ` (top ${e.drivers.length} of ${e.driverTotal})`}
+          </button>
+          {open && (
+            <ul className="driver-list">
+              {e.drivers.map((d) => (
+                <li className="driver-item" key={d.riskId}>
+                  <div className="driver-top">
+                    <span className="driver-id">{d.riskId}</span>
+                    <span className="driver-cat">{d.category}</span>
+                    <span
+                      className={`driver-status ${d.active ? "active" : ""}`}
+                    >
+                      {d.status}
+                    </span>
+                  </div>
+                  <div className="driver-desc">{d.description}</div>
+                  {/* The actual derivation: this is what turns "High" from
+                      an assertion into something the reader can check. */}
+                  <div className="driver-derivation">{d.derivation}</div>
+                </li>
+              ))}
+            </ul>
+          )}
+        </>
+      )}
+
+      {e.categoryCounts.length > 0 && e.level !== "Low" && (
+        <div className="why-risk-cats">
+          {e.categoryCounts
+            .filter((c) => c.high > 0 || c.medium > 0)
+            .map((c) => (
+              <span className="chip" key={c.category}>
+                {c.category}: {c.high > 0 && `${c.high} high`}
+                {c.high > 0 && c.medium > 0 && ", "}
+                {c.medium > 0 && `${c.medium} medium`}
+              </span>
+            ))}
+        </div>
+      )}
+    </div>
+  );
 }
 
 // Renders individual Risk_Register entries as records (one row per risk)
@@ -266,6 +364,335 @@ function RegionDropdown({
   );
 }
 
+// Standalone "AI Region Prediction" section. Deliberately independent of
+// the 8-stage pipeline: the pipeline only *consumes* a region (either one
+// the user picked, or the best-fit fallback), whereas this asks the model
+// to propose one from the trial requirements alone — and lets the user
+// push that answer straight into the Region / Country Selection input.
+function AIRegionPrediction({
+  form,
+  disabled,
+  onApply,
+}: {
+  form: TrialForm;
+  disabled: boolean;
+  onApply: (region: string, country: string) => void;
+}) {
+  const [result, setResult] = useState<RegionPredictionResponse | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [showAll, setShowAll] = useState(false);
+  const [applied, setApplied] = useState<string | null>(null);
+  const [open, setOpen] = useState(true);
+
+  // A prediction is only meaningful for the indication it was made for, so
+  // clear it the moment the user switches indication rather than leaving a
+  // stale recommendation on screen next to the new selection.
+  useEffect(() => {
+    setResult(null);
+    setError(null);
+    setApplied(null);
+    setShowAll(false);
+  }, [form.indication]);
+
+  async function predict() {
+    setLoading(true);
+    setError(null);
+    setApplied(null);
+    try {
+      const res = await fetch("/api/predict-region", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          indication: form.indication,
+          phase: form.phase,
+          sampleSize: form.sampleSize,
+          durationMonths: form.durationMonths,
+          budgetTier: form.budgetTier,
+        }),
+      });
+      const data = (await res.json()) as RegionPredictionResponse & {
+        error?: string;
+      };
+      if (!res.ok)
+        throw new Error(data.error || `Request failed (${res.status})`);
+      setResult(data);
+      // Expand on a fresh result — otherwise clicking Predict while the
+      // section is collapsed would appear to do nothing.
+      setOpen(true);
+    } catch (err) {
+      setError((err as Error).message);
+      setResult(null);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  const p = result?.prediction;
+  const visibleCandidates = showAll
+    ? (result?.candidates ?? [])
+    : (result?.candidates ?? []).slice(0, 5);
+
+  return (
+    <div className={`card predict-card ${open ? "" : "collapsed"}`}>
+      <div className="predict-head">
+        {/* The toggle holds only phrasing content (spans) — the heading is
+            styled to match .card h2 rather than being a real <h2>, since an
+            <h2> inside a <button> is invalid HTML. */}
+        <button
+          type="button"
+          className="predict-collapse-toggle"
+          onClick={() => setOpen((o) => !o)}
+          aria-expanded={open}
+        >
+          <span className="predict-collapse-caret">{open ? "▾" : "▸"}</span>
+          <span className="predict-head-text">
+            <span className="tag">AI Prediction</span>
+            <span className="predict-title">Predicted Region / Country</span>
+            {open ? (
+              <span className="section-hint">
+                Instead of choosing a region yourself, let the model propose one
+                from the trial requirements — then apply it to the form and run
+                the pipeline.
+              </span>
+            ) : (
+              // Collapsed: keep the answer itself visible so closing the
+              // section hides the supporting detail, not the result.
+              <span className="predict-collapsed-summary">
+                {result
+                  ? `${result.prediction.region}, ${result.prediction.country} · ${result.prediction.confidence} confidence`
+                  : "Collapsed — expand to predict a region."}
+              </span>
+            )}
+          </span>
+        </button>
+        <div className="predict-head-actions">
+          {result && open && (
+            <span
+              className={`llm-badge ${result.llm === "mock" ? "mock" : ""}`}
+            >
+              {result.llm === "mock"
+                ? "Using: mock (no API key)"
+                : `Using: ${result.llm}`}
+            </span>
+          )}
+          <button
+            type="button"
+            className="predict-btn"
+            onClick={predict}
+            disabled={disabled || loading || !form.indication}
+          >
+            {loading ? (
+              <>
+                <span className="spinner" /> Predicting…
+              </>
+            ) : result ? (
+              "Re-predict"
+            ) : (
+              "Predict Region with AI"
+            )}
+          </button>
+        </div>
+      </div>
+
+      {open && (
+        <>
+          {error && <p className="error-text">{error}</p>}
+
+          {!result && !loading && !error && (
+            <p className="predict-placeholder">
+              No prediction yet — run it to see a recommended region, why it was
+              chosen, and how every viable region scored.
+            </p>
+          )}
+        </>
+      )}
+
+      {open && result && p && (
+        <>
+          <div className="predict-hero">
+            <div className="predict-hero-main">
+              <div className="predict-hero-label">Recommended region</div>
+              <div className="predict-hero-region">
+                {p.region}, {p.country}
+              </div>
+              <div className="predict-hero-meta">
+                {result.specialty} sites · {result.indication}
+              </div>
+            </div>
+            <div className="predict-hero-side">
+              <span className={`conf-badge conf-${p.confidence.toLowerCase()}`}>
+                {p.confidence} confidence
+              </span>
+              <button
+                type="button"
+                className="apply-btn"
+                onClick={() => {
+                  onApply(p.region, p.country);
+                  setApplied(`${p.region}||${p.country}`);
+                }}
+                disabled={applied === `${p.region}||${p.country}`}
+              >
+                {applied === `${p.region}||${p.country}`
+                  ? "✓ Applied to form"
+                  : "Use this region"}
+              </button>
+            </div>
+          </div>
+
+          {p.confidenceReason && (
+            <p className="conf-reason">
+              <strong>Why {p.confidence.toLowerCase()} confidence:</strong>{" "}
+              {p.confidenceReason}
+            </p>
+          )}
+
+          {p.rationale && <p className="predict-rationale">{p.rationale}</p>}
+
+          {p.keyFactors.length > 0 && (
+            <div className="predict-block">
+              <div className="predict-block-title">Key factors</div>
+              <div className="chip-row">
+                {p.keyFactors.map((f, i) => (
+                  <span className="chip" key={i}>
+                    {f}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {p.watchOuts.length > 0 && (
+            <div className="predict-block">
+              <div className="predict-block-title">Watch-outs</div>
+              <ul className="watch-list">
+                {p.watchOuts.map((w, i) => (
+                  <li key={i}>{w}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {p.alternatives.length > 0 && (
+            <div className="predict-block">
+              <div className="predict-block-title">Alternatives</div>
+              <div className="alt-list">
+                {p.alternatives.map((a, i) => (
+                  <div className="alt-item" key={`${a.region}-${i}`}>
+                    <div className="alt-item-main">
+                      <div className="alt-item-region">
+                        {a.region}, {a.country}
+                      </div>
+                      <div className="alt-item-why">{a.why}</div>
+                    </div>
+                    <button
+                      type="button"
+                      className="apply-btn ghost"
+                      onClick={() => {
+                        onApply(a.region, a.country);
+                        setApplied(`${a.region}||${a.country}`);
+                      }}
+                      disabled={applied === `${a.region}||${a.country}`}
+                    >
+                      {applied === `${a.region}||${a.country}`
+                        ? "✓ Applied"
+                        : "Use"}
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <div className="predict-block">
+            <div className="predict-block-title">
+              Scored candidates
+              <span className="predict-block-note">
+                {result.candidates.length} region(s) with {result.specialty}{" "}
+                sites
+                {result.excludedNoSites > 0 &&
+                  ` · ${result.excludedNoSites} skipped (no ${result.specialty} sites)`}
+              </span>
+            </div>
+            <div className="table-scroll">
+              <table>
+                <thead>
+                  <tr>
+                    <th>#</th>
+                    <th>Region</th>
+                    <th>Score</th>
+                    <th>Est. Patients</th>
+                    <th>Sites</th>
+                    <th>Avg Suitability</th>
+                    <th>Approval</th>
+                    <th>Competing</th>
+                    <th>Cost/Patient</th>
+                    <th>Months to Enroll</th>
+                    <th>High Risks</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {visibleCandidates.map((c, i) => {
+                    const isPick =
+                      c.region === p.region && c.country === p.country;
+                    return (
+                      <tr
+                        key={`${c.region}||${c.country}`}
+                        className={isPick ? "row-pick" : ""}
+                      >
+                        <td>{i + 1}</td>
+                        <td>
+                          {c.region}
+                          {isPick && <span className="pick-tag">AI pick</span>}
+                          <div className="site-id">{c.country}</div>
+                        </td>
+                        <td>
+                          <div className="score-cell">
+                            <div className="score-track">
+                              <div
+                                className="score-fill"
+                                style={{ width: `${c.score}%` }}
+                              />
+                            </div>
+                            <span>{c.score}</span>
+                          </div>
+                        </td>
+                        <td>{c.estimatedPatients.toLocaleString()}</td>
+                        <td>{c.siteCount}</td>
+                        <td>{c.avgSuitability}/100</td>
+                        <td>{c.regulatoryWeeks}w</td>
+                        <td>{c.competingTrials}</td>
+                        <td>${c.avgCostPerPatient.toLocaleString()}</td>
+                        <td>
+                          {c.monthsToEnroll === null
+                            ? "—"
+                            : `${c.monthsToEnroll} mo`}
+                        </td>
+                        <td>{c.highRiskCount}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+            {result.candidates.length > 5 && (
+              <button
+                type="button"
+                className="link-btn"
+                onClick={() => setShowAll((s) => !s)}
+              >
+                {showAll
+                  ? "Show top 5 only"
+                  : `Show all ${result.candidates.length} regions`}
+              </button>
+            )}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 export default function App() {
   const [meta, setMeta] = useState<MetaResponse | null>(null);
   const [form, setForm] = useState<TrialForm>({
@@ -449,8 +876,8 @@ export default function App() {
                   disabled={!meta}
                 />
                 <span className="field-hint">
-                  Optional, multi-select. Leave empty to auto-pick the
-                  best-fit region for this indication.
+                  Optional, multi-select. Leave empty to auto-pick the best-fit
+                  region for this indication.
                 </span>
               </label>
               <label>
@@ -512,6 +939,17 @@ export default function App() {
         </aside>
 
         <main className="results">
+          <AIRegionPrediction
+            form={form}
+            disabled={!meta || running}
+            onApply={(region, country) =>
+              setForm((f) => ({
+                ...f,
+                regions: [regionKey(region, country)],
+              }))
+            }
+          />
+
           {(running || completedCount > 0) && (
             <div className="card">
               <div className="progress-header">
@@ -606,7 +1044,9 @@ export default function App() {
                         <td>{r.region}</td>
                         <td>{r.suitabilityScore}/100</td>
                         <td>
-                          <span className={`badge ${r.riskLevel.toLowerCase()}`}>
+                          <span
+                            className={`badge ${r.riskLevel.toLowerCase()}`}
+                          >
                             {r.riskLevel}
                           </span>
                         </td>
@@ -648,6 +1088,17 @@ export default function App() {
                   <div className="v">{finalResult.riskLevel}</div>
                 </div>
               </div>
+              {finalResult.riskExplanation && (
+                <div className="final-why">
+                  <div className="final-why-title">
+                    Why this site is rated {finalResult.riskLevel}
+                  </div>
+                  <WhyThisRating
+                    explanation={finalResult.riskExplanation}
+                    onDark
+                  />
+                </div>
+              )}
               <p className="final-text">
                 <strong>AI Recommendation ({llmInfo}):</strong>{" "}
                 {finalResult.text}
@@ -658,8 +1109,9 @@ export default function App() {
           {!running && completedCount === 0 && (
             <div className="card empty-state">
               <p>
-                Fill in the trial requirements on the left and run the
-                pipeline to see Stage 6-8 output here.
+                Fill in the trial requirements on the left and run the pipeline
+                to see Stage 6-8 output here — or use the AI Region Prediction
+                section above to get a suggested region first.
               </p>
             </div>
           )}
