@@ -1,5 +1,7 @@
 import { loadStore, INDICATION_TO_SPECIALTY } from "./excelStore.js";
 import { generateRecommendation, llmStatus } from "./llm.js";
+import { scoreSites, explainScore } from "./scoring.js";
+import type { ExtendedEvaluationRow } from "./scoring.js";
 import type {
   PipelineInput,
   SendFn,
@@ -10,6 +12,9 @@ import type {
   RiskMatrix,
   RiskDriver,
   RiskExplanation,
+  SiteRow,
+  TrialRequirementRow,
+  RequirementCheck,
 } from "./types.js";
 
 const sleep = (ms: number): Promise<void> =>
@@ -175,6 +180,87 @@ function explainRisk(risks: RiskRow[], matrix: RiskMatrix): RiskExplanation {
   };
 }
 
+/**
+ * Checks one site against a trial's acceptance thresholds from
+ * Trial_Requirements. Returns an empty list when the workbook has no
+ * requirements sheet, so an older dataset behaves exactly as before.
+ *
+ * A missing KPI is reported as an explicit "no data" FAIL rather than a
+ * silent pass. Passing a site because a field is blank is how you end up
+ * recommending a site nobody has measured.
+ */
+function checkRequirements(
+  site: SiteRow,
+  evalRow: ExtendedEvaluationRow,
+  requirement: TrialRequirementRow | undefined,
+): RequirementCheck[] {
+  if (!requirement) return [];
+
+  const checks: RequirementCheck[] = [];
+
+  const numeric = (
+    criterion: string,
+    actual: number | null | undefined,
+    limit: number | null,
+    cmp: "min" | "max",
+    unit: string,
+  ) => {
+    if (limit === null || limit === undefined) return;
+    const required = `${cmp === "min" ? "≥" : "≤"} ${limit}${unit}`;
+    if (actual === null || actual === undefined) {
+      checks.push({ criterion, required, actual: "no data", pass: false });
+      return;
+    }
+    checks.push({
+      criterion,
+      required,
+      actual: `${actual}${unit}`,
+      pass: cmp === "min" ? actual >= limit : actual <= limit,
+    });
+  };
+
+  numeric(
+    "Enrollment rate",
+    evalRow["Historical Enrollment Rate (pts/month)"],
+    requirement["Min Enrollment Rate (pts/month)"],
+    "min",
+    " pts/mo",
+  );
+  numeric(
+    "Dropout rate",
+    evalRow["Dropout Rate (%)"],
+    requirement["Max Acceptable Dropout (%)"],
+    "max",
+    "%",
+  );
+  numeric(
+    "Data quality",
+    evalRow["Data Quality Score (0-100)"],
+    requirement["Min Data Quality Score"],
+    "min",
+    "",
+  );
+  numeric(
+    "Screen failure rate",
+    evalRow["Screen Failure Rate (%)"],
+    requirement["Max Acceptable Screen Failure (%)"],
+    "max",
+    "%",
+  );
+
+  // "Preferred" is a soft requirement — recorded, but it doesn't exclude.
+  if (requirement["Accreditation Required"] === "Yes") {
+    checks.push({
+      criterion: "Accreditation",
+      required: "Required",
+      actual: site.Accreditation === "Yes" ? "Accredited" : "Not accredited",
+      pass: site.Accreditation === "Yes",
+    });
+  }
+
+  return checks;
+}
+
 // Small artificial pauses between structured stages so the progress bar is
 // actually visible — filtering an in-memory array takes milliseconds, but a
 // progress UI that flashes through 8 stages instantly isn't useful to watch.
@@ -207,12 +293,39 @@ export async function runPipeline(
   }
   const specialty = INDICATION_TO_SPECIALTY[indication];
 
-  // ---- Stage 1 — Requirements (already given by the caller) ----
+  // ---- Stage 1 — Clinical Trial Requirements ----
+  // This used to just echo the form back. It now pulls the protocol's real
+  // acceptance thresholds from the Trial_Requirements sheet, which is what
+  // Stages 4-5 filter candidate sites against. Falls back to echoing the
+  // form when the workbook has no Trial_Requirements sheet.
+  const requirement = store.requirementByIndication.get(indication);
   send("stage", {
     stage: 1,
     name: STAGE_NAMES[1],
     status: "complete",
-    detail: `${indication} · ${phase || "n/a"} · target n=${sampleSize || "n/a"}`,
+    detail: requirement
+      ? `${indication} · ${phase || requirement.Phase} · target n=${sampleSize || requirement["Target Sample Size"]} · ${specialty} site required`
+      : `${indication} · ${phase || "n/a"} · target n=${sampleSize || "n/a"} (no Trial_Requirements sheet — thresholds not applied)`,
+    data: requirement
+      ? {
+          trialId: requirement["Trial ID"],
+          indication,
+          requiredSpecialty: specialty,
+          requiredInfrastructure: requirement["Required Infrastructure"],
+          phase: phase || requirement.Phase,
+          targetSampleSize: sampleSize || requirement["Target Sample Size"],
+          durationMonths:
+            input.durationMonths || requirement["Duration (months)"],
+          budgetTier: input.budgetTier || requirement["Budget Tier"],
+          thresholds: {
+            minEnrollmentRate: requirement["Min Enrollment Rate (pts/month)"],
+            maxDropout: requirement["Max Acceptable Dropout (%)"],
+            minDataQuality: requirement["Min Data Quality Score"],
+            maxScreenFailure: requirement["Max Acceptable Screen Failure (%)"],
+            accreditationRequired: requirement["Accreditation Required"],
+          },
+        }
+      : null,
   });
   await sleep(STEP_DELAY_MS);
 
@@ -334,24 +447,65 @@ export async function runPipeline(
     );
   }
 
-  // ---- Stage 5 — Site Evaluation (score already computed by an Excel formula) ----
+  // ---- Stage 5 — Site Evaluation ----
+  // Scores now come from scoring.ts (the deck's 0.35/0.25/0.20/0.10/0.10
+  // weighting) rather than the Excel Suitability Score formula. Cost is
+  // scored relative to the peer set, so every candidate is scored in ONE
+  // call — scores from different runs aren't comparable.
   send("stage", { stage: 5, name: STAGE_NAMES[5], status: "in-progress" });
-  const evaluated = candidateSites.map((site) => {
-    const evalRow = store.evalBySiteId.get(site["Site ID"]);
-    return {
-      ...site,
-      siteId: site["Site ID"], // camelCase aliases — the Excel columns have spaces,
-      siteName: site["Site Name"], // which downstream code (and the LLM prompt) reads as .siteId/.siteName
-      suitabilityScore: evalRow ? evalRow["Suitability Score (0-100)"] : null,
-      evalRow: evalRow!,
-    };
-  });
+
+  const evalRows = candidateSites
+    .map((s) => store.evalBySiteId.get(s["Site ID"]))
+    .filter((e): e is NonNullable<typeof e> => !!e);
+  const scoredById = new Map(scoreSites(evalRows).map((s) => [s.siteId, s]));
+
+  const evaluated = candidateSites
+    .map((site) => {
+      const evalRow = store.evalBySiteId.get(site["Site ID"]);
+      const scored = evalRow ? scoredById.get(site["Site ID"]) : undefined;
+      if (!evalRow || !scored) return null; // no evaluation record on file
+      return {
+        ...site,
+        siteId: site["Site ID"], // camelCase aliases — the Excel columns have spaces,
+        siteName: site["Site Name"], // which downstream code (and the LLM prompt) reads as .siteId/.siteName
+        suitabilityScore: evalRow["Suitability Score (0-100)"],
+        scored,
+        evalRow,
+        requirementChecks: checkRequirements(site, evalRow, requirement),
+      };
+    })
+    .filter((s): s is NonNullable<typeof s> => s !== null);
+
+  const meetingRequirements = evaluated.filter((s) =>
+    s.requirementChecks.every((c) => c.pass),
+  );
+  const lowConfidence = evaluated.filter((s) => s.scored.confidence === "Low");
+
   await sleep(STEP_DELAY_MS);
   send("stage", {
     stage: 5,
     name: STAGE_NAMES[5],
     status: "complete",
-    detail: `Scored ${evaluated.length} site(s) using Site_Evaluation data`,
+    detail:
+      `Scored ${evaluated.length} site(s) on the weighted model` +
+      (requirement
+        ? ` — ${meetingRequirements.length} meet all protocol thresholds`
+        : "") +
+      (lowConfidence.length
+        ? `; ${lowConfidence.length} scored on incomplete data`
+        : ""),
+    data: evaluated.map((s) => ({
+      siteId: s.siteId,
+      siteName: s.siteName,
+      score: s.scored.score,
+      legacySuitabilityScore: s.suitabilityScore,
+      components: s.scored.components,
+      confidence: s.scored.confidence,
+      completeness: s.scored.completeness,
+      caveats: s.scored.caveats,
+      requirementChecks: s.requirementChecks,
+      meetsRequirements: s.requirementChecks.every((c) => c.pass),
+    })),
   });
 
   // ---- Stage 6 — AI Risk Assessment (records already computed by Excel formulas) ----
@@ -397,17 +551,26 @@ export async function runPipeline(
 
   // ---- Stage 7 — Site Ranking ----
   send("stage", { stage: 7, name: STAGE_NAMES[7], status: "in-progress" });
+  // Sites meeting every protocol threshold rank above those that don't, and
+  // within each group the deck-weighted score decides. Failing sites are
+  // still listed rather than dropped: a threshold may be worth relaxing, and
+  // that's a judgement call for the reader, not the pipeline.
   const ranked = [...withRisk]
-    .filter((s) => s.suitabilityScore !== null)
-    .sort(
-      (a, b) => (b.suitabilityScore as number) - (a.suitabilityScore as number),
-    )
+    .sort((a, b) => {
+      const aOk = a.requirementChecks.every((c) => c.pass);
+      const bOk = b.requirementChecks.every((c) => c.pass);
+      if (aOk !== bOk) return aOk ? -1 : 1;
+      return b.scored.score - a.scored.score;
+    })
     .slice(0, 10);
   await sleep(STEP_DELAY_MS);
   send("stage", {
     stage: 7,
     name: STAGE_NAMES[7],
     status: "complete",
+    detail:
+      `Ranked on the weighted model (Recruitment 35% · Quality 25% · ` +
+      `Retention 20% · Diversity 10% · Cost 10%)`,
     // Individual risk records per site are already covered by Stage 6's
     // output (rendered above this table) — this stays a lean summary row.
     data: ranked.map((s, i) => ({
@@ -415,6 +578,16 @@ export async function runPipeline(
       siteId: s.siteId,
       siteName: s.siteName,
       region: s.Region,
+      score: s.scored.score,
+      components: s.scored.components,
+      confidence: s.scored.confidence,
+      caveats: s.scored.caveats,
+      meetsRequirements: s.requirementChecks.every((c) => c.pass),
+      failedCriteria: s.requirementChecks
+        .filter((c) => !c.pass)
+        .map((c) => c.criterion),
+      // Kept alongside the new score so the two models can be compared
+      // during rollout.
       suitabilityScore: s.suitabilityScore,
       riskLevel: s.overallRisk,
       highRiskCount: s.highRiskCount,
@@ -423,7 +596,7 @@ export async function runPipeline(
 
   if (ranked.length === 0) {
     throw new Error(
-      "No sites had a computable Suitability Score — check Site_Evaluation formulas.",
+      "No candidate sites could be scored — every candidate is missing an evaluation record.",
     );
   }
 
@@ -456,6 +629,12 @@ export async function runPipeline(
       estimatedPatients,
       recommendedSite: top.siteName,
       siteId: top.siteId,
+      score: top.scored.score,
+      scoreExplanation: explainScore(top.scored),
+      components: top.scored.components,
+      confidence: top.scored.confidence,
+      meetsRequirements: top.requirementChecks.every((c) => c.pass),
+      requirementChecks: top.requirementChecks,
       suitabilityScore: top.suitabilityScore,
       riskLevel: top.overallRisk,
       highRiskCount: top.highRiskCount,

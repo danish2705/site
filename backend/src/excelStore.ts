@@ -10,7 +10,9 @@ import type {
   RiskRow,
   RiskLevel,
   RiskMatrix,
+  TrialRequirementRow,
 } from "./types.js";
+import type { ExtendedEvaluationRow } from "./scoring.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const DATA_DIR = path.join(__dirname, "..", "data");
@@ -18,26 +20,34 @@ const DATA_DIR = path.join(__dirname, "..", "data");
 function findExcelFile(): string {
   const files = fs
     .readdirSync(DATA_DIR)
-    .filter((f) => f.toLowerCase().endsWith(".xlsx"));
+    .filter((f) => f.toLowerCase().endsWith(".xlsx"))
+    // Ignore Excel's lock files, which appear as ~$Name.xlsx while the
+    // workbook is open and would otherwise be picked as the dataset.
+    .filter((f) => !f.startsWith("~$"));
   if (files.length === 0) {
     throw new Error(
       `No .xlsx file found in ${DATA_DIR}. Put the dataset there first.`,
     );
   }
-  return path.join(DATA_DIR, files[0]);
+  // Prefer the enriched build (scripts/build-dataset.ts) when it's present.
+  // This used to take files[0], which is alphabetical — so dropping
+  // "..._v2.xlsx" next to the original silently kept loading the original,
+  // and none of the new KPI columns or Trial_Requirements would appear.
+  const enriched = files.find((f) => /_v2\.xlsx$/i.test(f));
+  return path.join(DATA_DIR, enriched ?? files[0]);
 }
 
-// Every indication in Region_Data (24 total, matching the dataset's README:
-// "24 distinct diseases across 12 therapeutic areas") must have an entry
-// here — pipeline.ts rejects any indication missing from this map, even
-// though it's a perfectly valid option in the dropdown/dataset. This used
-// to only list 6 of the 24, so selecting any of the other 18 (e.g.
-// "Parkinson's Disease") failed with a confusing "unknown indication"
-// error despite being shown as valid. Mapping derived from each disease's
-// "Required Infrastructure" clinical department in Trial_Requirements,
-// cross-checked against the 12 real Therapeutic Area values used in
-// Candidate_Sites.
-export const INDICATION_TO_SPECIALTY: Record<string, string> = {
+// FALLBACK ONLY — the live mapping now comes from the Trial_Requirements
+// sheet's "Required Specialty" column (see buildSpecialtyMap below).
+//
+// This map is kept for workbooks that predate that sheet, so an older
+// dataset still loads. It is the thing that used to break: pipeline.ts
+// rejects any indication missing from the map even though it's a valid
+// dropdown option, and the map once listed only 6 of the 24 indications,
+// so 18 of them failed with a confusing "unknown indication" error. Reading
+// the mapping from data removes that whole class of bug — add an indication
+// to the workbook and the backend picks it up with no code change.
+const FALLBACK_INDICATION_TO_SPECIALTY: Record<string, string> = {
   "Type 2 Diabetes": "Endocrinology",
   "Obesity (BMI>30)": "Endocrinology",
   "Breast Cancer (HER2+)": "Oncology",
@@ -64,6 +74,33 @@ export const INDICATION_TO_SPECIALTY: Record<string, string> = {
   "Sickle Cell Disease": "Hematology",
 };
 
+/**
+ * Live indication -> therapeutic area mapping, populated from
+ * Trial_Requirements at load time. Exported as a mutable binding rather than
+ * a function so existing `INDICATION_TO_SPECIALTY[indication]` call sites in
+ * pipeline.ts / regionPredictor.ts / server.ts keep working unchanged.
+ *
+ * Populated by loadStore(). It starts as the fallback so that anything
+ * reading it before the first load still gets a usable map.
+ */
+export const INDICATION_TO_SPECIALTY: Record<string, string> = {
+  ...FALLBACK_INDICATION_TO_SPECIALTY,
+};
+
+function buildSpecialtyMap(requirements: TrialRequirementRow[]): void {
+  if (requirements.length === 0) return; // older workbook — keep the fallback
+
+  for (const key of Object.keys(INDICATION_TO_SPECIALTY)) {
+    delete INDICATION_TO_SPECIALTY[key];
+  }
+  for (const r of requirements) {
+    const indication = r.Indication;
+    const specialty = r["Required Specialty"];
+    if (indication && specialty)
+      INDICATION_TO_SPECIALTY[indication] = specialty;
+  }
+}
+
 let cachedStore: Store | null = null;
 
 export function loadStore({ force = false }: { force?: boolean } = {}): Store {
@@ -89,8 +126,31 @@ export function loadStore({ force = false }: { force?: boolean } = {}): Store {
   // Omitting `range` lets the library read each sheet's actual used range.
   const regionData = sheetJson<RegionRow>("Region_Data");
   const sites = sheetJson<SiteRow>("Candidate_Sites");
-  const evaluations = sheetJson<EvaluationRow>("Site_Evaluation");
+  const evaluations = sheetJson<ExtendedEvaluationRow>("Site_Evaluation");
   const risks = sheetJson<RiskRow>("Risk_Register");
+
+  // Trial_Requirements is optional: the sheet is documented in the workbook
+  // README but was absent from the original file, so a dataset without it
+  // must still load rather than throwing at startup.
+  const requirements = wb.Sheets["Trial_Requirements"]
+    ? sheetJson<TrialRequirementRow>("Trial_Requirements")
+    : [];
+  buildSpecialtyMap(requirements);
+
+  // One requirements row per indication for Stage 1 to filter against. The
+  // sheet holds 24 headline trials plus 360 cohort variants; the headline
+  // row is the one that describes the trial as a whole, so prefer it and
+  // fall back to the first variant if a disease has no headline row.
+  const requirementByIndication = new Map<string, TrialRequirementRow>();
+  for (const r of requirements) {
+    const existing = requirementByIndication.get(r.Indication);
+    if (
+      !existing ||
+      (r["Trial Type"] === "Headline" && existing["Trial Type"] !== "Headline")
+    ) {
+      requirementByIndication.set(r.Indication, r);
+    }
+  }
 
   // Risk_Matrix is a 3x3 Likelihood-by-Impact grid whose first column is the
   // Likelihood label and whose header row is the Impact labels. Read it with
@@ -152,6 +212,8 @@ export function loadStore({ force = false }: { force?: boolean } = {}): Store {
     riskMatrix,
     evalBySiteId,
     risksBySiteId,
+    requirements,
+    requirementByIndication,
     indications: [...new Set(regionData.map((r) => r.Indication))],
     regions: [...new Set(regionData.map((r) => r.Region))],
     regionOptions,

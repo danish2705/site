@@ -1110,3 +1110,46 @@ footer {
   font-size: 12px;
   margin-top: 40px;
 }
+/* ---- Score breakdown (Stage 7 ranking table) ---------------------------
+   Per-component mini-bars for the weighted site score. A component with no
+   data renders as an empty track, not a zero-width fill — "unmeasured" and
+   "scored zero" must not look alike. */
+.score-breakdown {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 110px;
+}
+.score-component {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.score-component-label {
+  font-size: 9px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #8a8f98;
+  width: 26px;
+  flex-shrink: 0;
+}
+.score-component-track {
+  position: relative;
+  display: block;
+  height: 4px;
+  flex: 1;
+  border-radius: 2px;
+  background: #e8eaed;
+  overflow: hidden;
+}
+.score-component-fill {
+  display: block;
+  height: 100%;
+  border-radius: 2px;
+  background: #3b6cb7;
+}
+.score-confidence {
+  font-size: 10px;
+  color: #b06a1f;
+  white-space: nowrap;
+}

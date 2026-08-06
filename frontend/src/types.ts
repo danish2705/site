@@ -145,12 +145,40 @@ export interface RiskAssessmentRow {
   riskRecords: RiskRecord[];
 }
 
+// Per-component breakdown of a site's weighted score. null means the site
+// had no data for that component, so it was dropped and the remaining
+// weights were renormalised — NOT that it scored zero.
+export interface ComponentScores {
+  recruitment: number | null;
+  quality: number | null;
+  retention: number | null;
+  diversity: number | null;
+  cost: number | null;
+}
+
+// One site checked against a protocol threshold from Trial_Requirements.
+export interface RequirementCheck {
+  criterion: string;
+  required: string;
+  actual: string;
+  pass: boolean;
+}
+
 export interface RankingRow {
   rank: number;
   siteId: string;
   siteName: string;
   region: string;
-  suitabilityScore: number;
+  // Deck-weighted score (Recruitment 35 / Quality 25 / Retention 20 /
+  // Diversity 10 / Cost 10) — what the ranking is sorted on.
+  score: number;
+  components: ComponentScores;
+  confidence: "High" | "Medium" | "Low";
+  caveats: string[];
+  meetsRequirements: boolean;
+  failedCriteria: string[];
+  // Legacy Excel formula score, kept alongside for comparison.
+  suitabilityScore: number | null;
   riskLevel: "Low" | "Medium" | "High";
   highRiskCount: number;
 }
@@ -161,7 +189,14 @@ export interface FinalResult {
   estimatedPatients: number;
   recommendedSite: string;
   siteId: string;
-  suitabilityScore: number;
+  score: number;
+  // Plain-language derivation of the score, mirroring riskExplanation.
+  scoreExplanation: string;
+  components: ComponentScores;
+  confidence: "High" | "Medium" | "Low";
+  meetsRequirements: boolean;
+  requirementChecks: RequirementCheck[];
+  suitabilityScore: number | null;
   riskLevel: "Low" | "Medium" | "High";
   highRiskCount: number;
   riskExplanation: RiskExplanation;

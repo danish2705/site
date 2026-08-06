@@ -1,3 +1,5 @@
+import type { ScoredSite, ExtendedEvaluationRow } from "./scoring.js";
+
 export interface RegionRow {
   Region: string;
   Country: string;
@@ -6,6 +8,39 @@ export interface RegionRow {
   "Regulatory Approval Time (weeks)": number;
   "Active Competing Trials": number;
   "Avg Cost per Patient (USD)": number;
+}
+
+// A row of the Trial_Requirements sheet — the Stage 1 input. 24 headline
+// trials (one per indication) plus 360 cohort/phase variants. "Required
+// Specialty" is what makes the indication -> therapeutic area mapping
+// data-driven instead of a hardcoded map in excelStore.ts.
+export interface TrialRequirementRow {
+  "Trial ID": string;
+  Indication: string;
+  "Required Specialty": string;
+  "Trial Type": string; // "Headline" | "Variant"
+  "Cohort / Subgroup Tag": string;
+  Phase: string;
+  "Target Sample Size": number;
+  "Duration (months)": number;
+  "Budget Tier": string;
+  "Min Enrollment Rate (pts/month)": number | null;
+  "Max Acceptable Dropout (%)": number | null;
+  "Min Data Quality Score": number | null;
+  "Max Acceptable Screen Failure (%)": number | null;
+  "Accreditation Required": string;
+  "Required Infrastructure": string;
+}
+
+// One site checked against a trial's acceptance thresholds. Sites that fail
+// are reported, not silently dropped — a feasibility lead needs to see that
+// a site was excluded and on which criterion, since a threshold may be
+// worth relaxing.
+export interface RequirementCheck {
+  criterion: string;
+  required: string;
+  actual: string;
+  pass: boolean;
 }
 
 export interface SiteRow {
@@ -113,12 +148,16 @@ export interface RegionOptionRow {
 
 export interface Store {
   filePath: string;
+  // Empty when the workbook predates the Trial_Requirements sheet.
+  requirements: TrialRequirementRow[];
+  // Headline row per indication (falls back to a variant), for Stage 1.
+  requirementByIndication: Map<string, TrialRequirementRow>;
   regionData: RegionRow[];
   sites: SiteRow[];
-  evaluations: EvaluationRow[];
+  evaluations: ExtendedEvaluationRow[];
   risks: RiskRow[];
   riskMatrix: RiskMatrix;
-  evalBySiteId: Map<string, EvaluationRow>;
+  evalBySiteId: Map<string, ExtendedEvaluationRow>;
   risksBySiteId: Map<string, RiskRow[]>;
   indications: string[];
   regions: string[];
@@ -245,8 +284,14 @@ export type SendFn = (event: string, data: unknown) => void;
 export interface RankedSite extends SiteRow {
   siteId: string;
   siteName: string;
+  // Legacy Excel formula score, kept so the two models can be compared
+  // side by side during rollout.
   suitabilityScore: number | null;
-  evalRow: EvaluationRow;
+  // Deck-weighted score from scoring.ts — what ranking now sorts on.
+  scored: ScoredSite;
+  // Empty when the workbook has no Trial_Requirements sheet.
+  requirementChecks: RequirementCheck[];
+  evalRow: ExtendedEvaluationRow;
   risks: RiskRow[];
   highRiskCount: number;
   mediumRiskCount: number;

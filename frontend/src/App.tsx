@@ -12,6 +12,7 @@ import type {
   MetaResponse,
   StagesMap,
   RankingRow,
+  ComponentScores,
   RiskAssessmentRow,
   FinalResult,
   StageEventPayload,
@@ -191,6 +192,53 @@ function RiskRegisterTable({ records }: { records: RiskRecord[] }) {
           ))}
         </tbody>
       </table>
+    </div>
+  );
+}
+
+// Compact per-component bar for a site's weighted score. A component with
+// no data renders as a gap with a "no data" title rather than a zero-width
+// bar, since those mean very different things: the backend drops an
+// unmeasured component and renormalises the remaining weights.
+const SCORE_COMPONENTS: {
+  key: keyof ComponentScores;
+  label: string;
+  weight: number;
+}[] = [
+  { key: "recruitment", label: "Recruitment", weight: 35 },
+  { key: "quality", label: "Quality", weight: 25 },
+  { key: "retention", label: "Retention", weight: 20 },
+  { key: "diversity", label: "Diversity", weight: 10 },
+  { key: "cost", label: "Cost", weight: 10 },
+];
+
+function ScoreBreakdown({ components }: { components: ComponentScores }) {
+  return (
+    <div className="score-breakdown">
+      {SCORE_COMPONENTS.map(({ key, label, weight }) => {
+        const value = components[key];
+        return (
+          <div
+            key={key}
+            className="score-component"
+            title={
+              value === null
+                ? `${label} (${weight}%): no data \u2014 excluded, weight redistributed`
+                : `${label} (${weight}%): ${value.toFixed(1)}/100`
+            }
+          >
+            <span className="score-component-label">{label.slice(0, 4)}</span>
+            <span className="score-component-track">
+              {value !== null && (
+                <span
+                  className="score-component-fill"
+                  style={{ width: `${value}%` }}
+                />
+              )}
+            </span>
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -1030,6 +1078,8 @@ export default function App() {
                       <th>Site</th>
                       <th>Region</th>
                       <th>Score</th>
+                      <th>Breakdown</th>
+                      <th>Protocol fit</th>
                       <th>Risk</th>
                     </tr>
                   </thead>
@@ -1042,7 +1092,34 @@ export default function App() {
                           <div className="site-id">{r.siteId}</div>
                         </td>
                         <td>{r.region}</td>
-                        <td>{r.suitabilityScore}/100</td>
+                        <td>
+                          {r.score}/100
+                          {/* A score built on partial data shouldn't look
+                              identical to one built on a full record. */}
+                          {r.confidence !== "High" && (
+                            <div
+                              className="score-confidence"
+                              title={r.caveats.join(" ")}
+                            >
+                              {r.confidence.toLowerCase()} confidence
+                            </div>
+                          )}
+                        </td>
+                        <td>
+                          <ScoreBreakdown components={r.components} />
+                        </td>
+                        <td>
+                          {r.meetsRequirements ? (
+                            <span className="badge low">Meets all</span>
+                          ) : (
+                            <span
+                              className="badge medium"
+                              title={`Fails: ${r.failedCriteria.join(", ")}`}
+                            >
+                              {r.failedCriteria.length} unmet
+                            </span>
+                          )}
+                        </td>
                         <td>
                           <span
                             className={`badge ${r.riskLevel.toLowerCase()}`}
@@ -1080,8 +1157,19 @@ export default function App() {
                   <div className="v">{finalResult.recommendedSite}</div>
                 </div>
                 <div className="item">
-                  <div className="k">Suitability Score</div>
-                  <div className="v">{finalResult.suitabilityScore}/100</div>
+                  <div className="k">Site Score</div>
+                  {/* Hovering gives the full component derivation, the same
+                      way the risk badge explains its level rather than just
+                      asserting it. */}
+                  <div className="v" title={finalResult.scoreExplanation}>
+                    {finalResult.score}/100
+                    {finalResult.confidence !== "High" && (
+                      <span className="score-confidence">
+                        {" "}
+                        ({finalResult.confidence.toLowerCase()} confidence)
+                      </span>
+                    )}
+                  </div>
                 </div>
                 <div className="item">
                   <div className="k">Risk Level</div>
