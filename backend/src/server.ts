@@ -5,13 +5,22 @@ import { loadStore, INDICATION_TO_SPECIALTY } from "./excelStore.js";
 import { runPipeline } from "./pipeline.js";
 import { predictRegion } from "./regionPredictor.js";
 import { llmStatus } from "./llm.js";
+import {
+  saveRun,
+  listRuns,
+  getRun,
+  deleteRun,
+  dbStatus,
+  dbPing,
+  type SaveRunInput,
+} from "./db.js";
 import type { PipelineInput } from "./types.js";
 
 const app = express();
 app.use(cors());
 app.use(express.json());
 
-app.get("/api/health", (_req: Request, res: Response) => {
+app.get("/api/health", async (_req: Request, res: Response) => {
   try {
     const store = loadStore();
     res.json({
@@ -20,6 +29,7 @@ app.get("/api/health", (_req: Request, res: Response) => {
       sites: store.sites.length,
       riskRecords: store.risks.length,
       llm: llmStatus(),
+      db: { ...dbStatus(), ...(await dbPing()) },
     });
   } catch (err) {
     res.status(500).json({ ok: false, error: (err as Error).message });
@@ -78,6 +88,53 @@ app.post("/api/run", async (req: Request, res: Response) => {
     send("error", { message: (err as Error).message });
   }
   res.end();
+});
+
+// ---- Saved runs (Supabase) ------------------------------------------
+// The browser never talks to Supabase directly: db.ts holds a service-role
+// key that bypasses RLS and must not reach the bundle. These endpoints are
+// the only way in.
+
+// Persist a completed pipeline run.
+app.post("/api/runs", async (req: Request, res: Response) => {
+  try {
+    const saved = await saveRun((req.body || {}) as SaveRunInput);
+    res.status(201).json(saved);
+  } catch (err) {
+    // 503, not 400: an unconfigured Supabase is a server-side gap, not a
+    // malformed request, and the frontend shows the two differently.
+    const message = (err as Error).message;
+    res.status(dbStatus().configured ? 400 : 503).json({ error: message });
+  }
+});
+
+// List saved runs, newest first.
+app.get("/api/runs", async (_req: Request, res: Response) => {
+  try {
+    res.json(await listRuns());
+  } catch (err) {
+    res
+      .status(dbStatus().configured ? 500 : 503)
+      .json({ error: (err as Error).message });
+  }
+});
+
+// One saved run with its full ranked-site list.
+app.get("/api/runs/:id", async (req: Request, res: Response) => {
+  try {
+    res.json(await getRun(String(req.params.id)));
+  } catch (err) {
+    res.status(404).json({ error: (err as Error).message });
+  }
+});
+
+app.delete("/api/runs/:id", async (req: Request, res: Response) => {
+  try {
+    await deleteRun(String(req.params.id));
+    res.status(204).end();
+  } catch (err) {
+    res.status(400).json({ error: (err as Error).message });
+  }
 });
 
 const PORT = process.env.PORT || 4000;

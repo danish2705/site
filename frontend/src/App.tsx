@@ -13,6 +13,8 @@ import type {
   StagesMap,
   RankingRow,
   ComponentScores,
+  SavedRunSummary,
+  SavedRunDetail,
   RiskAssessmentRow,
   FinalResult,
   StageEventPayload,
@@ -761,6 +763,80 @@ export default function App() {
   >(null);
   const [error, setError] = useState<string | null>(null);
 
+  // ---- Saved runs ----
+  const [saveLabel, setSaveLabel] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [saveMessage, setSaveMessage] = useState<string | null>(null);
+  const [savedRuns, setSavedRuns] = useState<SavedRunSummary[] | null>(null);
+  const [openRun, setOpenRun] = useState<SavedRunDetail | null>(null);
+  const [loadingRuns, setLoadingRuns] = useState(false);
+
+  // Saving needs a finished run: the ranking is the point of the record, and
+  // the backend rejects a run with no ranked sites.
+  const canSave = !running && !!ranking && ranking.length > 0;
+
+  async function handleSave() {
+    if (!canSave || !ranking) return;
+    setSaving(true);
+    setSaveMessage(null);
+    try {
+      const res = await fetch("/api/runs", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          label: saveLabel,
+          indication: form.indication,
+          phase: form.phase,
+          sampleSize: form.sampleSize,
+          durationMonths: form.durationMonths,
+          budgetTier: form.budgetTier,
+          region: finalResult?.region,
+          country: finalResult?.country,
+          estimatedPatients: finalResult?.estimatedPatients,
+          llm: llmInfo,
+          final: finalResult,
+          ranking,
+        }),
+      });
+      const body = await res.json();
+      if (!res.ok) throw new Error(body.error ?? `Save failed (${res.status})`);
+      setSaveLabel("");
+      setSaveMessage("Saved.");
+      // Refresh the list so the new run is visible without a reload.
+      await loadSavedRuns();
+    } catch (err) {
+      setSaveMessage((err as Error).message);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function loadSavedRuns() {
+    setLoadingRuns(true);
+    try {
+      const res = await fetch("/api/runs");
+      const body = await res.json();
+      if (!res.ok) throw new Error(body.error ?? `Could not load saved runs`);
+      setSavedRuns(body as SavedRunSummary[]);
+    } catch (err) {
+      setSaveMessage((err as Error).message);
+      setSavedRuns([]);
+    } finally {
+      setLoadingRuns(false);
+    }
+  }
+
+  async function openSavedRun(id: string) {
+    try {
+      const res = await fetch(`/api/runs/${id}`);
+      const body = await res.json();
+      if (!res.ok) throw new Error(body.error ?? "Could not open run");
+      setOpenRun(body as SavedRunDetail);
+    } catch (err) {
+      setSaveMessage((err as Error).message);
+    }
+  }
+
   useEffect(() => {
     fetch("/api/meta")
       .then((r) => r.json() as Promise<MetaResponse>)
@@ -1191,6 +1267,209 @@ export default function App() {
                 <strong>AI Recommendation ({llmInfo}):</strong>{" "}
                 {finalResult.text}
               </p>
+            </div>
+          )}
+
+          {/* Save is offered once a ranking exists, whether or not Stage 8
+              finished — a run that produced a ranking is still worth keeping,
+              and the backend only requires ranked sites. */}
+          {canSave && (
+            <div className="card save-bar">
+              <span className="tag">Save</span>
+              <h2>Save this run</h2>
+              <div className="save-row">
+                <input
+                  type="text"
+                  className="save-label"
+                  placeholder="Label (optional) — e.g. Q3 HER2+ feasibility"
+                  value={saveLabel}
+                  onChange={(e) => setSaveLabel(e.target.value)}
+                  disabled={saving}
+                />
+                <button
+                  type="button"
+                  className="btn-primary"
+                  onClick={handleSave}
+                  disabled={saving}
+                >
+                  {saving ? "Saving..." : "Save run"}
+                </button>
+              </div>
+              {saveMessage && <p className="save-message">{saveMessage}</p>}
+            </div>
+          )}
+
+          <div className="card">
+            <span className="tag">History</span>
+            <h2>Saved runs</h2>
+            <button
+              type="button"
+              className="btn-secondary"
+              onClick={loadSavedRuns}
+              disabled={loadingRuns}
+            >
+              {loadingRuns
+                ? "Loading..."
+                : savedRuns
+                  ? "Refresh"
+                  : "Load saved runs"}
+            </button>
+
+            {savedRuns && savedRuns.length === 0 && (
+              <p className="empty-note">
+                No saved runs yet. Run the pipeline, then use Save run above.
+              </p>
+            )}
+
+            {savedRuns && savedRuns.length > 0 && (
+              <div className="table-scroll">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Saved</th>
+                      <th>Label</th>
+                      <th>Indication</th>
+                      <th>Region</th>
+                      <th>Recommended</th>
+                      <th>Score</th>
+                      <th>Sites</th>
+                      <th />
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {savedRuns.map((r) => (
+                      <tr key={r.id}>
+                        <td>{new Date(r.created_at).toLocaleString()}</td>
+                        <td>{r.label ?? <span className="muted">—</span>}</td>
+                        <td>{r.indication}</td>
+                        <td>
+                          {r.region ?? "—"}
+                          {r.country ? `, ${r.country}` : ""}
+                        </td>
+                        <td>{r.recommended_site_name ?? "—"}</td>
+                        <td>{r.score !== null ? `${r.score}/100` : "—"}</td>
+                        <td>{r.ranked_site_count}</td>
+                        <td>
+                          <button
+                            type="button"
+                            className="btn-link"
+                            onClick={() => openSavedRun(r.id)}
+                          >
+                            View
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+
+          {openRun && (
+            <div
+              className="run-modal-backdrop"
+              onClick={() => setOpenRun(null)}
+            >
+              <div
+                className="run-modal"
+                onClick={(e) => e.stopPropagation()}
+                role="dialog"
+                aria-modal="true"
+              >
+                <div className="run-modal-head">
+                  <div>
+                    <h2>{openRun.run.label ?? openRun.run.indication}</h2>
+                    <p className="muted">
+                      {openRun.run.indication} · {openRun.run.phase ?? "n/a"} ·{" "}
+                      n={openRun.run.sample_size ?? "n/a"} ·{" "}
+                      {new Date(openRun.run.created_at).toLocaleString()}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    className="btn-link"
+                    onClick={() => setOpenRun(null)}
+                  >
+                    Close
+                  </button>
+                </div>
+
+                {openRun.run.recommendation_text && (
+                  <p className="final-text">
+                    {openRun.run.recommendation_text}
+                  </p>
+                )}
+
+                <div className="table-scroll">
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>Rank</th>
+                        <th>Site</th>
+                        <th>Score</th>
+                        <th>Breakdown</th>
+                        <th>Protocol fit</th>
+                        <th>Risk</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {openRun.sites.map((s) => (
+                        <tr key={s.rank}>
+                          <td>{s.rank}</td>
+                          <td>
+                            {s.site_name}
+                            <div className="site-id">{s.site_id}</div>
+                          </td>
+                          <td>
+                            {s.score !== null ? `${s.score}/100` : "—"}
+                            {s.confidence && s.confidence !== "High" && (
+                              <div className="score-confidence">
+                                {s.confidence.toLowerCase()} confidence
+                              </div>
+                            )}
+                          </td>
+                          <td>
+                            {/* Rebuilt from the flat DB columns. Nulls stay
+                                null so an unmeasured component still renders
+                                as a gap, not a zero bar. */}
+                            <ScoreBreakdown
+                              components={{
+                                recruitment: s.recruitment_score,
+                                quality: s.quality_score,
+                                retention: s.retention_score,
+                                diversity: s.diversity_score,
+                                cost: s.cost_score,
+                              }}
+                            />
+                          </td>
+                          <td>
+                            {s.meets_requirements ? (
+                              <span className="badge low">Meets all</span>
+                            ) : (
+                              <span
+                                className="badge medium"
+                                title={`Fails: ${(s.failed_criteria ?? []).join(", ")}`}
+                              >
+                                {(s.failed_criteria ?? []).length} unmet
+                              </span>
+                            )}
+                          </td>
+                          <td>
+                            {s.risk_level && (
+                              <span
+                                className={`badge ${s.risk_level.toLowerCase()}`}
+                              >
+                                {s.risk_level}
+                              </span>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
             </div>
           )}
 

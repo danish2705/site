@@ -212,3 +212,57 @@ export interface StageEventPayload {
   data?: unknown;
   llm?: string;
 }
+
+// ---- Saved runs (POST/GET /api/runs) ----
+// Row shape of the trial_runs_summary view.
+export interface SavedRunSummary {
+  id: string;
+  created_at: string;
+  label: string | null;
+  indication: string;
+  phase: string | null;
+  region: string | null;
+  country: string | null;
+  recommended_site_name: string | null;
+  score: number | null;
+  confidence: string | null;
+  risk_level: string | null;
+  meets_requirements: boolean | null;
+  ranked_site_count: number;
+}
+
+// A trial_run_sites row. Component scores are nullable on purpose: null
+// means the component had no data and was excluded from the weighting,
+// which is not the same as scoring zero.
+export interface SavedRunSite {
+  rank: number;
+  site_id: string;
+  site_name: string | null;
+  region: string | null;
+  score: number | null;
+  recruitment_score: number | null;
+  quality_score: number | null;
+  retention_score: number | null;
+  diversity_score: number | null;
+  cost_score: number | null;
+  confidence: string | null;
+  caveats: string[] | null;
+  meets_requirements: boolean | null;
+  failed_criteria: string[] | null;
+  suitability_score: number | null;
+  risk_level: "Low" | "Medium" | "High" | null;
+  high_risk_count: number | null;
+}
+
+export interface SavedRunDetail {
+  run: SavedRunSummary & {
+    sample_size: number | null;
+    duration_months: number | null;
+    budget_tier: string | null;
+    estimated_patients: number | null;
+    recommendation_text: string | null;
+    score_explanation: string | null;
+    llm: string | null;
+  };
+  sites: SavedRunSite[];
+}
