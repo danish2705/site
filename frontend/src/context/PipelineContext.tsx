@@ -101,12 +101,14 @@ const PipelineContext = createContext<PipelineState | null>(null);
 
 export function PipelineProvider({ children }: { children: ReactNode }) {
   const [meta, setMeta] = useState<MetaResponse | null>(null);
+  // Every field starts unset — the user must explicitly choose each one
+  // rather than the form arriving pre-filled with a default value.
   const [form, setForm] = useState<TrialForm>({
     indication: "",
-    phase: "Phase II",
-    sampleSize: 300,
-    durationMonths: 18,
-    budgetTier: "Mid",
+    phase: "",
+    sampleSize: "",
+    durationMonths: "",
+    budgetTier: "",
     regions: [],
   });
   const [stages, setStages] = useState<StagesMap>(emptyStages());
@@ -141,16 +143,26 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
     setSaving(true);
     setSaveMessage(null);
     try {
+      // Stage 1's data carries the values the pipeline actually resolved to
+      // (form value if the user picked one, else the indication's own
+      // Trial_Requirements default) — prefer that over the raw form so a
+      // field the user left blank doesn't get saved as blank.
+      const stage1Data = stages[1]?.data as {
+        phase?: string;
+        targetSampleSize?: number;
+        durationMonths?: number;
+        budgetTier?: string;
+      } | null;
       const res = await fetch("/api/runs", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           label: saveLabel,
           indication: form.indication,
-          phase: form.phase,
-          sampleSize: form.sampleSize,
-          durationMonths: form.durationMonths,
-          budgetTier: form.budgetTier,
+          phase: stage1Data?.phase ?? form.phase,
+          sampleSize: stage1Data?.targetSampleSize ?? form.sampleSize,
+          durationMonths: stage1Data?.durationMonths ?? form.durationMonths,
+          budgetTier: stage1Data?.budgetTier ?? form.budgetTier,
           region: finalResult?.region,
           country: finalResult?.country,
           estimatedPatients: finalResult?.estimatedPatients,
@@ -204,10 +216,9 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
     fetch("/api/meta")
       .then((r) => r.json() as Promise<MetaResponse>)
       .then((data) => {
+        // Just populate the dropdown options — do NOT auto-select the first
+        // indication. The user has to make an explicit choice.
         setMeta(data);
-        if (data.indications?.length) {
-          setForm((f) => ({ ...f, indication: data.indications[0] }));
-        }
       })
       .catch((err: Error) =>
         setError(`Could not reach backend: ${err.message}`),
@@ -234,6 +245,13 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
 
   async function handleSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
+    // Indication is the one field the backend can't default on its own —
+    // everything else (phase, sample size, duration, budget tier) falls
+    // back to that indication's Trial_Requirements row when left blank.
+    if (!form.indication) {
+      setError("Please select an indication before running the analysis.");
+      return;
+    }
     setStages(emptyStages());
     setFinalResult(null);
     setRanking(null);

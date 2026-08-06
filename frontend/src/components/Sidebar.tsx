@@ -37,6 +37,9 @@ export default function Sidebar() {
             }
             disabled={!meta}
           >
+            <option value="" disabled>
+              Select indication…
+            </option>
             {(meta?.indications ?? []).map((ind) => (
               <option key={ind} value={ind}>
                 {ind}
@@ -62,6 +65,9 @@ export default function Sidebar() {
               </button>
             ))}
           </div>
+          <span className="field-hint">
+            Optional — uses the indication's standard phase if left unset.
+          </span>
         </label>
 
         <label className="field-block">
@@ -69,11 +75,18 @@ export default function Sidebar() {
           <input
             type="number"
             min={10}
+            placeholder="e.g. 300"
             value={form.sampleSize}
             onChange={(e) =>
-              setForm({ ...form, sampleSize: Number(e.target.value) })
+              setForm({
+                ...form,
+                sampleSize: e.target.value === "" ? "" : Number(e.target.value),
+              })
             }
           />
+          <span className="field-hint">
+            Optional — uses the indication's target sample size if left blank.
+          </span>
         </label>
 
         <label className="field-block">
@@ -91,11 +104,18 @@ export default function Sidebar() {
           <input
             type="number"
             min={1}
+            placeholder="e.g. 18"
             value={form.durationMonths}
             onChange={(e) =>
-              setForm({ ...form, durationMonths: Number(e.target.value) })
+              setForm({
+                ...form,
+                durationMonths: e.target.value === "" ? "" : Number(e.target.value),
+              })
             }
           />
+          <span className="field-hint">
+            Optional — uses the indication's standard duration if left blank.
+          </span>
         </label>
 
         <label className="field-block">
@@ -104,19 +124,25 @@ export default function Sidebar() {
             value={form.budgetTier}
             onChange={(e) => setForm({ ...form, budgetTier: e.target.value })}
           >
+            <option value="" disabled>
+              Select budget tier…
+            </option>
             {BUDGETS.map((b) => (
               <option key={b} value={b}>
                 {b}
               </option>
             ))}
           </select>
+          <span className="field-hint">
+            Optional — uses the indication's standard budget tier if left unset.
+          </span>
         </label>
         </div>
 
         <button
           type="submit"
           className="btn-primary sidebar-run-btn"
-          disabled={running || !meta}
+          disabled={running || !meta || !form.indication}
         >
           <span className="sidebar-run-icon" aria-hidden="true">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">

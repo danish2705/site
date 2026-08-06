@@ -326,6 +326,14 @@ body {
   text-transform: uppercase;
   letter-spacing: 0.03em;
 }
+.field-hint {
+  font-size: 11px;
+  font-weight: 500;
+  font-style: italic;
+  color: var(--sub);
+  text-transform: none;
+  letter-spacing: normal;
+}
 .field-block > select,
 .field-block > input {
   font-size: 14px;

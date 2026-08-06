@@ -1,8 +1,17 @@
 export interface TrialForm {
+  // "" until the user explicitly picks one — no field starts pre-selected.
   indication: string;
+  // "" until the user explicitly picks one. Left blank, the backend falls
+  // back to the selected indication's own Trial_Requirements phase.
   phase: string;
-  sampleSize: number;
-  durationMonths: number;
+  // "" until the user types a value (rather than a pre-filled default).
+  // Left blank, the backend falls back to the indication's target sample size.
+  sampleSize: number | "";
+  // "" until the user types a value. Left blank, the backend falls back to
+  // the indication's own Trial_Requirements duration.
+  durationMonths: number | "";
+  // "" until the user explicitly picks one. Left blank, the backend falls
+  // back to the indication's own Trial_Requirements budget tier.
   budgetTier: string;
   // Region / Country Selection input (multi-select). Each entry is a
   // composite "Region||Country" key matching one of meta.regionOptions
