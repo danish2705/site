@@ -1,9 +1,50 @@
 import { loadStore, INDICATION_TO_SPECIALTY } from "./excelStore.js";
 import { generateRecommendation, llmStatus } from "./llm.js";
-import type { PipelineInput, SendFn, RankedSite, RiskLevel } from "./types.js";
+import type {
+  PipelineInput,
+  SendFn,
+  RankedSite,
+  RiskLevel,
+  RiskRow,
+  RiskRecord,
+} from "./types.js";
 
 const sleep = (ms: number): Promise<void> =>
   new Promise((resolve) => setTimeout(resolve, ms));
+
+// Formats a Risk_Register "Date Identified" cell for display, tolerating
+// the three shapes the xlsx library can hand back depending on how the
+// sheet's cells are formatted: a JS Date, a plain string, or (if the cell
+// wasn't read with cellDates) an Excel serial-day number.
+function formatRiskDate(value: string | Date | number): string {
+  if (value instanceof Date) return value.toISOString().slice(0, 10);
+  if (typeof value === "number") {
+    const EXCEL_EPOCH_OFFSET_DAYS = 25569; // days between 1899-12-30 and 1970-01-01
+    const ms = Math.round((value - EXCEL_EPOCH_OFFSET_DAYS) * 86400 * 1000);
+    return new Date(ms).toISOString().slice(0, 10);
+  }
+  return String(value);
+}
+
+// Camel-cases a raw Risk_Register row into the shape sent to the frontend,
+// so risks render as individual records (one row per risk) rather than
+// just an aggregate count/badge.
+function toRiskRecord(r: RiskRow): RiskRecord {
+  return {
+    riskId: r["Risk ID"],
+    siteId: r["Site ID"],
+    category: r["Risk Category"],
+    description: r.Description,
+    likelihood: r.Likelihood,
+    impact: r.Impact,
+    overallRisk: r["Overall Risk Rating"],
+    dateIdentified: formatRiskDate(r["Date Identified"]),
+    status: r.Status,
+    mitigationPlan: r["Mitigation Plan"],
+    owner: r.Owner,
+    riskScore: r["Risk Score (Numeric)"],
+  };
+}
 
 // Small artificial pauses between structured stages so the progress bar is
 // actually visible — filtering an in-memory array takes milliseconds, but a
@@ -47,13 +88,35 @@ export async function runPipeline(
   await sleep(STEP_DELAY_MS);
 
   // ---- Stage 2 — Region / Country Selection ----
+  // Region/Country is now also a pipeline INPUT: the frontend lets the user
+  // multi-select candidate regions/countries. When present, we rank and pick
+  // only among that user-selected set; otherwise we fall back to ranking
+  // every region on file for the indication (previous behavior).
   send("stage", { stage: 2, name: STAGE_NAMES[2], status: "in-progress" });
-  const regionRows = store.regionData.filter(
-    (r) => r.Indication === indication,
-  );
+  let regionRows = store.regionData.filter((r) => r.Indication === indication);
   if (regionRows.length === 0) {
     throw new Error(`No Region_Data rows found for indication "${indication}"`);
   }
+
+  const userSelectedRegions = (input.regions || []).filter(
+    (r) => r && r.region && r.country,
+  );
+  if (userSelectedRegions.length > 0) {
+    const selectedSet = new Set(
+      userSelectedRegions.map((r) => `${r.region}||${r.country}`),
+    );
+    const filtered = regionRows.filter((r) =>
+      selectedSet.has(`${r.Region}||${r.Country}`),
+    );
+    if (filtered.length === 0) {
+      throw new Error(
+        `None of your selected Region/Country options have data for indication "${indication}". ` +
+          `Pick a different region/country combination for this indication.`,
+      );
+    }
+    regionRows = filtered;
+  }
+
   const rankedRegions = [...regionRows].sort((a, b) => {
     const scoreOf = (r: typeof a) =>
       r["Prevalence (per 100k)"] -
@@ -61,13 +124,42 @@ export async function runPipeline(
       r["Active Competing Trials"] * 3;
     return scoreOf(b) - scoreOf(a);
   });
-  const topRegion = rankedRegions[0];
+
+  // Region_Data intentionally covers more geography than Candidate_Sites
+  // has actual sites for (a broader landscape scan — see the dataset's
+  // README), so the top-scoring region by the formula above frequently
+  // has zero candidate sites for this indication's specialty. Picking it
+  // blindly would dead-end Stage 4 with "no candidate sites found" even
+  // though a lower-scoring — but still valid — region has sites. Walk the
+  // ranked list and take the first region that actually has a site.
+  const bestByFormula = rankedRegions[0];
+  const topRegion = rankedRegions.find((r) =>
+    store.sites.some(
+      (s) => s.Region === r.Region && s["Therapeutic Area"] === specialty,
+    ),
+  );
+  if (!topRegion) {
+    throw new Error(
+      `No candidate sites found for ${specialty} (required by "${indication}") in any of the ` +
+        `${rankedRegions.length} region(s) considered${
+          userSelectedRegions.length > 0
+            ? " among your selected Region/Country options"
+            : ""
+        }. Try a different indication or region/country selection.`,
+    );
+  }
   await sleep(STEP_DELAY_MS);
   send("stage", {
     stage: 2,
     name: STAGE_NAMES[2],
     status: "complete",
-    detail: `Selected ${topRegion.Region}, ${topRegion.Country}`,
+    detail:
+      (userSelectedRegions.length > 0
+        ? `Selected ${topRegion.Region}, ${topRegion.Country} (best fit with available sites among your ${userSelectedRegions.length} chosen option(s))`
+        : `Selected ${topRegion.Region}, ${topRegion.Country} (auto-picked — no region/country input given)`) +
+      (topRegion !== bestByFormula
+        ? ` — ${bestByFormula.Region}, ${bestByFormula.Country} scored higher but had no ${specialty} candidate sites`
+        : ""),
     data: rankedRegions.slice(0, 5).map((r) => ({
       region: r.Region,
       country: r.Country,
@@ -159,6 +251,18 @@ export async function runPipeline(
     name: STAGE_NAMES[6],
     status: "complete",
     detail: `Risk-scored ${withRisk.length} site(s) across ${withRisk.reduce((n, s) => n + s.risks.length, 0)} risk records`,
+    // One row per candidate site with its full risk register (individual
+    // records), so the UI can render Stage 6's output — positioned above
+    // Stage 7's ranking output — before ranking/top-10 narrowing happens.
+    data: withRisk.map((s) => ({
+      siteId: s.siteId,
+      siteName: s.siteName,
+      region: s.Region,
+      overallRisk: s.overallRisk,
+      highRiskCount: s.highRiskCount,
+      mediumRiskCount: s.mediumRiskCount,
+      riskRecords: s.risks.map(toRiskRecord),
+    })),
   });
 
   // ---- Stage 7 — Site Ranking ----
@@ -174,6 +278,8 @@ export async function runPipeline(
     stage: 7,
     name: STAGE_NAMES[7],
     status: "complete",
+    // Individual risk records per site are already covered by Stage 6's
+    // output (rendered above this table) — this stays a lean summary row.
     data: ranked.map((s, i) => ({
       rank: i + 1,
       siteId: s.siteId,
@@ -211,6 +317,8 @@ export async function runPipeline(
     name: STAGE_NAMES[8],
     status: "complete",
     llm: recommendation.llm,
+    // The recommended site's full risk register is already covered by
+    // Stage 6's output (tagged "Recommended" there) — no need to repeat it.
     data: {
       region: topRegion.Region,
       country: topRegion.Country,

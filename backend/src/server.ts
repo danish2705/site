@@ -32,6 +32,9 @@ app.get("/api/meta", (_req: Request, res: Response) => {
     res.json({
       indications: store.indications,
       regions: store.regions,
+      // Selectable (Indication, Region, Country) combos for the Region /
+      // Country Selection input (multi-select) on the frontend form.
+      regionOptions: store.regionOptions,
       specialties: INDICATION_TO_SPECIALTY,
     });
   } catch (err) {

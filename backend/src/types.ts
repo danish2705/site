@@ -50,6 +50,15 @@ export interface RiskRow {
   "Risk Score (Numeric)": number;
 }
 
+// A single selectable (Indication, Region, Country) combination, derived
+// from Region_Data, that the frontend offers in the Region / Country
+// Selection input.
+export interface RegionOptionRow {
+  indication: string;
+  region: string;
+  country: string;
+}
+
 export interface Store {
   filePath: string;
   regionData: RegionRow[];
@@ -60,6 +69,14 @@ export interface Store {
   risksBySiteId: Map<string, RiskRow[]>;
   indications: string[];
   regions: string[];
+  regionOptions: RegionOptionRow[];
+}
+
+// A user-selected Region/Country pair, as submitted from the (multi-select)
+// Region / Country Selection input.
+export interface RegionSelection {
+  region: string;
+  country: string;
 }
 
 // What the frontend form submits to POST /api/run
@@ -69,6 +86,39 @@ export interface PipelineInput {
   sampleSize?: number;
   durationMonths?: number;
   budgetTier?: string;
+  // Optional user-picked region/country candidates (multi-select). When
+  // provided, Stage 2 ranks and picks only among these instead of every
+  // region on file for the indication.
+  regions?: RegionSelection[];
+}
+
+// Camel-cased, JSON-friendly shape of a RiskRow, used whenever individual
+// risk records are sent to the frontend (Stage 6/7/8 payloads).
+export interface RiskRecord {
+  riskId: string;
+  siteId: string;
+  category: string;
+  description: string;
+  likelihood: RiskLevel;
+  impact: RiskLevel;
+  overallRisk: RiskLevel;
+  dateIdentified: string;
+  status: string;
+  mitigationPlan: string;
+  owner: string;
+  riskScore: number;
+}
+
+// Stage 6 ("AI Risk Assessment") output: one row per candidate site, each
+// carrying its full set of individual risk records.
+export interface RiskAssessmentRow {
+  siteId: string;
+  siteName: string;
+  region: string;
+  overallRisk: RiskLevel;
+  highRiskCount: number;
+  mediumRiskCount: number;
+  riskRecords: RiskRecord[];
 }
 
 export type StageStatus = "in-progress" | "complete";
