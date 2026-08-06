@@ -1,18 +1,22 @@
 :root {
-  --bg: #f5f6fa;
+  --bg: #f6f7fb;
   --card: #ffffff;
-  --ink: #1c2333;
-  --sub: #5b6274;
-  --line: #e1e4ea;
-  --accent: #3b5bfd;
-  --accent-soft: #eef1ff;
-  --low: #1a8f5a;
-  --low-bg: #e8f7ef;
-  --med: #b8860b;
-  --med-bg: #fdf3dd;
-  --high: #c13b3b;
+  --ink: #171b2e;
+  --sub: #5f6579;
+  --line: #e6e8f0;
+  --accent: #4f5bff;
+  --accent-dark: #3c46e0;
+  --accent-soft: #edeeff;
+  --low: #17845a;
+  --low-bg: #e5f7ee;
+  --med: #a8710b;
+  --med-bg: #fdf1dc;
+  --high: #c23b3b;
   --high-bg: #fbe9e9;
-  --shadow: 0 1px 2px rgba(20, 22, 40, 0.04), 0 8px 24px rgba(20, 22, 40, 0.06);
+  --shadow-sm: 0 1px 2px rgba(23, 27, 46, 0.04);
+  --shadow: 0 1px 2px rgba(23, 27, 46, 0.04), 0 10px 28px rgba(23, 27, 46, 0.07);
+  --radius: 14px;
+  --nav-h: 64px;
 }
 
 * {
@@ -22,77 +26,588 @@
 html,
 body,
 #root {
-  min-height: 100%;
+  height: 100%;
+  overflow: hidden;
 }
 
 body {
   margin: 0;
   background: var(--bg);
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+    Helvetica, Arial, sans-serif;
   color: var(--ink);
+  -webkit-font-smoothing: antialiased;
 }
 
-/* Full-page shell — no artificial max-width, just breathing room that
-   scales with the viewport so the app fills wide screens instead of
-   sitting in a narrow centered column. */
-.wrap {
+/* ==========================================================================
+   App shell — a plain top bar (brand + title + a couple of icon actions,
+   no page links) above a fixed two-column body: a static Analysis
+   Parameters form on the left that never changes, and a main panel on the
+   right whose content swaps between a small results wizard (AI Prediction
+   → Risk Assessment → Site Ranking → Recommendation). ========================================================================== */
+.app-shell {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
   width: 100%;
-  margin: 0 auto;
-  padding: 32px clamp(20px, 4vw, 64px) 64px;
+  overflow: hidden;
 }
 
-header {
-  text-align: center;
-  margin-bottom: 28px;
-  padding-bottom: 20px;
+/* ---- Top bar ---- */
+.top-bar {
+  position: sticky;
+  top: 0;
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  height: var(--nav-h);
+  padding: 0 clamp(18px, 3vw, 36px);
+  background: #fff;
   border-bottom: 1px solid var(--line);
+  box-shadow: var(--shadow-sm);
 }
-header h1 {
-  font-size: 28px;
-  font-weight: 700;
-  margin: 0 0 8px;
+.top-bar-brand {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  flex-shrink: 0;
+}
+.brand-mark {
+  width: 30px;
+  height: 30px;
+  flex-shrink: 0;
+  border-radius: 8px;
+  background: linear-gradient(135deg, var(--accent), #8b5bff);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 6px;
+}
+.brand-mark svg {
+  width: 100%;
+  height: 100%;
+}
+.brand-name {
+  font-size: 15px;
+  font-weight: 800;
+  color: var(--ink);
   letter-spacing: -0.01em;
+  white-space: nowrap;
 }
-header p {
-  color: var(--sub);
-  font-size: 14.5px;
+.top-bar-title {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  max-width: min(620px, calc(100% - 380px));
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--ink);
+  letter-spacing: -0.01em;
+  text-align: center;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   margin: 0;
 }
+.top-bar-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+  margin-left: auto;
+}
+.icon-btn {
+  position: relative;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  border: 1px solid var(--line);
+  background: #fff;
+  color: var(--sub);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.icon-btn svg {
+  width: 16px;
+  height: 16px;
+}
+.icon-btn:hover {
+  background: var(--bg);
+  color: var(--ink);
+}
+.icon-btn-dot {
+  position: absolute;
+  top: 5px;
+  right: 5px;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--low);
+  border: 1.5px solid #fff;
+}
+/* Saved runs, labeled in text rather than a bare clock icon. */
+.history-btn {
+  position: relative;
+  height: 34px;
+  padding: 0 14px;
+  border-radius: 20px;
+  border: 1px solid var(--line);
+  background: #fff;
+  color: var(--sub);
+  display: flex;
+  align-items: center;
+  font-size: 12.5px;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+.history-btn:hover {
+  background: var(--bg);
+  color: var(--ink);
+}
+.user-chip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 10px 5px 5px;
+  border-radius: 20px;
+  border: 1px solid var(--line);
+  flex-shrink: 0;
+}
+.user-avatar {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: var(--accent-soft);
+  color: var(--accent-dark);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+.user-name {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--ink);
+  white-space: nowrap;
+}
+.user-chevron {
+  width: 12px;
+  height: 12px;
+  color: var(--sub);
+  flex-shrink: 0;
+}
 
-/* ---- Two-pane layout: sticky form sidebar + results column ---- */
-.layout {
-  display: grid;
-  grid-template-columns: 380px minmax(0, 1fr);
-  gap: 28px;
-  align-items: start;
-}
-.sidebar {
-  position: sticky;
-  top: 24px;
-}
-.results {
-  min-width: 0;
-}
-@media (max-width: 980px) {
-  .layout {
-    grid-template-columns: 1fr;
+@keyframes pulse-dot {
+  0%, 100% {
+    opacity: 1;
+    transform: scale(1);
   }
-  .sidebar {
+  50% {
+    opacity: 0.35;
+    transform: scale(0.7);
+  }
+}
+
+@media (max-width: 900px) {
+  .top-bar {
+    height: auto;
+    flex-wrap: wrap;
+    padding: 10px clamp(16px, 3vw, 32px);
+  }
+  .top-bar-title {
     position: static;
+    left: auto;
+    top: auto;
+    transform: none;
+    max-width: none;
+    order: 3;
+    width: 100%;
+    white-space: normal;
   }
 }
 
+.shell-error {
+  margin: 0 0 16px;
+  padding: 12px 16px;
+  border-radius: 10px;
+  background: var(--high-bg);
+  color: var(--high);
+  font-size: 13px;
+  font-weight: 500;
+  flex-shrink: 0;
+}
+
+/* ---- Two-column dashboard body ---- */
+.dashboard-body {
+  flex: 1;
+  display: flex;
+  align-items: stretch;
+  gap: 24px;
+  padding: 14px clamp(18px, 3vw, 36px) 10px;
+  width: 100%;
+  min-height: 0;
+  overflow: hidden;
+}
+.sidebar-panel {
+  width: 340px;
+  flex-shrink: 0;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+.sidebar-form {
+  margin-bottom: 0;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+/* Higher specificity than the generic .card rule (two classes vs one) so
+   this reliably wins regardless of source order, letting the sidebar use
+   tighter padding than other cards. */
+.card.sidebar-form {
+  padding: 16px 20px;
+}
+/* Same fixed-header / scrollable-body / fixed-footer skeleton as the
+   result cards on the right: the "Analysis Parameters" title stays put at
+   top, "Run Analysis" stays put at bottom, and only the fields between
+   them scroll if they don't all fit. */
+.sidebar-form-title {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  font-size: 15px;
+  font-weight: 800;
+  margin: 0 0 12px;
+  flex-shrink: 0;
+}
+.sidebar-form-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  margin-right: -10px;
+  padding-right: 10px;
+}
+.sidebar-form-icon {
+  width: 20px;
+  height: 20px;
+  color: var(--accent);
+  flex-shrink: 0;
+}
+.sidebar-form-icon svg {
+  width: 100%;
+  height: 100%;
+}
+.field-block {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  margin-bottom: 10px;
+}
+.field-label {
+  font-size: 11.5px;
+  font-weight: 700;
+  color: var(--sub);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+.field-block > select,
+.field-block > input {
+  font-size: 14px;
+  font-family: inherit;
+  font-weight: 500;
+  color: var(--ink);
+  padding: 8px 12px;
+  border-radius: 9px;
+  border: 1px solid var(--line);
+  background: #fff;
+}
+.field-block > select:focus,
+.field-block > input:focus {
+  outline: 3px solid var(--accent-soft);
+  border-color: var(--accent);
+}
+.sidebar-run-btn {
+  width: 100%;
+  flex-shrink: 0;
+  margin-top: 12px;
+  padding: 10px 18px;
+  font-size: 14px;
+}
+.sidebar-run-icon {
+  width: 15px;
+  height: 15px;
+}
+.sidebar-run-icon svg {
+  width: 100%;
+  height: 100%;
+}
+
+.phase-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.phase-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 6px 10px;
+  border-radius: 20px;
+  border: 1px solid var(--line);
+  background: #fff;
+  color: var(--sub);
+  font-size: 12.5px;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+}
+.phase-pill:hover {
+  border-color: var(--accent);
+  color: var(--ink);
+}
+.phase-pill.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+.phase-pill-check {
+  font-size: 10.5px;
+}
+
+/* ---- Region / Country multi-select: chips + search + inline checklist ---- */
+.region-select {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.region-chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.region-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 6px 4px 10px;
+  border-radius: 20px;
+  background: var(--accent-soft);
+  color: var(--accent-dark);
+  font-size: 11.5px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.region-chip button {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  border: none;
+  background: rgba(79, 91, 255, 0.16);
+  color: var(--accent-dark);
+  font-size: 12px;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  padding: 0;
+}
+.region-search {
+  font-size: 13.5px;
+  font-family: inherit;
+  padding: 9px 11px;
+  border-radius: 9px;
+  border: 1px solid var(--line);
+  background: #fff;
+  color: var(--ink);
+}
+.region-search:focus {
+  outline: 3px solid var(--accent-soft);
+  border-color: var(--accent);
+}
+.region-checklist {
+  display: flex;
+  flex-direction: column;
+  max-height: 96px;
+  overflow-y: auto;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  padding: 6px;
+  gap: 1px;
+}
+.region-check-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--ink);
+  padding: 7px 6px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+.region-check-option:hover {
+  background: var(--bg);
+}
+.region-check-option input {
+  margin: 0;
+  accent-color: var(--accent);
+  flex-shrink: 0;
+}
+
+/* ---- Main panel + results wizard ----
+   The main panel is a flex column filling the dashboard body's height; the
+   Pipeline Progress card is a fixed-height child, while the wizard panel
+   below it flexes to fill the rest and scrolls internally — the "bottom
+   right card" gets its own inline scrollbar instead of the whole page
+   scrolling. */
+.main-panel {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+.main-panel > .shell-error,
+.main-panel > .card {
+  flex-shrink: 0;
+}
+.wizard-panel {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+/* The active step's result card is always the wizard panel's first child
+   (a .card, .predict-card, or — for the Recommendation step — a plain
+   wrapper div). It fills the panel's full height exactly (grow AND shrink)
+   and clips its own overflow, so the card's own header/tag never scrolls
+   out of view — only the card's inner .card-scroll-body does. This also
+   keeps its bottom edge lined up with the Analysis Parameters card on the
+   left, instead of stopping short whenever its own content is shorter than
+   the available height. */
+.wizard-panel > *:first-child {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.wizard-panel > *:not(:first-child) {
+  flex-shrink: 0;
+}
+/* The genuinely variable-height part of a wizard step's card (a table, an
+   accordion, the scored-candidates list) — sized to fill whatever room is
+   left after the card's own fixed header, and scrolling internally rather
+   than letting the whole card (or the page) scroll. */
+.card-scroll-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  margin-right: -10px;
+  padding-right: 10px;
+}
+/* Sits inside the active step's card, below .card-scroll-body, as a plain
+   text link rather than a filled button — flex-shrink: 0 (the default for
+   an auto-content flex item) keeps it pinned below the scrollable content
+   instead of floating outside the card. */
+.wizard-next-row {
+  display: flex;
+  justify-content: flex-end;
+  flex-shrink: 0;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--line);
+}
+.wizard-next-link {
+  font-size: 13px;
+}
+
+@media (max-width: 900px) {
+  html,
+  body,
+  #root {
+    height: auto;
+    overflow: visible;
+  }
+  .app-shell {
+    height: auto;
+    overflow: visible;
+  }
+  .dashboard-body {
+    flex-direction: column;
+    overflow: visible;
+  }
+  .sidebar-panel {
+    width: 100%;
+    height: auto;
+  }
+  .sidebar-form {
+    max-height: none;
+    overflow: visible;
+  }
+  .sidebar-form-scroll {
+    overflow-y: visible;
+    margin-right: 0;
+    padding-right: 0;
+  }
+  .main-panel {
+    height: auto;
+    overflow: visible;
+  }
+  .wizard-panel {
+    overflow: visible;
+  }
+  .wizard-panel > *:first-child {
+    overflow: visible;
+  }
+  .card-scroll-body {
+    overflow-y: visible;
+    margin-right: 0;
+    padding-right: 0;
+  }
+}
+
+.run-modal-head-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+/* ---- Cards ---- */
 .card {
   background: var(--card);
   border: 1px solid var(--line);
-  border-radius: 14px;
+  border-radius: var(--radius);
   padding: 22px 26px;
-  margin-bottom: 24px;
+  margin-bottom: 20px;
   box-shadow: var(--shadow);
 }
 .card h2 {
   margin: 4px 0 4px;
-  font-size: 18px;
+  font-size: 17px;
+  font-weight: 700;
 }
 .section-hint {
   color: var(--sub);
@@ -103,293 +618,243 @@ header p {
   color: var(--sub);
   font-size: 14px;
   text-align: center;
-  padding: 48px 24px;
+  padding: 52px 24px;
+}
+.empty-state p {
+  margin: 0 0 16px;
+}
+
+.post-run-hint {
+  margin: 16px 0 0;
+  padding: 10px 14px;
+  border-radius: 8px;
+  background: var(--low-bg);
+  color: var(--low);
+  font-weight: 600;
+}
+
+.history-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+.history-toolbar .section-hint {
+  margin: 0;
 }
 
 .tag {
   display: inline-block;
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.04em;
+  font-size: 10.5px;
+  font-weight: 800;
+  letter-spacing: 0.05em;
   text-transform: uppercase;
-  color: var(--accent);
+  color: var(--accent-dark);
   background: var(--accent-soft);
-  padding: 3px 9px;
+  padding: 4px 10px;
   border-radius: 20px;
+  margin-bottom: 10px;
 }
 .tag-on-dark {
   color: #fff;
   background: rgba(255, 255, 255, 0.18);
 }
 
-/* ---- Form ---- */
-.form-card {
-  position: relative;
-}
-.form-grid {
-  display: grid;
-  grid-template-columns: 1fr;
-  gap: 16px;
-  margin-bottom: 18px;
-}
-/* Direct-child selectors here on purpose: this used to be a plain
-   descendant selector ("`.form-grid label`") which also matched the
-   checkbox <label>s nested deep inside the Region dropdown's panel,
-   stacking each checkbox above its text and centering them (via the
-   flex-direction: column + gap it set, combined with the dropdown
-   option's own align-items: center). Scoping to direct children keeps
-   it targeting only the top-level field labels/inputs. */
-.form-grid > label {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  font-size: 12.5px;
-  font-weight: 600;
-  color: var(--sub);
-}
-.form-grid > label > select,
-.form-grid > label > input {
-  font-size: 14px;
-  padding: 9px 10px;
-  border-radius: 8px;
-  border: 1px solid var(--line);
-  color: var(--ink);
-  background: #fff;
-}
-.form-grid > label > select:focus,
-.form-grid > label > input:focus {
-  outline: 2px solid var(--accent-soft);
-  border-color: var(--accent);
-}
-.field-hint {
-  font-size: 11px;
-  font-weight: 400;
-  color: var(--sub);
-  opacity: 0.85;
-}
-.form-card button[type="submit"] {
-  width: 100%;
-  background: var(--accent);
-  color: #fff;
-  border: none;
-  padding: 11px 20px;
-  border-radius: 8px;
-  font-size: 14px;
-  font-weight: 600;
-  cursor: pointer;
-}
-.form-card button[type="submit"]:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
 .error-text {
   color: var(--high);
   font-size: 13px;
   margin-top: 10px;
 }
 
-/* ---- Region / Country dropdown (multi-select) ---- */
-.dropdown {
-  position: relative;
-}
-.dropdown-toggle {
-  width: 100%;
-  display: flex;
+/* Generic filled primary button. */
+.btn-primary {
+  display: inline-flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: center;
   gap: 8px;
-  font-size: 14px;
-  padding: 9px 10px;
-  border-radius: 8px;
-  border: 1px solid var(--line);
-  background: #fff;
-  color: var(--ink);
+  background: var(--accent);
+  color: #fff;
+  border: none;
+  padding: 10px 20px;
+  border-radius: 9px;
+  font-size: 13.5px;
+  font-weight: 700;
+  font-family: inherit;
   cursor: pointer;
-  text-align: left;
+  white-space: nowrap;
+  text-decoration: none;
+  transition: background 0.15s ease;
 }
-.dropdown-toggle:disabled {
-  opacity: 0.6;
+.btn-primary:hover {
+  background: var(--accent-dark);
+}
+.btn-primary:disabled {
+  opacity: 0.55;
   cursor: not-allowed;
 }
-.dropdown-toggle-label {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.dropdown-caret {
-  color: var(--sub);
-  font-size: 11px;
-  flex-shrink: 0;
-}
-.dropdown-panel {
-  position: absolute;
-  z-index: 20;
-  top: calc(100% + 6px);
-  left: 0;
-  right: 0;
-  background: #fff;
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  box-shadow: var(--shadow);
-  padding: 8px;
-  max-height: 260px;
-  display: flex;
-  flex-direction: column;
-}
-.dropdown-actions {
-  display: flex;
-  gap: 6px;
-  padding: 2px 4px 8px;
-  border-bottom: 1px solid var(--line);
-  margin-bottom: 6px;
-}
-.dropdown-actions button {
-  font-size: 11.5px;
-  font-weight: 600;
-  color: var(--accent);
-  background: var(--accent-soft);
-  border: none;
-  border-radius: 20px;
-  padding: 4px 10px;
-  cursor: pointer;
-}
-.dropdown-options {
-  overflow-y: auto;
-}
-.dropdown-option {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 13.5px;
-  font-weight: 400;
-  color: var(--ink);
-  padding: 7px 6px;
-  border-radius: 6px;
-  cursor: pointer;
-}
-.dropdown-option:hover {
-  background: var(--bg);
-}
-.dropdown-option input {
-  margin: 0;
-  accent-color: var(--accent);
-}
+
 .dropdown-empty {
   color: var(--sub);
   font-size: 12.5px;
   padding: 8px 6px;
 }
 
-/* ---- Progress bar ---- */
-.progress-header {
+/* Pipeline Progress card header: the "Pipeline Progress" tag on the left,
+   a compact no-background status readout (dot + stage + %) on the right —
+   same row, instead of a separate full-width banner under the nodes. */
+.pipeline-card-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 12px;
+  gap: 12px;
+  flex-wrap: wrap;
 }
-.llm-badge {
-  font-size: 11.5px;
-  font-weight: 700;
-  padding: 4px 10px;
-  border-radius: 20px;
-  background: var(--low-bg);
-  color: var(--low);
+/* Stage 8 Output's header (tag + Save run) is the only .pipeline-card-head
+   that sits directly above a .card-scroll-body — the Pipeline Progress
+   card's header sits above the stepper nodes instead — so this only ever
+   adds breathing room between that header and the result cards below it. */
+.pipeline-card-head + .card-scroll-body {
+  margin-top: 16px;
 }
-.llm-badge.mock {
-  background: var(--med-bg);
-  color: var(--med);
-}
-.progress-bar-track {
-  width: 100%;
-  height: 8px;
-  background: var(--line);
-  border-radius: 20px;
-  overflow: hidden;
-}
-.progress-bar-fill {
-  height: 100%;
-  background: var(--accent);
-  transition: width 0.3s ease;
-}
-.progress-pct {
-  font-size: 12px;
-  color: var(--sub);
-  margin: 6px 0 18px;
-  text-align: right;
+.pipeline-card-head .tag {
+  margin-bottom: 0;
 }
 
-/* ---- Stage stepper — laid out as columns on wide screens so it uses the
-   full width of the results pane instead of one cramped vertical line ---- */
-.flow {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 18px 20px;
+/* ---- Stepper — horizontal numbered-node pipeline progress ----
+   Circles connected by a line, matching a real dashboard's step
+   indicator. */
+.stepper {
+  margin-top: 6px;
 }
-@media (max-width: 720px) {
-  .flow {
-    grid-template-columns: repeat(2, 1fr);
-  }
+.stepper-nodes {
+  display: flex;
+  align-items: flex-start;
 }
-.stage {
-  display: grid;
-  grid-template-columns: 32px 1fr;
-  gap: 10px;
-  align-items: start;
+.stepper-node-wrap {
+  display: flex;
+  align-items: center;
+  flex: 1;
+  min-width: 0;
 }
-.stage .rail {
+.stepper-node-wrap:last-child {
+  flex: 0 0 auto;
+}
+.stepper-node {
   display: flex;
   flex-direction: column;
   align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+  width: 84px;
+  border: none;
+  background: none;
+  padding: 0;
+  margin: 0;
+  font: inherit;
+  cursor: default;
 }
-.stage .dot {
-  width: 28px;
-  height: 28px;
+.stepper-node.clickable {
+  cursor: pointer;
+}
+.stepper-node.clickable:hover .stepper-dot {
+  box-shadow: 0 0 0 4px var(--accent-soft);
+}
+.stepper-node.clickable:hover .stepper-label {
+  color: var(--accent-dark);
+}
+.stepper-node.active .stepper-dot {
+  box-shadow: 0 0 0 4px var(--accent-soft);
+}
+.stepper-node.active .stepper-label {
+  color: var(--accent-dark);
+  font-weight: 700;
+}
+.stepper-node:disabled {
+  cursor: default;
+}
+.stepper-dot {
+  width: 34px;
+  height: 34px;
   border-radius: 50%;
-  background: var(--line);
+  background: var(--bg);
+  border: 2px solid var(--line);
   color: var(--sub);
   display: flex;
   align-items: center;
   justify-content: center;
   font-weight: 700;
-  font-size: 12.5px;
+  font-size: 13px;
   flex-shrink: 0;
-  transition: background 0.2s, color 0.2s;
+  transition: background 0.2s, color 0.2s, border-color 0.2s;
 }
-.stage .dot.in-progress {
+.stepper-dot.in-progress {
   background: var(--accent-soft);
-  color: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-dark);
   box-shadow: 0 0 0 4px var(--accent-soft);
+  animation: pulse-dot 1.4s ease-in-out infinite;
 }
-.stage .dot.complete {
+.stepper-dot.complete {
   background: var(--accent);
+  border-color: var(--accent);
   color: #fff;
 }
-.stage .connector {
-  display: none;
-}
-.mini-card {
-  padding: 2px 0 4px;
-  font-size: 13px;
-}
-.mini-card-title {
+.stepper-label {
+  font-size: 10.5px;
   font-weight: 600;
   color: var(--sub);
+  text-align: center;
+  line-height: 1.3;
+}
+.stepper-connector {
+  flex: 1;
+  height: 2px;
+  background: var(--line);
+  margin: 0 -2px;
+  margin-top: -22px;
+  transition: background 0.2s;
+}
+.stepper-connector.complete {
+  background: var(--accent);
+}
+
+.stepper-status-compact {
   display: flex;
   align-items: center;
-  gap: 8px;
-}
-.mini-card.complete .mini-card-title {
-  color: var(--ink);
-}
-.mini-card.in-progress .mini-card-title {
-  color: var(--accent);
-}
-.mini-card-detail {
-  color: var(--sub);
+  gap: 7px;
   font-size: 12px;
-  margin-top: 3px;
-  line-height: 1.4;
+  color: var(--sub);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
 }
+.stepper-status-compact-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--accent);
+  flex-shrink: 0;
+}
+.stepper-status-compact-dot.running {
+  animation: pulse-dot 1s ease-in-out infinite;
+}
+.stepper-status-compact-dot.complete {
+  background: var(--low);
+}
+.stepper-status-compact-text {
+  font-weight: 600;
+  color: var(--ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.stepper-status-compact-pct {
+  font-weight: 700;
+  color: var(--accent-dark);
+  flex-shrink: 0;
+}
+
 .spinner {
   width: 12px;
   height: 12px;
@@ -398,6 +863,7 @@ header p {
   border-top-color: var(--accent);
   animation: spin 0.7s linear infinite;
   flex-shrink: 0;
+  display: inline-block;
 }
 @keyframes spin {
   to {
@@ -413,12 +879,12 @@ table {
   width: 100%;
   border-collapse: collapse;
   margin-top: 12px;
-  font-size: 13.5px;
+  font-size: 13px;
 }
 th,
 td {
   text-align: left;
-  padding: 10px 12px;
+  padding: 11px 14px;
   border-bottom: 1px solid var(--line);
   white-space: nowrap;
 }
@@ -431,10 +897,16 @@ td {
 }
 th {
   color: var(--sub);
-  font-weight: 600;
-  font-size: 12px;
+  font-weight: 700;
+  font-size: 11px;
   text-transform: uppercase;
-  letter-spacing: 0.03em;
+  letter-spacing: 0.04em;
+  background: var(--bg);
+  position: sticky;
+  top: 0;
+}
+tbody tr:hover {
+  background: #fafbff;
 }
 .site-id {
   font-size: 11.5px;
@@ -442,9 +914,9 @@ th {
 }
 .badge {
   display: inline-block;
-  padding: 2px 10px;
+  padding: 3px 11px;
   border-radius: 20px;
-  font-size: 12px;
+  font-size: 11.5px;
   font-weight: 700;
   white-space: nowrap;
 }
@@ -472,13 +944,8 @@ th {
 .risk-accordion-item + .risk-accordion-item {
   border-top: 1px solid var(--line);
 }
-/* A fixed grid template — not flexbox — so every row's columns land at
-   the exact same x-position regardless of content width. Flexbox here
-   previously let a variable-width badge ("High" vs "Medium") shift
-   everything after it, and let the site-name column get squeezed to
-   nothing on narrower screens since it was the only column allowed to
-   shrink. Each column now has its own dedicated, consistently-sized grid
-   track; long text truncates with an ellipsis instead of disappearing. */
+/* A fixed grid template — not flexbox — so every row's columns land at the
+   exact same x-position regardless of content width. */
 .risk-accordion-header {
   width: 100%;
   display: grid;
@@ -487,7 +954,7 @@ th {
   gap: 14px;
   background: #fff;
   border: none;
-  padding: 12px 16px;
+  padding: 13px 16px;
   cursor: pointer;
   text-align: left;
   font-family: inherit;
@@ -507,7 +974,7 @@ th {
   display: flex;
   align-items: baseline;
   gap: 8px;
-  font-weight: 600;
+  font-weight: 700;
   min-width: 0;
 }
 .risk-accordion-site-name {
@@ -553,18 +1020,37 @@ th {
   }
 }
 
-/* ---- Final recommendation ---- */
-.final-summary {
-  background: linear-gradient(135deg, #3b5bfd, #5b78ff);
+/* ---- Final recommendation ---- Stage 8 Output keeps the same
+   fixed-header + scrollable-body skeleton as Stage 6/7, but stays a
+   gradient "hero" card rather than a plain white one, since it's the
+   pipeline's final answer. */
+.recommendation-card {
+  background: linear-gradient(135deg, var(--accent), #8b5bff);
   color: #fff;
-  border-radius: 16px;
-  padding: 26px 28px;
-  margin-top: 8px;
-  box-shadow: var(--shadow);
+  border: none;
 }
-.final-summary h2 {
-  margin: 6px 0 14px;
-  font-size: 19px;
+/* A clearly visible solid button (not just a text link) in the corner of
+   the gradient header — light-on-color so it reads as a real button
+   against the blue/purple background. */
+.save-run-btn {
+  height: 20px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: #fff;
+  color: var(--accent-dark);
+  border: none;
+  padding: 8px 16px;
+  border-radius: 9px;
+  font-size: 12.5px;
+  font-weight: 700;
+  font-family: inherit;
+  cursor: pointer;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.save-run-btn:hover {
+  background: var(--accent-soft);
 }
 .final-grid {
   display: grid;
@@ -572,75 +1058,46 @@ th {
   gap: 14px;
 }
 .final-grid .item {
-  background: rgba(255, 255, 255, 0.12);
-  border-radius: 10px;
-  padding: 12px 14px;
+  background: rgba(255, 255, 255, 0.14);
+  border-radius: 12px;
+  padding: 13px 15px;
 }
 .final-grid .item .k {
-  font-size: 11px;
-  opacity: 0.8;
+  font-size: 10.5px;
+  opacity: 0.85;
   text-transform: uppercase;
-  letter-spacing: 0.04em;
-  margin-bottom: 4px;
+  letter-spacing: 0.05em;
+  margin-bottom: 5px;
+  font-weight: 700;
 }
 .final-grid .item .v {
   font-size: 14.5px;
-  font-weight: 600;
+  font-weight: 700;
   line-height: 1.4;
 }
 .final-text {
-  margin: 16px 0 0;
+  margin: 18px 0 0;
   font-size: 13.5px;
-  opacity: 0.95;
-  line-height: 1.5;
+  opacity: 0.96;
+  line-height: 1.55;
 }
 
 /* ---- AI Region Prediction section ----
-   Built entirely on the existing theme tokens (--accent / --accent-soft /
-   --line / --sub, the shared .card, .tag, .table-scroll and .spinner
-   rules) so it reads as part of the same app rather than a bolt-on. */
+   The hint sentence gets its own full-width row below the title/actions
+   row, rather than sharing a narrower column next to the actions — that's
+   what lets it sit on a single line instead of wrapping to two or three. */
 .predict-head {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  flex-shrink: 0;
+}
+.predict-head-top {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
   gap: 20px;
   flex-wrap: wrap;
-}
-/* Collapsed: drop the card's bottom padding so the header sits as a tidy
-   single bar rather than a mostly-empty box. */
-.predict-card.collapsed {
-  padding-bottom: 18px;
-}
-.predict-collapse-toggle {
-  display: flex;
-  align-items: flex-start;
-  gap: 10px;
-  flex: 1;
-  min-width: 240px;
-  background: none;
-  border: none;
-  padding: 0;
-  margin: 0;
-  font-family: inherit;
-  color: var(--ink);
-  text-align: left;
-  cursor: pointer;
-  border-radius: 8px;
-}
-.predict-collapse-toggle:hover .predict-title {
-  color: var(--accent);
-}
-.predict-collapse-toggle:focus-visible {
-  outline: 2px solid var(--accent-soft);
-  outline-offset: 4px;
-}
-.predict-collapse-caret {
-  color: var(--accent);
-  font-size: 12px;
-  line-height: 1;
-  margin-top: 6px;
-  flex-shrink: 0;
-  transition: transform 0.15s ease;
 }
 .predict-head-text {
   display: flex;
@@ -648,22 +1105,19 @@ th {
   align-items: flex-start;
   gap: 4px;
   min-width: 0;
+  flex: 1;
 }
-/* Matches .card h2 — a real <h2> can't live inside the toggle <button>
-   (flow content inside phrasing-only content is invalid HTML). */
 .predict-title {
-  font-size: 18px;
+  font-size: 17px;
   font-weight: 700;
   color: inherit;
-  transition: color 0.15s ease;
-}
-.predict-collapsed-summary {
-  font-size: 12.5px;
-  color: var(--sub);
 }
 .predict-head .section-hint {
-  margin-bottom: 0;
-  max-width: 560px;
+  margin: 0;
+  max-width: 100%;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .predict-head-actions {
   display: flex;
@@ -679,30 +1133,35 @@ th {
   color: #fff;
   border: none;
   padding: 10px 18px;
-  border-radius: 8px;
+  border-radius: 9px;
   font-size: 13.5px;
-  font-weight: 600;
+  font-weight: 700;
   font-family: inherit;
   cursor: pointer;
   white-space: nowrap;
+}
+.predict-btn:hover {
+  background: var(--accent-dark);
 }
 .predict-btn:disabled {
   opacity: 0.6;
   cursor: not-allowed;
 }
-/* The shared .spinner is accent-on-accent-soft, which vanishes against the
-   filled button — invert it just for this placement. */
 .predict-btn .spinner {
   border-color: rgba(255, 255, 255, 0.35);
   border-top-color: #fff;
 }
 .predict-placeholder {
-  color: var(--sub);
-  font-size: 13px;
-  margin-top: 18px;
-  padding: 20px;
+  flex: 1;
+  margin-top: 20px;
+  min-height: 300px; /* adjust as needed */
   border: 1px dashed var(--line);
   border-radius: 10px;
+  color: var(--sub);
+  font-size: 13px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
   text-align: center;
 }
 
@@ -716,19 +1175,19 @@ th {
   padding: 18px 20px;
   border-radius: 12px;
   background: var(--accent-soft);
-  border: 1px solid rgba(59, 91, 253, 0.18);
+  border: 1px solid rgba(79, 91, 255, 0.18);
 }
 .predict-hero-label {
   font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.04em;
   text-transform: uppercase;
-  color: var(--accent);
+  color: var(--accent-dark);
   margin-bottom: 4px;
 }
 .predict-hero-region {
   font-size: 20px;
-  font-weight: 700;
+  font-weight: 800;
   letter-spacing: -0.01em;
   color: var(--ink);
 }
@@ -743,9 +1202,6 @@ th {
   gap: 10px;
   flex-shrink: 0;
 }
-/* Separate from .badge on purpose: on a risk badge "High" is bad (red),
-   but on a confidence badge "High" is good — reusing .badge here would
-   flip the color semantics and read as a warning. */
 .conf-badge {
   display: inline-block;
   padding: 4px 12px;
@@ -773,10 +1229,13 @@ th {
   padding: 8px 16px;
   border-radius: 8px;
   font-size: 13px;
-  font-weight: 600;
+  font-weight: 700;
   font-family: inherit;
   cursor: pointer;
   white-space: nowrap;
+}
+.apply-btn:hover {
+  background: var(--accent-dark);
 }
 .apply-btn:disabled {
   opacity: 0.65;
@@ -784,7 +1243,7 @@ th {
 }
 .apply-btn.ghost {
   background: var(--accent-soft);
-  color: var(--accent);
+  color: var(--accent-dark);
   padding: 6px 14px;
   font-size: 12.5px;
 }
@@ -804,15 +1263,15 @@ th {
   align-items: baseline;
   gap: 10px;
   flex-wrap: wrap;
-  font-size: 12px;
+  font-size: 11.5px;
   font-weight: 700;
-  letter-spacing: 0.03em;
+  letter-spacing: 0.04em;
   text-transform: uppercase;
   color: var(--sub);
 }
 .predict-block-note {
   font-size: 11.5px;
-  font-weight: 400;
+  font-weight: 500;
   letter-spacing: 0;
   text-transform: none;
   opacity: 0.85;
@@ -863,7 +1322,7 @@ th {
   min-width: 0;
 }
 .alt-item-region {
-  font-weight: 600;
+  font-weight: 700;
   font-size: 13.5px;
 }
 .alt-item-why {
@@ -873,13 +1332,11 @@ th {
   line-height: 1.45;
 }
 
-/* Inline score bar in the candidate table — same visual language as the
-   pipeline progress bar, shrunk to fit a table cell. */
 .score-cell {
   display: flex;
   align-items: center;
   gap: 8px;
-  font-weight: 600;
+  font-weight: 700;
 }
 .score-track {
   width: 56px;
@@ -899,13 +1356,13 @@ tr.row-pick td {
 .pick-tag {
   display: inline-block;
   margin-left: 8px;
-  font-size: 10.5px;
-  font-weight: 700;
+  font-size: 10px;
+  font-weight: 800;
   letter-spacing: 0.03em;
   text-transform: uppercase;
-  color: var(--accent);
+  color: var(--accent-dark);
   background: #fff;
-  border: 1px solid rgba(59, 91, 253, 0.3);
+  border: 1px solid rgba(79, 91, 255, 0.3);
   border-radius: 20px;
   padding: 1px 7px;
 }
@@ -914,9 +1371,9 @@ tr.row-pick td {
   background: none;
   border: none;
   padding: 0;
-  color: var(--accent);
+  color: var(--accent-dark);
   font-size: 12.5px;
-  font-weight: 600;
+  font-weight: 700;
   font-family: inherit;
   cursor: pointer;
 }
@@ -935,10 +1392,7 @@ tr.row-pick td {
   }
 }
 
-/* ---- "Why this rating" risk explanation ----
-   Shown inside each Stage 6 accordion row and in the Stage 8 summary. The
-   .on-dark variant is for the gradient final-summary card, where the normal
-   ink/line tokens would be invisible. */
+/* ---- "Why this rating" risk explanation ---- */
 .why-risk {
   margin: 12px 0 4px;
   padding: 14px 16px;
@@ -1015,10 +1469,8 @@ tr.row-pick td {
   padding: 1px 8px;
   background: var(--bg);
   color: var(--sub);
-  font-weight: 600;
+  font-weight: 700;
 }
-/* Open / Monitoring records are the ones that still need action, so they
-   get the warning treatment; Mitigated / Closed stay neutral grey. */
 .driver-status.active {
   background: var(--med-bg);
   color: var(--med);
@@ -1045,7 +1497,6 @@ tr.row-pick td {
   padding: 3px 10px;
 }
 
-/* On-dark variant for the gradient Stage 8 card */
 .final-why {
   margin-top: 18px;
 }
@@ -1054,12 +1505,12 @@ tr.row-pick td {
   font-weight: 700;
   letter-spacing: 0.04em;
   text-transform: uppercase;
-  opacity: 0.8;
+  opacity: 0.85;
   margin-bottom: 8px;
 }
 .why-risk.on-dark {
-  background: rgba(255, 255, 255, 0.12);
-  border-color: rgba(255, 255, 255, 0.22);
+  background: rgba(255, 255, 255, 0.14);
+  border-color: rgba(255, 255, 255, 0.24);
 }
 .why-risk.on-dark .why-risk-rule,
 .why-risk.on-dark .driver-desc,
@@ -1069,7 +1520,7 @@ tr.row-pick td {
 .why-risk.on-dark .why-risk-mix,
 .why-risk.on-dark .driver-cat,
 .why-risk.on-dark .driver-derivation {
-  color: rgba(255, 255, 255, 0.75);
+  color: rgba(255, 255, 255, 0.78);
 }
 .why-risk.on-dark .why-risk-stat strong,
 .why-risk.on-dark .why-risk-stat.high strong,
@@ -1082,15 +1533,15 @@ tr.row-pick td {
   text-decoration: underline;
 }
 .why-risk.on-dark .driver-item {
-  border-left-color: rgba(255, 255, 255, 0.3);
+  border-left-color: rgba(255, 255, 255, 0.32);
 }
 .why-risk.on-dark .driver-status {
-  background: rgba(255, 255, 255, 0.16);
+  background: rgba(255, 255, 255, 0.18);
   color: #fff;
 }
 .why-risk.on-dark .chip {
-  background: rgba(255, 255, 255, 0.14);
-  border-color: rgba(255, 255, 255, 0.22);
+  background: rgba(255, 255, 255, 0.16);
+  border-color: rgba(255, 255, 255, 0.24);
   color: #fff;
 }
 
@@ -1104,20 +1555,11 @@ tr.row-pick td {
   color: var(--ink);
 }
 
-footer {
-  text-align: center;
-  color: var(--sub);
-  font-size: 12px;
-  margin-top: 40px;
-}
-/* ---- Score breakdown (Stage 7 ranking table) ---------------------------
-   Per-component mini-bars for the weighted site score. A component with no
-   data renders as an empty track, not a zero-width fill — "unmeasured" and
-   "scored zero" must not look alike. */
+/* ---- Score breakdown (Stage 7 ranking table) ---- */
 .score-breakdown {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 3px;
   min-width: 110px;
 }
 .score-component {
@@ -1129,7 +1571,7 @@ footer {
   font-size: 9px;
   letter-spacing: 0.04em;
   text-transform: uppercase;
-  color: #8a8f98;
+  color: #9297a8;
   width: 26px;
   flex-shrink: 0;
 }
@@ -1139,76 +1581,72 @@ footer {
   height: 4px;
   flex: 1;
   border-radius: 2px;
-  background: #e8eaed;
+  background: #eaebf2;
   overflow: hidden;
 }
 .score-component-fill {
   display: block;
   height: 100%;
   border-radius: 2px;
-  background: #3b6cb7;
+  background: var(--accent);
 }
 .score-confidence {
   font-size: 10px;
-  color: #b06a1f;
+  color: var(--med);
   white-space: nowrap;
 }
 
-/* ---- Saved runs -------------------------------------------------------- */
-.save-row {
+/* ---- Saved runs ---- */
+.save-modal-actions {
   display: flex;
+  justify-content: flex-end;
   gap: 10px;
-  align-items: center;
-  flex-wrap: wrap;
+  margin-top: 18px;
 }
-.save-label {
-  flex: 1;
-  min-width: 220px;
-  padding: 9px 11px;
-  border: 1px solid #d6d9de;
-  border-radius: 6px;
-  font-size: 13px;
-  font-family: inherit;
-}
-.save-label:disabled { background: #f3f4f6; }
 .save-message {
   margin: 10px 0 0;
   font-size: 12px;
-  color: #4a5160;
+  color: var(--sub);
 }
 .empty-note {
   margin: 12px 0 0;
   font-size: 13px;
-  color: #8a8f98;
+  color: var(--sub);
 }
-.muted { color: #8a8f98; }
+.muted {
+  color: var(--sub);
+}
 .btn-link {
   background: none;
   border: none;
   padding: 0;
-  color: #3b6cb7;
+  color: var(--accent-dark);
   font: inherit;
   font-size: 12px;
+  font-weight: 600;
   cursor: pointer;
   text-decoration: underline;
 }
 .btn-secondary {
-  padding: 8px 14px;
-  border: 1px solid #d6d9de;
-  border-radius: 6px;
+  padding: 8px 16px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
   background: #fff;
   font: inherit;
   font-size: 13px;
+  font-weight: 600;
   cursor: pointer;
 }
-.btn-secondary:disabled { opacity: 0.6; cursor: default; }
+.btn-secondary:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
 
-/* Detail modal. Backdrop closes on click; the panel stops propagation so a
-   click inside doesn't dismiss it. */
+/* Detail modal. */
 .run-modal-backdrop {
   position: fixed;
   inset: 0;
-  background: rgba(17, 20, 26, 0.55);
+  background: rgba(15, 18, 32, 0.55);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1217,12 +1655,12 @@ footer {
 }
 .run-modal {
   background: #fff;
-  border-radius: 10px;
-  padding: 22px 24px;
+  border-radius: 14px;
+  padding: 24px 26px;
   width: min(1000px, 100%);
   max-height: 86vh;
   overflow-y: auto;
-  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.28);
+  box-shadow: 0 20px 52px rgba(0, 0, 0, 0.3);
 }
 .run-modal-head {
   display: flex;
@@ -1231,5 +1669,11 @@ footer {
   gap: 16px;
   margin-bottom: 6px;
 }
-.run-modal-head h2 { margin: 0 0 4px; }
-.run-modal-head p { margin: 0; font-size: 12px; }
+.run-modal-head h2 {
+  color: black;
+  margin: 0 0 4px;
+}
+.run-modal-head p {
+  margin: 0;
+  font-size: 12px;
+}
