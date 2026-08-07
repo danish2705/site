@@ -19,7 +19,7 @@ export default function TopBar({
             <path d="M12 2 2 21h20L12 2zm0 5.2 5.8 11.3H9.4L12 7.2z" />
           </svg>
         </div>
-        <span className="brand-name">Trial Intel</span>
+        <span className="brand-name">Site Trial Intel</span>
       </div>
 
       <h1 className="top-bar-title">

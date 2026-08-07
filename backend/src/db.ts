@@ -30,6 +30,19 @@
 import pg from "pg";
 import type { RiskLevel } from "./types.js";
 
+// node-postgres returns NUMERIC/DECIMAL columns as strings by default (it
+// won't silently risk precision loss converting them to JS numbers). Every
+// score column here (score, recruitment_score, quality_score, ...) is
+// NUMERIC, so without this every one of them comes back as "67.00" instead
+// of 67 — which the frontend's SavedRunDetail/SavedRunSite types declare as
+// `number | null` and then call .toFixed()/do math on, crashing with
+// "value.toFixed is not a function" the moment a saved run is opened.
+// Parsing OID 1700 (numeric) as a float here fixes it for every query
+// through this pool, not just the ones this file already knows about.
+pg.types.setTypeParser(1700, (value: string | null) =>
+  value === null ? null : parseFloat(value),
+);
+
 const connectionString = process.env.DATABASE_URL;
 
 // Port 6543 is pgBouncer in transaction mode. node-postgres sends unnamed

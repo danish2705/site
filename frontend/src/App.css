@@ -23,6 +23,30 @@
   box-sizing: border-box;
 }
 
+/* Fallback for the top-level ErrorBoundary — a render crash anywhere in
+   the app lands here instead of a blank white page. */
+.app-crash-screen {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 24px;
+  text-align: center;
+  color: var(--ink);
+  background: var(--bg);
+}
+.app-crash-screen h2 {
+  margin: 0;
+}
+.app-crash-screen p {
+  margin: 0;
+  color: var(--sub);
+  font-size: 13px;
+  max-width: 480px;
+}
+
 html,
 body,
 #root {
@@ -535,20 +559,23 @@ body {
   margin-right: -10px;
   padding-right: 10px;
 }
-/* Sits inside the active step's card, below .card-scroll-body, as a plain
-   text link rather than a filled button — flex-shrink: 0 (the default for
-   an auto-content flex item) keeps it pinned below the scrollable content
-   instead of floating outside the card. */
+/* Sits inside the active step's card, below .card-scroll-body — Back (if
+   any) on the left, Next (if available) on the right. flex-shrink: 0 (the
+   default for an auto-content flex item) keeps the row pinned below the
+   scrollable content instead of floating outside the card. */
 .wizard-next-row {
   display: flex;
-  justify-content: flex-end;
+  align-items: center;
   flex-shrink: 0;
   margin-top: 10px;
   padding-top: 10px;
   border-top: 1px solid var(--line);
 }
-.wizard-next-link {
-  font-size: 13px;
+/* auto margin, not justify-content: space-between, so Next still lands on
+   the far right even on steps with no Back button (first step) or no Next
+   button (last step) rendered alongside it. */
+.wizard-next-row .wizard-next-btn {
+  margin-left: auto;
 }
 
 @media (max-width: 900px) {
@@ -1616,6 +1643,19 @@ tr.row-pick td {
   font-size: 12px;
   color: var(--sub);
 }
+/* A save-message that's actually reporting a failure (couldn't save,
+   couldn't open a saved run, ...) — the plain muted-grey style above reads
+   as routine status text and is easy to miss entirely; this makes it
+   impossible to miss instead. */
+.save-message.error {
+  color: var(--high);
+  background: var(--high-bg);
+  border: 1px solid var(--high);
+  border-radius: 8px;
+  padding: 8px 12px;
+  font-size: 13px;
+  font-weight: 600;
+}
 .empty-note {
   margin: 12px 0 0;
   font-size: 13px;
@@ -1635,7 +1675,65 @@ tr.row-pick td {
   cursor: pointer;
   text-decoration: underline;
 }
+.btn-link:disabled {
+  opacity: 0.55;
+  cursor: default;
+  text-decoration: none;
+}
+/* A btn-link that pairs an icon with its text (row-level View/Email
+   actions) — inline-flex so the two line up on the same baseline. */
+.row-icon-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+/* Icon-only variant of row-icon-link — no visible label, so give it a
+   slightly larger hit target and drop the underline (there's no text to
+   underline) while keeping a title/aria-label for accessibility. */
+.row-icon-link.icon-only {
+  padding: 4px;
+  text-decoration: none;
+}
+.row-icon-link.icon-only .btn-icon {
+  width: 16px;
+  height: 16px;
+}
+/* Icon sized to sit inline inside a button/link's text (btn-primary,
+   btn-secondary, btn-link, save-run-btn, the row action links, ...). */
+.btn-icon {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+}
+/* A plain, icon-only close button — used wherever a text "Close" link is
+   replaced with a cross icon. Round hit target, no border/background until
+   hovered, so it reads as a dismiss control rather than a text action. */
+.icon-close-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: none;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--sub);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.icon-close-btn:hover {
+  background: var(--line);
+  color: var(--ink);
+}
+.icon-close-btn .btn-icon {
+  width: 16px;
+  height: 16px;
+}
 .btn-secondary {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   padding: 8px 16px;
   border: 1px solid var(--line);
   border-radius: 9px;
@@ -1669,6 +1767,28 @@ tr.row-pick td {
   max-height: 86vh;
   overflow-y: auto;
   box-shadow: 0 20px 52px rgba(0, 0, 0, 0.3);
+}
+/* The saved-runs list has more columns (including Share) than the generic
+   run-modal width comfortably fits — widen just this one so the whole row,
+   View button included, is visible without a horizontal scrollbar on a
+   normal desktop viewport. Taller too, so more rows are visible before the
+   list itself needs to scroll. */
+.run-modal.run-modal-wide {
+  width: min(1360px, 96vw);
+  max-height: 92vh;
+}
+/* Caps the saved-runs table at a fixed height with its own scrollbar, once
+   there are enough rows to need one — the modal's title/Refresh/Close stay
+   fixed above it instead of scrolling out of view along with the table. */
+.saved-runs-scroll {
+  max-height: 60vh;
+  overflow-y: auto;
+}
+.saved-runs-scroll thead th {
+  position: sticky;
+  top: 0;
+  background: #fff;
+  z-index: 1;
 }
 .run-modal-head {
   display: flex;

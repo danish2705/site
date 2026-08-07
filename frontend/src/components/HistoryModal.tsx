@@ -1,6 +1,28 @@
 import { useEffect } from "react";
 import { usePipeline } from "../context/PipelineContext";
+import type { SavedRunSummary } from "../types";
 import SavedRunModal from "./SavedRunModal";
+import ErrorBoundary from "./ErrorBoundary";
+import { CloseIcon, EyeIcon, MailIcon, RefreshIcon } from "./Icons";
+
+// Builds a mailto: link pre-filled with a plain-text summary of the run, so
+// "Share" works immediately through whatever mail client is already
+// configured on the machine rather than needing a backend mail integration.
+function shareMailtoHref(r: SavedRunSummary): string {
+  const subject = `Trial site recommendation — ${r.label || r.indication}`;
+  const lines = [
+    `Indication: ${r.indication}`,
+    r.phase ? `Phase: ${r.phase}` : null,
+    r.region ? `Region: ${r.region}${r.country ? `, ${r.country}` : ""}` : null,
+    `Recommended site: ${r.recommended_site_name ?? "—"}`,
+    r.score !== null ? `Score: ${r.score}/100` : null,
+    r.risk_level ? `Risk level: ${r.risk_level}` : null,
+    `Sites ranked: ${r.ranked_site_count}`,
+    `Saved: ${new Date(r.created_at).toLocaleString()}`,
+  ].filter(Boolean);
+  const body = lines.join("\n");
+  return `mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+}
 
 // Saved runs live behind the clock icon in the top bar rather than a nav
 // page — this modal shows the list, and drills into SavedRunModal for one
@@ -15,6 +37,8 @@ export default function HistoryModal({ onClose }: { onClose: () => void }) {
     setOpenRun,
     saveMessage,
     canSave,
+    openingRunId,
+    openRunError,
   } = usePipeline();
 
   // Loads the list lazily, the first time this modal opens, rather than on
@@ -30,7 +54,7 @@ export default function HistoryModal({ onClose }: { onClose: () => void }) {
     <>
       <div className="run-modal-backdrop" onClick={onClose}>
         <div
-          className="run-modal"
+          className="run-modal run-modal-wide"
           onClick={(e) => e.stopPropagation()}
           role="dialog"
           aria-modal="true"
@@ -47,16 +71,28 @@ export default function HistoryModal({ onClose }: { onClose: () => void }) {
                 onClick={loadSavedRuns}
                 disabled={loadingRuns}
               >
+                <RefreshIcon className="btn-icon" />
                 {loadingRuns ? "Loading..." : "Refresh"}
               </button>
-              <button type="button" className="btn-link" onClick={onClose}>
-                Close
+              <button
+                type="button"
+                className="icon-close-btn"
+                onClick={onClose}
+                title="Close"
+                aria-label="Close"
+              >
+                <CloseIcon className="btn-icon" />
               </button>
             </div>
           </div>
 
           {saveMessage && !canSave && (
-            <p className="save-message">{saveMessage}</p>
+            <p className="save-message error">{saveMessage}</p>
+          )}
+          {openRunError && (
+            <p className="save-message error">
+              Couldn't open that run: {openRunError}
+            </p>
           )}
 
           {savedRuns && savedRuns.length === 0 && (
@@ -67,7 +103,7 @@ export default function HistoryModal({ onClose }: { onClose: () => void }) {
           )}
 
           {savedRuns && savedRuns.length > 0 && (
-            <div className="table-scroll">
+            <div className="table-scroll saved-runs-scroll">
               <table>
                 <thead>
                   <tr>
@@ -78,7 +114,8 @@ export default function HistoryModal({ onClose }: { onClose: () => void }) {
                     <th>Recommended</th>
                     <th>Score</th>
                     <th>Sites</th>
-                    <th />
+                    <th>Action</th>
+                    <th>Share</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -97,11 +134,28 @@ export default function HistoryModal({ onClose }: { onClose: () => void }) {
                       <td>
                         <button
                           type="button"
-                          className="btn-link"
+                          className="btn-link row-icon-link icon-only"
                           onClick={() => openSavedRun(r.id)}
+                          disabled={openingRunId === r.id}
+                          title={openingRunId === r.id ? "Loading..." : "View"}
+                          aria-label="View"
                         >
-                          View
+                          {openingRunId === r.id ? (
+                            <span className="spinner" />
+                          ) : (
+                            <EyeIcon className="btn-icon" />
+                          )}
                         </button>
+                      </td>
+                      <td>
+                        <a
+                          className="btn-link row-icon-link icon-only"
+                          href={shareMailtoHref(r)}
+                          title="Share this run by email"
+                          aria-label="Share by email"
+                        >
+                          <MailIcon className="btn-icon" />
+                        </a>
                       </td>
                     </tr>
                   ))}
@@ -113,7 +167,48 @@ export default function HistoryModal({ onClose }: { onClose: () => void }) {
       </div>
 
       {openRun && (
-        <SavedRunModal run={openRun} onClose={() => setOpenRun(null)} />
+        <ErrorBoundary
+          fallback={(error, reset) => (
+            <div
+              className="run-modal-backdrop"
+              onClick={() => {
+                reset();
+                setOpenRun(null);
+              }}
+            >
+              <div
+                className="run-modal"
+                onClick={(e) => e.stopPropagation()}
+                role="dialog"
+                aria-modal="true"
+              >
+                <div className="run-modal-head">
+                  <div>
+                    <h2>Couldn't show this run</h2>
+                    <p className="muted">
+                      Something went wrong rendering its details.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    className="icon-close-btn"
+                    onClick={() => {
+                      reset();
+                      setOpenRun(null);
+                    }}
+                    title="Close"
+                    aria-label="Close"
+                  >
+                    <CloseIcon className="btn-icon" />
+                  </button>
+                </div>
+                <p className="save-message error">{error.message}</p>
+              </div>
+            </div>
+          )}
+        >
+          <SavedRunModal run={openRun} onClose={() => setOpenRun(null)} />
+        </ErrorBoundary>
       )}
     </>
   );

@@ -9,9 +9,6 @@ import type {
   RiskExplanation,
 } from "./types.js";
 
-// Supports either a plain OpenAI key (OPENAI_API_KEY) or an Azure OpenAI
-// deployment (AZURE_OPENAI_ENDPOINT / AZURE_OPENAI_API_KEY /
-// AZURE_OPENAI_LLM_DEPLOYMENT). Azure takes priority if both are present.
 const MODEL =
   process.env.AZURE_OPENAI_LLM_DEPLOYMENT ||
   process.env.OPENAI_MODEL ||
@@ -23,11 +20,7 @@ const openaiKey = process.env.OPENAI_API_KEY;
 
 let client: OpenAI | null = null;
 if (azureEndpoint && azureKey) {
-  // Azure's newer "v1" endpoint (…/openai/v1) is OpenAI-SDK-compatible: point
-  // baseURL at it and pass the Azure key both as apiKey and as the "api-key"
-  // header Azure expects. `model` in chat.completions.create must be the
-  // *deployment name*, not the underlying model name — that's what
-  // AZURE_OPENAI_LLM_DEPLOYMENT supplies via MODEL above.
+
   client = new OpenAI({
     apiKey: azureKey,
     baseURL: azureEndpoint.endsWith("/") ? azureEndpoint : `${azureEndpoint}/`,
@@ -45,12 +38,6 @@ interface RecommendationArgs {
   riskExplanation: RiskExplanation;
 }
 
-// Stage 8 only. Every number that appears in the prompt was already computed
-// by the pipeline from the Excel data (Stages 2-7) — the model's job here is
-// only to phrase the final recommendation in plain language, not to invent
-// or recompute any figures. That now includes explaining WHY the site holds
-// its risk rating: the deciding records and the matrix derivation are passed
-// in, so the model narrates a real derivation rather than guessing at one.
 export async function generateRecommendation({
   input,
   topRegion,
@@ -117,8 +104,7 @@ interface PredictRegionArgs {
   candidates: RegionCandidate[];
 }
 
-// Strips ```json fences the model sometimes wraps JSON in, so JSON.parse
-// doesn't choke on them even when response_format isn't honored.
+
 function parseJsonResponse<T>(raw: string): T {
   const cleaned = raw
     .trim()
@@ -127,16 +113,6 @@ function parseJsonResponse<T>(raw: string): T {
   return JSON.parse(cleaned) as T;
 }
 
-/**
- * Powers the AI Region Prediction section. The candidate table handed to
- * the model was already computed from the Excel data (prevalence, site
- * counts, suitability, risk density, cost) — the model's job is to weigh
- * those trade-offs against this specific trial's requirements and justify
- * a pick, NOT to invent or recompute figures.
- *
- * Throws on a failed call or unparseable output; the caller
- * (regionPredictor.ts) catches that and falls back to deterministic scoring.
- */
 export async function predictRegionWithLLM({
   input,
   specialty,

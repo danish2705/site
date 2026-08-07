@@ -24,20 +24,27 @@ export default function ScoreBreakdown({
   return (
     <div className="score-breakdown">
       {SCORE_COMPONENTS.map(({ key, label, weight }) => {
-        const value = components[key];
+        // Defensive: a saved run's component scores round-trip through
+        // Postgres NUMERIC columns, which node-postgres can hand back as
+        // strings — Number() here keeps this component correct even if
+        // that conversion is ever missed upstream (fixed at the source in
+        // backend/src/db.ts), rather than crashing on .toFixed().
+        const raw = components[key];
+        const value = raw === null || raw === undefined ? null : Number(raw);
+        const isValid = value !== null && !Number.isNaN(value);
         return (
           <div
             key={key}
             className="score-component"
             title={
-              value === null
-                ? `${label} (${weight}%): no data — excluded, weight redistributed`
-                : `${label} (${weight}%): ${value.toFixed(1)}/100`
+              isValid
+                ? `${label} (${weight}%): ${value.toFixed(1)}/100`
+                : `${label} (${weight}%): no data — excluded, weight redistributed`
             }
           >
             <span className="score-component-label">{label.slice(0, 4)}</span>
             <span className="score-component-track">
-              {value !== null && (
+              {isValid && (
                 <span
                   className="score-component-fill"
                   style={{ width: `${value}%` }}

@@ -18,7 +18,7 @@ export default function WhyThisRating({
   return (
     <div className={`why-risk ${onDark ? "on-dark" : ""}`}>
       <div className="why-risk-head">
-        <span className={`badge ${e.level.toLowerCase()}`}>{e.level}</span>
+        <span className={`badge ${e.level.toLowerCase()}`}>{e.level} Risk</span>
         <span className="why-risk-rule">{e.rule}</span>
       </div>
 

@@ -95,6 +95,13 @@ export interface PipelineState {
   handleSave: () => Promise<boolean>;
   loadSavedRuns: () => Promise<void>;
   openSavedRun: (id: string) => Promise<void>;
+  // Which row's "View" is currently fetching (for a per-row loading state)
+  // and the error from the last attempt, if any. Kept separate from
+  // saveMessage — that one is gated on `!canSave` for the Save-run flow and
+  // was silently swallowing "View" failures whenever a save was still
+  // possible, which made a failed View click look like it did nothing.
+  openingRunId: string | null;
+  openRunError: string | null;
 }
 
 const PipelineContext = createContext<PipelineState | null>(null);
@@ -128,6 +135,8 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
   const [savedRuns, setSavedRuns] = useState<SavedRunSummary[] | null>(null);
   const [openRun, setOpenRun] = useState<SavedRunDetail | null>(null);
   const [loadingRuns, setLoadingRuns] = useState(false);
+  const [openingRunId, setOpeningRunId] = useState<string | null>(null);
+  const [openRunError, setOpenRunError] = useState<string | null>(null);
 
   const canSave = !running && !!ranking && ranking.length > 0;
 
@@ -202,13 +211,35 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
   }
 
   async function openSavedRun(id: string) {
+    setOpeningRunId(id);
+    setOpenRunError(null);
     try {
       const res = await fetch(`/api/runs/${id}`);
       const body = await res.json();
       if (!res.ok) throw new Error(body.error ?? "Could not open run");
-      setOpenRun(body as SavedRunDetail);
+      const detail = body as SavedRunDetail;
+      // A run row can exist with zero saved sites (e.g. an old/partial save)
+      // — that's valid data, not a fetch failure, but it renders as an
+      // almost-empty modal that looks identical to "View did nothing." Flag
+      // it here so it's visible in the console while debugging, rather than
+      // silently opening a modal with nothing in it.
+      if (!detail.sites || detail.sites.length === 0) {
+        console.warn(
+          `[openSavedRun] run ${id} loaded with no ranked sites — the detail modal will look empty.`,
+          detail,
+        );
+      }
+      setOpenRun(detail);
     } catch (err) {
-      setSaveMessage((err as Error).message);
+      // Surfaced via openRunError (not saveMessage) so it's always visible —
+      // saveMessage's display in HistoryModal is gated on `!canSave` and
+      // was hiding this error whenever a save was still possible, which
+      // made the View button look broken rather than reporting why it
+      // failed.
+      console.error(`[openSavedRun] failed to open run ${id}:`, err);
+      setOpenRunError((err as Error).message);
+    } finally {
+      setOpeningRunId(null);
     }
   }
 
@@ -373,6 +404,8 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
     handleSave,
     loadSavedRuns,
     openSavedRun,
+    openingRunId,
+    openRunError,
   };
 
   return (

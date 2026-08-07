@@ -3,6 +3,7 @@ import { usePipeline } from "../context/PipelineContext";
 import WhyThisRating from "./WhyThisRating";
 import WizardNextLink from "./WizardNextLink";
 import SaveRunDialog from "./SaveRunDialog";
+import { SaveIcon } from "./Icons";
 
 // Same header/scroll skeleton as Stage 6/7 (fixed tag + Save action up
 // top, content scrolling inside .card-scroll-body below) but keeps the
@@ -32,7 +33,8 @@ export default function RecommendationPanel() {
             className="save-run-btn"
             onClick={() => setSaveDialogOpen(true)}
           >
-            Save run
+            <SaveIcon className="btn-icon" />
+            Save
           </button>
         )}
       </div>
@@ -72,7 +74,7 @@ export default function RecommendationPanel() {
           </div>
           <div className="item">
             <div className="k">Risk Level</div>
-            <div className="v">{finalResult.riskLevel}</div>
+            <div className="v">{finalResult.riskLevel} Risk</div>
           </div>
         </div>
 

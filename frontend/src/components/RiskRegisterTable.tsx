@@ -45,7 +45,7 @@ export default function RiskRegisterTable({
               </td>
               <td>
                 <span className={`badge ${r.overallRisk.toLowerCase()}`}>
-                  {r.overallRisk}
+                  {r.overallRisk} Risk
                 </span>
               </td>
               <td>{r.status}</td>

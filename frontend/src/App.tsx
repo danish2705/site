@@ -9,6 +9,7 @@ import RiskAssessmentPanel from "./components/RiskAssessmentPanel";
 import SiteRankingPanel from "./components/SiteRankingPanel";
 import RecommendationPanel from "./components/RecommendationPanel";
 import HistoryModal from "./components/HistoryModal";
+import ErrorBoundary from "./components/ErrorBoundary";
 
 function Dashboard() {
   const [historyOpen, setHistoryOpen] = useState(false);
@@ -79,8 +80,20 @@ function Dashboard() {
 
 export default function App() {
   return (
-    <PipelineProvider>
-      <Dashboard />
-    </PipelineProvider>
+    <ErrorBoundary
+      fallback={(error, reset) => (
+        <div className="app-crash-screen">
+          <h2>Something went wrong</h2>
+          <p>{error.message}</p>
+          <button type="button" className="btn-primary" onClick={reset}>
+            Try again
+          </button>
+        </div>
+      )}
+    >
+      <PipelineProvider>
+        <Dashboard />
+      </PipelineProvider>
+    </ErrorBoundary>
   );
 }
