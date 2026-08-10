@@ -2,7 +2,7 @@
   "rewrites": [
     {
       "source": "/api/:path*",
-      "destination": "https://site-huqw.onrender.com/:path*"
+      "destination": "https://site-huqw.onrender.com/api/:path*"
     }
   ]
 }
