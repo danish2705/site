@@ -18,6 +18,7 @@ import type {
   FinalResult,
   StageEventPayload,
 } from "../types";
+import { apiFetch } from "../api";
 
 // Composite key used by the Region / Country Selection input, so each
 // checkbox option value uniquely identifies a (Region, Country) pair.
@@ -162,7 +163,7 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
         durationMonths?: number;
         budgetTier?: string;
       } | null;
-      const res = await fetch("/api/runs", {
+      const res = await apiFetch("/api/runs", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -198,7 +199,7 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
   async function loadSavedRuns() {
     setLoadingRuns(true);
     try {
-      const res = await fetch("/api/runs");
+      const res = await apiFetch("/api/runs");
       const body = await res.json();
       if (!res.ok) throw new Error(body.error ?? `Could not load saved runs`);
       setSavedRuns(body as SavedRunSummary[]);
@@ -214,7 +215,7 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
     setOpeningRunId(id);
     setOpenRunError(null);
     try {
-      const res = await fetch(`/api/runs/${id}`);
+      const res = await apiFetch(`/api/runs/${id}`);
       const body = await res.json();
       if (!res.ok) throw new Error(body.error ?? "Could not open run");
       const detail = body as SavedRunDetail;
@@ -244,7 +245,7 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
   }
 
   useEffect(() => {
-    fetch("/api/meta")
+    apiFetch("/api/meta")
       .then((r) => r.json() as Promise<MetaResponse>)
       .then((data) => {
         // Just populate the dropdown options — do NOT auto-select the first
@@ -296,7 +297,7 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
 
     let succeeded = true;
     try {
-      const res = await fetch("/api/run", {
+      const res = await apiFetch("/api/run", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
