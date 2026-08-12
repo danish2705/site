@@ -107,7 +107,6 @@ function explainRisk(risks: RiskRow[], matrix: RiskMatrix): RiskExplanation {
         low: inCat.filter((r) => r["Overall Risk Rating"] === "Low").length,
       };
     })
-    // Worst-first so the categories driving the rating lead.
     .sort((a, b) => b.high - a.high || b.medium - a.medium);
 
   let rule: string;
@@ -214,7 +213,6 @@ function checkRequirements(
     "%",
   );
 
-  // "Preferred" is a soft requirement — recorded, but it doesn't exclude.
   if (requirement["Accreditation Required"] === "Yes") {
     checks.push({
       criterion: "Accreditation",
@@ -355,7 +353,6 @@ export async function runPipeline(
     })),
   });
 
-  // ---- Stage 3 — Patient Population Analysis ----
   send("stage", { stage: 3, name: STAGE_NAMES[3], status: "in-progress" });
 
   const ASSUMED_CATCHMENT = 5_000_000;
@@ -370,7 +367,6 @@ export async function runPipeline(
     detail: `~${estimatedPatients.toLocaleString()} estimated eligible patients (illustrative)`,
   });
 
-  // ---- Stage 4 — Candidate Site Identification ----
   send("stage", { stage: 4, name: STAGE_NAMES[4], status: "in-progress" });
   const candidateSites = store.sites.filter(
     (s) => s.Region === topRegion.Region && s["Therapeutic Area"] === specialty,
@@ -389,7 +385,6 @@ export async function runPipeline(
     );
   }
 
-  // ---- Stage 5 — Site Evaluation ----
   send("stage", { stage: 5, name: STAGE_NAMES[5], status: "in-progress" });
 
   const evalRows = candidateSites
@@ -404,8 +399,8 @@ export async function runPipeline(
       if (!evalRow || !scored) return null; // no evaluation record on file
       return {
         ...site,
-        siteId: site["Site ID"], // camelCase aliases — the Excel columns have spaces,
-        siteName: site["Site Name"], // which downstream code (and the LLM prompt) reads as .siteId/.siteName
+        siteId: site["Site ID"], 
+        siteName: site["Site Name"], 
         suitabilityScore: evalRow["Suitability Score (0-100)"],
         scored,
         evalRow,
@@ -446,7 +441,6 @@ export async function runPipeline(
     })),
   });
 
-  // ---- Stage 6 — AI Risk Assessment (records already computed by Excel formulas) ----
   send("stage", { stage: 6, name: STAGE_NAMES[6], status: "in-progress" });
   const withRisk: RankedSite[] = evaluated.map((site) => {
     const risks = store.risksBySiteId.get(site["Site ID"]) || [];
@@ -484,7 +478,6 @@ export async function runPipeline(
     })),
   });
 
-  // ---- Stage 7 — Site Ranking ----
   send("stage", { stage: 7, name: STAGE_NAMES[7], status: "in-progress" });
   const ranked = [...withRisk]
     .sort((a, b) => {
@@ -527,7 +520,6 @@ export async function runPipeline(
     );
   }
 
-  // ---- Stage 8 — Final Recommendation (GPT-4.1, or mock if no API key) ----
   const status = llmStatus();
   send("stage", {
     stage: 8,

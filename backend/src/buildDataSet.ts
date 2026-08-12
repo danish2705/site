@@ -57,7 +57,6 @@ const clip = (n: number, lo: number, hi: number, dp = 1) =>
   round(Math.max(lo, Math.min(hi, n)), dp);
 const pick = <T>(arr: T[]): T => arr[Math.floor(rand() * arr.length)];
 
-/** Reads a cell as a number, treating blanks/non-numerics as absent. */
 function n(v: unknown): number | null {
   if (v === null || v === undefined || v === "") return null;
   const x = Number(v);
@@ -163,7 +162,6 @@ const enriched: ExtendedEvaluationRow[] = evals.map((e) => {
   const staffN = staff === null ? null : staff / 10;
   const infraN = infra === null ? null : infra / 100;
 
-  // --- 1) performance KPIs ---
   const screenFailure =
     invN === null
       ? null
@@ -203,7 +201,6 @@ const enriched: ExtendedEvaluationRow[] = evals.map((e) => {
           0,
         );
 
-  // --- 2) data-quality KPIs ---
   const queryRate =
     dqN === null
       ? null
@@ -217,7 +214,6 @@ const enriched: ExtendedEvaluationRow[] = evals.map((e) => {
       ? null
       : clip(18 - 9 * staffN - 7 * (dqN ?? 0.6) + gauss(0, 2.2), 0.5, 40);
 
-  // --- 3) staff / compliance ---
   const staffTurnover =
     staffN === null ? null : clip(30 - 22 * staffN + gauss(0, 3.5), 2, 55);
   const gcpCurrent =
@@ -230,7 +226,6 @@ const enriched: ExtendedEvaluationRow[] = evals.map((e) => {
           0,
         );
 
-  // --- 4) cost / population ---
   const costPerPatient = Math.round(
     ctx.cost * (HOSP_COST_FACTOR[hospType] ?? 1.0) * (1 + gauss(0, 0.11)),
   );
@@ -267,9 +262,6 @@ const enriched: ExtendedEvaluationRow[] = evals.map((e) => {
   };
 });
 
-// ------------------------------------------------- score via scoring.ts
-// Cost is scored relative to the peer set, so this must see all sites at
-// once — same call the pipeline makes.
 const scored = scoreSites(enriched, DECK_WEIGHTS);
 const scoreById = new Map(scored.map((s) => [s.siteId, s]));
 
@@ -298,7 +290,6 @@ const evalOut = enriched.map((row) => {
 
 wb.Sheets["Site_Evaluation"] = xlsx.utils.json_to_sheet(evalOut);
 
-// ------------------------------------------- Trial_Requirements (missing)
 const SPECIALTY: Record<string, string> = {
   "Type 2 Diabetes": "Endocrinology",
   "Obesity (BMI>30)": "Endocrinology",
@@ -408,9 +399,7 @@ let tid = 1;
 for (const [indication, specialty] of Object.entries(SPECIALTY)) {
   const heavy = ["Oncology", "Neurology", "Hematology"].includes(specialty);
   for (let k = 0; k < 16; k++) {
-    // 1 headline + 15 variants per disease = 384 rows, matching the README.
     const phase = k === 0 ? "Phase III" : pick(PHASES);
-    // Phase III / headline protocols are genuinely fussier about site quality.
     const strict = phase === "Phase III" || k === 0;
     requirements.push({
       "Trial ID": `T-${String(tid).padStart(3, "0")}`,

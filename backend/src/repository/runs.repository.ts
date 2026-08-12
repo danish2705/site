@@ -100,8 +100,6 @@ export async function saveRun(input: SaveRunInput): Promise<{ id: string }> {
   }
 }
 
-// ----------------------------------------------------------------- read
-
 export async function listRuns(limit = 50): Promise<SavedRunSummary[]> {
   const db = requirePool();
   const { rows } = await db.query<SavedRunSummary>(
@@ -130,6 +128,5 @@ export async function getRun(id: string) {
 
 export async function deleteRun(id: string): Promise<void> {
   const db = requirePool();
-  // trial_run_sites has ON DELETE CASCADE, so children go with it.
   await db.query(`delete from trial_runs where id = $1`, [id]);
 }

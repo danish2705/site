@@ -134,14 +134,14 @@ function buildCandidates(
         : clamp01((durationMonths * 0.6) / r.monthsToEnroll);
 
     const score =
-      0.22 * nPrevalence[i] + // patient pool
-      0.2 * nSuitability[i] + // site quality
-      0.16 * enrollFeasibility + // can it actually recruit in time
-      0.12 * (1 - nRegulatory[i]) + // faster approval is better
-      0.1 * (1 - nCompeting[i]) + // fewer competing trials is better
-      0.1 * (1 - nRisk[i]) + // fewer high risks per site is better
-      0.1 * nDepth[i] + // more candidate sites = more fallback
-      0.08 * costWeight * (1 - nCost[i]); // cheaper, weighted by budget tier
+      0.22 * nPrevalence[i] +
+      0.2 * nSuitability[i] +
+      0.16 * enrollFeasibility + 
+      0.12 * (1 - nRegulatory[i]) +
+      0.1 * (1 - nCompeting[i]) + 
+      0.1 * (1 - nRisk[i]) + 
+      0.1 * nDepth[i] + 
+      0.08 * costWeight * (1 - nCost[i]); 
 
     r.score = Math.round((score / (1 + 0.08 * costWeight)) * 1000) / 10;
   });

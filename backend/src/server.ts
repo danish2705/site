@@ -6,9 +6,7 @@ const app = createApp();
 
 app.listen(config.port, () => {
   console.log(`Backend listening on http://localhost:${config.port}`);
-
-  // Warm the Excel store at boot so a bad dataset is reported here rather
-  // than on the first request — but don't let it stop the server starting.
+  
   try {
     const store = loadStore();
     console.log(

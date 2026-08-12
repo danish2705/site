@@ -166,8 +166,6 @@ Reply with ONLY a JSON object, no prose or markdown fences, in exactly this shap
     throw new Error("LLM response did not name a region/country");
   }
 
-  // Normalize the optional/free-form fields so the frontend can render them
-  // without null-guarding every one.
   return {
     region: parsed.region,
     country: parsed.country,

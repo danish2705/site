@@ -1,7 +1,5 @@
 import type { EvaluationRow } from "../types.js";
 
-// ---------------------------------------------------------------- weights
-
 export interface ComponentWeights {
   recruitment: number;
   quality: number;
@@ -10,7 +8,6 @@ export interface ComponentWeights {
   cost: number;
 }
 
-/** Slide 7. Mirrors the Scoring_Weights sheet in the workbook. */
 export const DECK_WEIGHTS: ComponentWeights = {
   recruitment: 0.35,
   quality: 0.25,
@@ -19,9 +16,6 @@ export const DECK_WEIGHTS: ComponentWeights = {
   cost: 0.1,
 };
 
-// ------------------------------------------------------------ scale helpers
-
-/** Reads a numeric cell, treating null/undefined/NaN/"" as absent. */
 function num(v: unknown): number | null {
   if (v === null || v === undefined || v === "") return null;
   const n = Number(v);
@@ -30,7 +24,6 @@ function num(v: unknown): number | null {
 
 const clamp100 = (n: number) => Math.max(0, Math.min(100, n));
 
-/** Higher raw value is better, saturating at `best`. */
 function higherBetter(v: number | null, best: number): number | null {
   return v === null ? null : clamp100((v / best) * 100);
 }
@@ -90,16 +83,16 @@ export interface ExtendedEvaluationRow extends EvaluationRow {
 }
 
 export const THRESHOLDS = {
-  enrollmentRateBest: 25, // pts/month scoring 100
-  screenFailure: { floor: 10, ceiling: 70 }, // %
-  timeToFpi: { floor: 14, ceiling: 200 }, // days
-  startUp: { floor: 21, ceiling: 220 }, // days
-  queryRate: { floor: 2, ceiling: 55 }, // per 100 CRF pages
-  queryResolution: { floor: 1, ceiling: 40 }, // days
-  dataEntryLag: { floor: 0.5, ceiling: 35 }, // days
-  protocolDeviation: { floor: 0.3, ceiling: 20 }, // per 100 visits
-  dropout: { floor: 2, ceiling: 30 }, // %
-  staffTurnover: { floor: 2, ceiling: 50 }, // %
+  enrollmentRateBest: 25, 
+  screenFailure: { floor: 10, ceiling: 70 }, 
+  timeToFpi: { floor: 14, ceiling: 200 }, 
+  startUp: { floor: 21, ceiling: 220 }, 
+  queryRate: { floor: 2, ceiling: 55 }, 
+  queryResolution: { floor: 1, ceiling: 40 }, 
+  dataEntryLag: { floor: 0.5, ceiling: 35 }, 
+  protocolDeviation: { floor: 0.3, ceiling: 20 }, 
+  dropout: { floor: 2, ceiling: 30 }, 
+  staffTurnover: { floor: 2, ceiling: 50 }, 
 };
 
 function componentScores(
