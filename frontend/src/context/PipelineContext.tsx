@@ -66,11 +66,6 @@ export interface PipelineState {
   handleSave: () => Promise<boolean>;
   loadSavedRuns: () => Promise<void>;
   openSavedRun: (id: string) => Promise<void>;
-  // Which row's "View" is currently fetching (for a per-row loading state)
-  // and the error from the last attempt, if any. Kept separate from
-  // saveMessage — that one is gated on `!canSave` for the Save-run flow and
-  // was silently swallowing "View" failures whenever a save was still
-  // possible, which made a failed View click look like it did nothing.
   openingRunId: string | null;
   openRunError: string | null;
 }
@@ -79,8 +74,6 @@ export const PipelineContext = createContext<PipelineState | null>(null);
 
 export function PipelineProvider({ children }: { children: ReactNode }) {
   const [meta, setMeta] = useState<MetaResponse | null>(null);
-  // Every field starts unset — the user must explicitly choose each one
-  // rather than the form arriving pre-filled with a default value.
   const [form, setForm] = useState<TrialForm>({
     indication: "",
     phase: "",
@@ -123,10 +116,6 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
     setSaving(true);
     setSaveMessage(null);
     try {
-      // Stage 1's data carries the values the pipeline actually resolved to
-      // (form value if the user picked one, else the indication's own
-      // Trial_Requirements default) — prefer that over the raw form so a
-      // field the user left blank doesn't get saved as blank.
       const stage1Data = stages[1]?.data as {
         phase?: string;
         targetSampleSize?: number;
@@ -149,7 +138,6 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
       });
       setSaveLabel("");
       setSaveMessage("Saved.");
-      // Refresh the list so the new run is visible without a reload.
       await loadSavedRuns();
       return true;
     } catch (err) {
@@ -177,11 +165,6 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
     setOpenRunError(null);
     try {
       const detail = await getRun(id);
-      // A run row can exist with zero saved sites (e.g. an old/partial save)
-      // — that's valid data, not a fetch failure, but it renders as an
-      // almost-empty modal that looks identical to "View did nothing." Flag
-      // it here so it's visible in the console while debugging, rather than
-      // silently opening a modal with nothing in it.
       if (!detail.sites || detail.sites.length === 0) {
         console.warn(
           `[openSavedRun] run ${id} loaded with no ranked sites — the detail modal will look empty.`,
@@ -190,11 +173,6 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
       }
       setOpenRun(detail);
     } catch (err) {
-      // Surfaced via openRunError (not saveMessage) so it's always visible —
-      // saveMessage's display in HistoryModal is gated on `!canSave` and
-      // was hiding this error whenever a save was still possible, which
-      // made the View button look broken rather than reporting why it
-      // failed.
       console.error(`[openSavedRun] failed to open run ${id}:`, err);
       setOpenRunError((err as Error).message);
     } finally {
@@ -205,8 +183,6 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     fetchMeta()
       .then((data) => {
-        // Just populate the dropdown options — do NOT auto-select the first
-        // indication. The user has to make an explicit choice.
         setMeta(data);
       })
       .catch((err: Error) =>
@@ -219,11 +195,6 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
   ).length;
   const progressPct = Math.round((completedCount / STAGE_LIST.length) * 100);
   const pipelineDone = completedCount === STAGE_LIST.length;
-
-  // Region/Country options depend on the selected indication (Region_Data
-  // has different rows per indication), so filter meta's full option list
-  // down to the ones relevant right now. Memoized so the array reference
-  // only changes when meta or the indication actually changes.
   const regionOptions = useMemo(
     () =>
       (meta?.regionOptions ?? []).filter(
@@ -234,9 +205,6 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
 
   async function handleSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    // Indication is the one field the backend can't default on its own —
-    // everything else (phase, sample size, duration, budget tier) falls
-    // back to that indication's Trial_Requirements row when left blank.
     if (!form.indication) {
       setError("Please select an indication before running the analysis.");
       return;
@@ -248,8 +216,6 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
     setLlmInfo(null);
     setError(null);
     setRunning(true);
-    // Show the AI-prediction slot again while the new run streams in — the
-    // panel switches to Risk Assessment on its own once Stage 6 lands.
     setWizardStep("predict");
 
     let succeeded = true;
@@ -264,8 +230,7 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
         if (done) break;
         buffer += decoder.decode(value, { stream: true });
         const chunks = buffer.split("\n\n");
-        buffer = chunks.pop() ?? ""; // keep the last, possibly incomplete chunk for next read
-
+        buffer = chunks.pop() ?? ""; 
         for (const chunk of chunks) {
           let eventName = "message";
           let dataStr = "";
@@ -290,9 +255,6 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
             if (payload.stage === 8 && payload.llm) setLlmInfo(payload.llm);
             if (payload.stage === 6 && payload.status === "complete") {
               setRiskAssessment(payload.data as RiskAssessmentRow[]);
-              // The one auto-advance: the moment Risk Assessment lands, swap
-              // the panel over from AI Prediction without waiting for the
-              // rest of the pipeline. From here on the user clicks Next.
               setWizardStep("risk");
             }
             if (payload.stage === 7 && payload.status === "complete") {

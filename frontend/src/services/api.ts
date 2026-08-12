@@ -3,15 +3,10 @@ const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL ?? "").replace(
   "",
 );
 
-/** Absolute URL for a backend path. `apiUrl("/api/meta")`. */
 export function apiUrl(path: string): string {
   return `${API_BASE_URL}${path}`;
 }
 
-/**
- * fetch with the backend origin prefixed. Returns the raw Response — used
- * directly by the SSE run stream, which reads `res.body` rather than JSON.
- */
 export function apiFetch(
   path: string,
   options?: RequestInit,
@@ -19,11 +14,6 @@ export function apiFetch(
   return fetch(apiUrl(path), options);
 }
 
-/**
- * JSON request that throws on a non-2xx. The backend reports failures as
- * `{ error: string }`, so surface that message when present and fall back
- * to a caller-supplied one otherwise.
- */
 export async function apiJson<T>(
   path: string,
   options?: RequestInit & { fallbackError?: string },
@@ -46,7 +36,6 @@ export async function apiJson<T>(
   return body as T;
 }
 
-/** POST helper — the JSON body and content-type in one place. */
 export function postJson<T>(
   path: string,
   payload: unknown,

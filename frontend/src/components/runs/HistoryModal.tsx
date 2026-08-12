@@ -5,9 +5,6 @@ import SavedRunModal from "./SavedRunModal";
 import ErrorBoundary from "../ui/ErrorBoundary";
 import { CloseIcon, EyeIcon, MailIcon, RefreshIcon } from "../ui/Icons";
 
-// Builds a mailto: link pre-filled with a plain-text summary of the run, so
-// "Share" works immediately through whatever mail client is already
-// configured on the machine rather than needing a backend mail integration.
 function shareMailtoHref(r: SavedRunSummary): string {
   const subject = `Trial site recommendation — ${r.label || r.indication}`;
   const lines = [
@@ -24,9 +21,6 @@ function shareMailtoHref(r: SavedRunSummary): string {
   return `mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
 }
 
-// Saved runs live behind the clock icon in the top bar rather than a nav
-// page — this modal shows the list, and drills into SavedRunModal for one
-// run's full detail.
 export default function HistoryModal({ onClose }: { onClose: () => void }) {
   const {
     savedRuns,
@@ -41,13 +35,10 @@ export default function HistoryModal({ onClose }: { onClose: () => void }) {
     openRunError,
   } = usePipeline();
 
-  // Loads the list lazily, the first time this modal opens, rather than on
-  // every app load.
   useEffect(() => {
     if (savedRuns === null && !loadingRuns) {
       loadSavedRuns();
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   return (

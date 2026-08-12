@@ -1,7 +1,5 @@
 import type { RiskRecord } from "../../types";
 
-// Renders individual Risk_Register entries as records (one row per risk)
-// rather than folding them into a single aggregate count/badge.
 export default function RiskRegisterTable({
   records,
 }: {

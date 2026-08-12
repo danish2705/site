@@ -1,7 +1,3 @@
-// Small inline icon set shared across the app's buttons. Plain SVGs (no
-// icon-library dependency) sized to sit inline with button text via the
-// `.btn-icon` class in App.css — currentColor so each one picks up
-// whatever color the surrounding button/link already uses.
 type IconProps = { className?: string };
 
 export function CloseIcon({ className }: IconProps) {

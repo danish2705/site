@@ -15,10 +15,6 @@ function stepLabel(step: WizardStep): string {
   return WIZARD_STEPS.find((s) => s.key === step)?.label ?? step;
 }
 
-// Rendered inside each wizard-step card's own footer, below its
-// .card-scroll-body — so Back/Next live inside the card border rather than
-// floating below it. Back always goes to an already-visited step, so it
-// doesn't need the wizardStepAvailable gate that Next does.
 export default function WizardNextLink() {
   const { wizardStep, setWizardStep, wizardStepAvailable } = usePipeline();
   const prev = previousStep(wizardStep);

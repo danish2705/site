@@ -1,27 +1,12 @@
 export interface TrialForm {
-  // "" until the user explicitly picks one — no field starts pre-selected.
   indication: string;
-  // "" until the user explicitly picks one. Left blank, the backend falls
-  // back to the selected indication's own Trial_Requirements phase.
   phase: string;
-  // "" until the user types a value (rather than a pre-filled default).
-  // Left blank, the backend falls back to the indication's target sample size.
   sampleSize: number | "";
-  // "" until the user types a value. Left blank, the backend falls back to
-  // the indication's own Trial_Requirements duration.
   durationMonths: number | "";
-  // "" until the user explicitly picks one. Left blank, the backend falls
-  // back to the indication's own Trial_Requirements budget tier.
   budgetTier: string;
-  // Region / Country Selection input (multi-select). Each entry is a
-  // composite "Region||Country" key matching one of meta.regionOptions
-  // (filtered to the current indication). Empty = let the pipeline
-  // auto-pick the best-fit region for the indication.
   regions: string[];
 }
 
-// One selectable (Indication, Region, Country) combination for the
-// Region / Country Selection input.
 export interface RegionOption {
   indication: string;
   region: string;
@@ -35,9 +20,6 @@ export interface MetaResponse {
   specialties: Record<string, string>;
 }
 
-// ---- AI Region Prediction (POST /api/predict-region) ----
-// One scored region option shown in the prediction section's candidate
-// table. Mirrors the backend's RegionCandidate.
 export interface RegionCandidate {
   region: string;
   country: string;
@@ -82,7 +64,6 @@ export interface RegionPredictionResponse {
   excludedNoSites: number;
 }
 
-// A risk record that drove a site's rating, with its matrix derivation.
 export interface RiskDriver {
   riskId: string;
   category: string;
@@ -95,7 +76,6 @@ export interface RiskDriver {
   derivation: string;
 }
 
-// Explains WHY a site is Low/Medium/High rather than just asserting it.
 export interface RiskExplanation {
   level: "Low" | "Medium" | "High";
   rule: string;
@@ -125,8 +105,6 @@ export interface StageState {
 
 export type StagesMap = Record<number, StageState>;
 
-// A single Risk_Register record, rendered as one row in a risk register
-// table rather than folded into an aggregate count/badge.
 export interface RiskRecord {
   riskId: string;
   siteId: string;
@@ -142,8 +120,6 @@ export interface RiskRecord {
   riskScore: number;
 }
 
-// Stage 6 ("AI Risk Assessment") output: one row per candidate site
-// (before ranking narrows to the top 10), each with its full risk register.
 export interface RiskAssessmentRow {
   siteId: string;
   siteName: string;
@@ -154,9 +130,6 @@ export interface RiskAssessmentRow {
   riskRecords: RiskRecord[];
 }
 
-// Per-component breakdown of a site's weighted score. null means the site
-// had no data for that component, so it was dropped and the remaining
-// weights were renormalised — NOT that it scored zero.
 export interface ComponentScores {
   recruitment: number | null;
   quality: number | null;
@@ -165,7 +138,6 @@ export interface ComponentScores {
   cost: number | null;
 }
 
-// One site checked against a protocol threshold from Trial_Requirements.
 export interface RequirementCheck {
   criterion: string;
   required: string;
@@ -178,15 +150,12 @@ export interface RankingRow {
   siteId: string;
   siteName: string;
   region: string;
-  // Deck-weighted score (Recruitment 35 / Quality 25 / Retention 20 /
-  // Diversity 10 / Cost 10) — what the ranking is sorted on.
   score: number;
   components: ComponentScores;
   confidence: "High" | "Medium" | "Low";
   caveats: string[];
   meetsRequirements: boolean;
   failedCriteria: string[];
-  // Legacy Excel formula score, kept alongside for comparison.
   suitabilityScore: number | null;
   riskLevel: "Low" | "Medium" | "High";
   highRiskCount: number;
@@ -199,7 +168,6 @@ export interface FinalResult {
   recommendedSite: string;
   siteId: string;
   score: number;
-  // Plain-language derivation of the score, mirroring riskExplanation.
   scoreExplanation: string;
   components: ComponentScores;
   confidence: "High" | "Medium" | "Low";
@@ -212,7 +180,6 @@ export interface FinalResult {
   text: string;
 }
 
-// Payload shape of each "stage" SSE event sent by the backend
 export interface StageEventPayload {
   stage: number;
   name: string;
@@ -222,8 +189,6 @@ export interface StageEventPayload {
   llm?: string;
 }
 
-// ---- Saved runs (POST/GET /api/runs) ----
-// Row shape of the trial_runs_summary view.
 export interface SavedRunSummary {
   id: string;
   created_at: string;
@@ -240,9 +205,6 @@ export interface SavedRunSummary {
   ranked_site_count: number;
 }
 
-// A trial_run_sites row. Component scores are nullable on purpose: null
-// means the component had no data and was excluded from the weighting,
-// which is not the same as scoring zero.
 export interface SavedRunSite {
   rank: number;
   site_id: string;

@@ -1,10 +1,6 @@
 import { useState } from "react";
 import type { RiskExplanation } from "../../types";
 
-// Explains WHY the recommended site holds its Low/Medium/High rating.
-// Stage 8 only: the Stage 6 accordion shows each site's raw risk register,
-// where the Likelihood / Impact / Overall columns already speak for
-// themselves, so repeating the derivation above that table is just noise.
 export default function WhyThisRating({
   explanation,
   onDark = false,
@@ -70,8 +66,6 @@ export default function WhyThisRating({
                     </span>
                   </div>
                   <div className="driver-desc">{d.description}</div>
-                  {/* The actual derivation: this is what turns "High" from
-                      an assertion into something the reader can check. */}
                   <div className="driver-derivation">{d.derivation}</div>
                 </li>
               ))}

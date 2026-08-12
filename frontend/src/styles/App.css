@@ -23,8 +23,6 @@
   box-sizing: border-box;
 }
 
-/* Fallback for the top-level ErrorBoundary — a render crash anywhere in
-   the app lands here instead of a blank white page. */
 .app-crash-screen {
   min-height: 100vh;
   display: flex;
@@ -63,12 +61,6 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
-/* ==========================================================================
-   App shell — a plain top bar (brand + title + a couple of icon actions,
-   no page links) above a fixed two-column body: a static Analysis
-   Parameters form on the left that never changes, and a main panel on the
-   right whose content swaps between a small results wizard (AI Prediction
-   → Risk Assessment → Site Ranking → Recommendation). ========================================================================== */
 .app-shell {
   display: flex;
   flex-direction: column;
@@ -77,7 +69,6 @@ body {
   overflow: hidden;
 }
 
-/* ---- Top bar ---- */
 .top-bar {
   position: sticky;
   top: 0;
@@ -177,7 +168,6 @@ body {
   background: var(--low);
   border: 1.5px solid #fff;
 }
-/* Saved runs, labeled in text rather than a bare clock icon. */
 .history-btn {
   position: relative;
   height: 34px;
@@ -274,7 +264,6 @@ body {
   flex-shrink: 0;
 }
 
-/* ---- Two-column dashboard body ---- */
 .dashboard-body {
   flex: 1;
   display: flex;
@@ -301,16 +290,9 @@ body {
   display: flex;
   flex-direction: column;
 }
-/* Higher specificity than the generic .card rule (two classes vs one) so
-   this reliably wins regardless of source order, letting the sidebar use
-   tighter padding than other cards. */
 .card.sidebar-form {
   padding: 16px 20px;
 }
-/* Same fixed-header / scrollable-body / fixed-footer skeleton as the
-   result cards on the right: the "Analysis Parameters" title stays put at
-   top, "Run Analysis" stays put at bottom, and only the fields between
-   them scroll if they don't all fit. */
 .sidebar-form-title {
   display: flex;
   align-items: center;
@@ -422,7 +404,6 @@ body {
   font-size: 10.5px;
 }
 
-/* ---- Region / Country multi-select: chips + search + inline checklist ---- */
 .region-select {
   display: flex;
   flex-direction: column;
@@ -503,12 +484,6 @@ body {
   flex-shrink: 0;
 }
 
-/* ---- Main panel + results wizard ----
-   The main panel is a flex column filling the dashboard body's height; the
-   Pipeline Progress card is a fixed-height child, while the wizard panel
-   below it flexes to fill the rest and scrolls internally — the "bottom
-   right card" gets its own inline scrollbar instead of the whole page
-   scrolling. */
 .main-panel {
   flex: 1;
   min-width: 0;
@@ -530,14 +505,6 @@ body {
   display: flex;
   flex-direction: column;
 }
-/* The active step's result card is always the wizard panel's first child
-   (a .card, .predict-card, or — for the Recommendation step — a plain
-   wrapper div). It fills the panel's full height exactly (grow AND shrink)
-   and clips its own overflow, so the card's own header/tag never scrolls
-   out of view — only the card's inner .card-scroll-body does. This also
-   keeps its bottom edge lined up with the Analysis Parameters card on the
-   left, instead of stopping short whenever its own content is shorter than
-   the available height. */
 .wizard-panel > *:first-child {
   flex: 1 1 auto;
   min-height: 0;
@@ -548,10 +515,6 @@ body {
 .wizard-panel > *:not(:first-child) {
   flex-shrink: 0;
 }
-/* The genuinely variable-height part of a wizard step's card (a table, an
-   accordion, the scored-candidates list) — sized to fill whatever room is
-   left after the card's own fixed header, and scrolling internally rather
-   than letting the whole card (or the page) scroll. */
 .card-scroll-body {
   flex: 1;
   min-height: 0;
@@ -559,10 +522,6 @@ body {
   margin-right: -10px;
   padding-right: 10px;
 }
-/* Sits inside the active step's card, below .card-scroll-body — Back (if
-   any) on the left, Next (if available) on the right. flex-shrink: 0 (the
-   default for an auto-content flex item) keeps the row pinned below the
-   scrollable content instead of floating outside the card. */
 .wizard-next-row {
   display: flex;
   align-items: center;
@@ -571,9 +530,6 @@ body {
   padding-top: 10px;
   border-top: 1px solid var(--line);
 }
-/* auto margin, not justify-content: space-between, so Next still lands on
-   the far right even on steps with no Back button (first step) or no Next
-   button (last step) rendered alongside it. */
 .wizard-next-row .wizard-next-btn {
   margin-left: auto;
 }
@@ -702,7 +658,6 @@ body {
   margin-top: 10px;
 }
 
-/* Generic filled primary button. */
 .btn-primary {
   display: inline-flex;
   align-items: center;
@@ -734,10 +689,6 @@ body {
   font-size: 12.5px;
   padding: 8px 6px;
 }
-
-/* Pipeline Progress card header: the "Pipeline Progress" tag on the left,
-   a compact no-background status readout (dot + stage + %) on the right —
-   same row, instead of a separate full-width banner under the nodes. */
 .pipeline-card-head {
   display: flex;
   align-items: center;
@@ -745,20 +696,12 @@ body {
   gap: 12px;
   flex-wrap: wrap;
 }
-/* Stage 8 Output's header (tag + Save run) is the only .pipeline-card-head
-   that sits directly above a .card-scroll-body — the Pipeline Progress
-   card's header sits above the stepper nodes instead — so this only ever
-   adds breathing room between that header and the result cards below it. */
 .pipeline-card-head + .card-scroll-body {
   margin-top: 16px;
 }
 .pipeline-card-head .tag {
   margin-bottom: 0;
 }
-
-/* ---- Stepper — horizontal numbered-node pipeline progress ----
-   Circles connected by a line, matching a real dashboard's step
-   indicator. */
 .stepper {
   margin-top: 6px;
 }
@@ -906,7 +849,6 @@ body {
   }
 }
 
-/* ---- Ranking table / Risk register table ---- */
 .table-scroll {
   overflow-x: auto;
 }
@@ -967,8 +909,6 @@ tbody tr:hover {
   color: var(--high);
   background: var(--high-bg);
 }
-
-/* ---- Stage 6 — AI Risk Assessment accordion ---- */
 .risk-accordion {
   display: flex;
   flex-direction: column;
@@ -979,8 +919,6 @@ tbody tr:hover {
 .risk-accordion-item + .risk-accordion-item {
   border-top: 1px solid var(--line);
 }
-/* A fixed grid template — not flexbox — so every row's columns land at the
-   exact same x-position regardless of content width. */
 .risk-accordion-header {
   width: 100%;
   display: grid;
@@ -1054,19 +992,11 @@ tbody tr:hover {
     padding: 10px 12px;
   }
 }
-
-/* ---- Final recommendation ---- Stage 8 Output keeps the same
-   fixed-header + scrollable-body skeleton as Stage 6/7, but stays a
-   gradient "hero" card rather than a plain white one, since it's the
-   pipeline's final answer. */
 .recommendation-card {
   background: linear-gradient(135deg, var(--accent), #8b5bff);
   color: #fff;
   border: none;
 }
-/* A clearly visible solid button (not just a text link) in the corner of
-   the gradient header — light-on-color so it reads as a real button
-   against the blue/purple background. */
 .save-run-btn {
   height: 20px;
   display: inline-flex;
@@ -1116,11 +1046,6 @@ tbody tr:hover {
   opacity: 0.96;
   line-height: 1.55;
 }
-
-/* ---- AI Region Prediction section ----
-   The hint sentence gets its own full-width row below the title/actions
-   row, rather than sharing a narrower column next to the actions — that's
-   what lets it sit on a single line instead of wrapping to two or three. */
 .predict-head {
   display: flex;
   flex-direction: column;
@@ -1427,7 +1352,6 @@ tr.row-pick td {
   }
 }
 
-/* ---- "Why this rating" risk explanation ---- */
 .why-risk {
   margin: 12px 0 4px;
   padding: 14px 16px;
@@ -1589,8 +1513,6 @@ tr.row-pick td {
 .conf-reason strong {
   color: var(--ink);
 }
-
-/* ---- Score breakdown (Stage 7 ranking table) ---- */
 .score-breakdown {
   display: flex;
   flex-direction: column;
@@ -1631,7 +1553,6 @@ tr.row-pick td {
   white-space: nowrap;
 }
 
-/* ---- Saved runs ---- */
 .save-modal-actions {
   display: flex;
   justify-content: flex-end;
@@ -1643,10 +1564,6 @@ tr.row-pick td {
   font-size: 12px;
   color: var(--sub);
 }
-/* A save-message that's actually reporting a failure (couldn't save,
-   couldn't open a saved run, ...) — the plain muted-grey style above reads
-   as routine status text and is easy to miss entirely; this makes it
-   impossible to miss instead. */
 .save-message.error {
   color: var(--high);
   background: var(--high-bg);
@@ -1680,16 +1597,11 @@ tr.row-pick td {
   cursor: default;
   text-decoration: none;
 }
-/* A btn-link that pairs an icon with its text (row-level View/Email
-   actions) — inline-flex so the two line up on the same baseline. */
 .row-icon-link {
   display: inline-flex;
   align-items: center;
   gap: 4px;
 }
-/* Icon-only variant of row-icon-link — no visible label, so give it a
-   slightly larger hit target and drop the underline (there's no text to
-   underline) while keeping a title/aria-label for accessibility. */
 .row-icon-link.icon-only {
   padding: 4px;
   text-decoration: none;
@@ -1698,16 +1610,11 @@ tr.row-pick td {
   width: 16px;
   height: 16px;
 }
-/* Icon sized to sit inline inside a button/link's text (btn-primary,
-   btn-secondary, btn-link, save-run-btn, the row action links, ...). */
 .btn-icon {
   width: 14px;
   height: 14px;
   flex-shrink: 0;
 }
-/* A plain, icon-only close button — used wherever a text "Close" link is
-   replaced with a cross icon. Round hit target, no border/background until
-   hovered, so it reads as a dismiss control rather than a text action. */
 .icon-close-btn {
   display: inline-flex;
   align-items: center;
@@ -1748,7 +1655,6 @@ tr.row-pick td {
   cursor: default;
 }
 
-/* Detail modal. */
 .run-modal-backdrop {
   position: fixed;
   inset: 0;
@@ -1768,18 +1674,10 @@ tr.row-pick td {
   overflow-y: auto;
   box-shadow: 0 20px 52px rgba(0, 0, 0, 0.3);
 }
-/* The saved-runs list has more columns (including Share) than the generic
-   run-modal width comfortably fits — widen just this one so the whole row,
-   View button included, is visible without a horizontal scrollbar on a
-   normal desktop viewport. Taller too, so more rows are visible before the
-   list itself needs to scroll. */
 .run-modal.run-modal-wide {
   width: min(1360px, 96vw);
   max-height: 92vh;
 }
-/* Caps the saved-runs table at a fixed height with its own scrollbar, once
-   there are enough rows to need one — the modal's title/Refresh/Close stay
-   fixed above it instead of scrolling out of view along with the table. */
 .saved-runs-scroll {
   max-height: 60vh;
   overflow-y: auto;

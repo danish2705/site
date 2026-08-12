@@ -34,8 +34,6 @@ export default function SiteRankingPanel() {
                   <td>{r.region}</td>
                   <td>
                     {r.score}/100
-                    {/* A score built on partial data shouldn't look identical
-                        to one built on a full record. */}
                     {r.confidence !== "High" && (
                       <div
                         className="score-confidence"

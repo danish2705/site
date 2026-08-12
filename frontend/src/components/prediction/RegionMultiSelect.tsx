@@ -2,10 +2,6 @@ import { useMemo, useState } from "react";
 import type { RegionOption } from "../../types";
 import { regionKey } from "../../utils/region";
 
-// Inline, always-visible multi-select: selected (Region, Country) pairs
-// show as removable chips, with a search box and checklist below to add
-// more — matching a real product's filter panel rather than a native
-// <select multiple> or a popover dropdown.
 export default function RegionMultiSelect({
   options,
   selected,

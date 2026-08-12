@@ -1,9 +1,5 @@
 import type { ComponentScores } from "../../types";
 
-// Compact per-component bar for a site's weighted score. A component with
-// no data renders as a gap with a "no data" title rather than a zero-width
-// bar, since those mean very different things: the backend drops an
-// unmeasured component and renormalises the remaining weights.
 const SCORE_COMPONENTS: {
   key: keyof ComponentScores;
   label: string;
@@ -24,11 +20,6 @@ export default function ScoreBreakdown({
   return (
     <div className="score-breakdown">
       {SCORE_COMPONENTS.map(({ key, label, weight }) => {
-        // Defensive: a saved run's component scores round-trip through
-        // Postgres NUMERIC columns, which node-postgres can hand back as
-        // strings — Number() here keeps this component correct even if
-        // that conversion is ever missed upstream (fixed at the source in
-        // backend/src/db.ts), rather than crashing on .toFixed().
         const raw = components[key];
         const value = raw === null || raw === undefined ? null : Number(raw);
         const isValid = value !== null && !Number.isNaN(value);

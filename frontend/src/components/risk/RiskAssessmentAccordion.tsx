@@ -2,10 +2,6 @@ import { useEffect, useMemo, useState } from "react";
 import type { RiskAssessmentRow } from "../../types";
 import RiskRegisterTable from "./RiskRegisterTable";
 
-// The site-level Overall badge isn't an average of its risk register — one
-// High record is enough to mark the whole site High, same for Medium. This
-// spells that rule out so "1 high · 2 medium ⇒ High overall" reads as a
-// documented policy instead of a confusing surprise.
 function overallRiskTooltip(r: RiskAssessmentRow): string {
   const total = r.riskRecords.length;
   if (r.overallRisk === "High") {
@@ -28,8 +24,6 @@ function overallRiskTooltip(r: RiskAssessmentRow): string {
   );
 }
 
-// Stage 6 output: an accordion of every candidate site (before ranking
-// narrows to the top 10), each expandable to its full risk register.
 export default function RiskAssessmentAccordion({
   rows,
   recommendedSiteId,
@@ -41,16 +35,10 @@ export default function RiskAssessmentAccordion({
     recommendedSiteId ?? null,
   );
 
-  // The recommended site is only known once Stage 8 finishes, well after
-  // this accordion first mounts from Stage 6's output — auto-expand it the
-  // moment it becomes available instead of only honoring it at mount time.
   useEffect(() => {
     if (recommendedSiteId) setExpanded(recommendedSiteId);
   }, [recommendedSiteId]);
 
-  // Whichever site is expanded floats to the top of the list, so opening a
-  // row further down doesn't leave its risk register buried mid-scroll —
-  // collapsing it (or nothing being open) falls back to the original order.
   const orderedRows = useMemo(() => {
     if (!expanded) return rows;
     const idx = rows.findIndex((r) => r.siteId === expanded);

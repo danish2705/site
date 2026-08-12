@@ -1,10 +1,6 @@
 import { useState, type FormEvent } from "react";
 import { CloseIcon } from "../ui/Icons";
 
-// Small dialog opened from the "Save" button in the Stage 8 Output card
-// header — asks for a label, then saves. Kept separate from
-// SavedRunModal.tsx, which is the read-only detail view for a run that's
-// already been saved.
 export default function SaveRunDialog({
   label,
   onLabelChange,
@@ -20,9 +16,6 @@ export default function SaveRunDialog({
   onSave: () => Promise<boolean>;
   onClose: () => void;
 }) {
-  // A run must be saved with a name so it's findable again in Saved Runs —
-  // caught here (before the request even fires) rather than letting the
-  // backend silently accept a blank label.
   const [validationError, setValidationError] = useState<string | null>(null);
   const trimmed = label.trim();
 

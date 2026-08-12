@@ -1,8 +1,5 @@
 import { usePipeline } from "../../hooks/usePipeline";
 
-// Top bar: brand + app title on the left, a few icon actions and a user
-// chip on the right. No page links here on purpose — the app is a single
-// dashboard now, not a set of routed pages.
 export default function TopBar({
   onOpenHistory,
 }: {

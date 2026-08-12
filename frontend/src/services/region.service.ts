@@ -6,7 +6,6 @@ export type RegionPredictionInput = Pick<
   "indication" | "phase" | "sampleSize" | "durationMonths" | "budgetTier"
 >;
 
-/** Standalone AI region suggestion — independent of the 8-stage pipeline. */
 export function predictRegion(
   input: RegionPredictionInput,
 ): Promise<RegionPredictionResponse> {

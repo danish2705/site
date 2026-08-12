@@ -5,9 +5,6 @@ import WizardNextLink from "../ui/WizardNextLink";
 import SaveRunDialog from "../runs/SaveRunDialog";
 import { SaveIcon } from "../ui/Icons";
 
-// Same header/scroll skeleton as Stage 6/7 (fixed tag + Save action up
-// top, content scrolling inside .card-scroll-body below) but keeps the
-// gradient "hero" treatment that marks this as the final result.
 export default function RecommendationPanel() {
   const {
     finalResult,
@@ -59,9 +56,6 @@ export default function RecommendationPanel() {
           </div>
           <div className="item">
             <div className="k">Site Score</div>
-            {/* Hovering gives the full component derivation, the same way
-                the risk badge explains its level rather than just
-                asserting it. */}
             <div className="v" title={finalResult.scoreExplanation}>
               {finalResult.score}/100
               {finalResult.confidence !== "High" && (

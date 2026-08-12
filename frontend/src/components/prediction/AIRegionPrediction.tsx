@@ -3,11 +3,6 @@ import type { TrialForm, RegionPredictionResponse } from "../../types";
 import WizardNextLink from "../ui/WizardNextLink";
 import { predictRegion } from "../../services/region.service";
 
-// Standalone "AI Region Prediction" section. Deliberately independent of
-// the 8-stage pipeline: the pipeline only *consumes* a region (either one
-// the user picked, or the best-fit fallback), whereas this asks the model
-// to propose one from the trial requirements alone — and lets the user
-// push that answer straight into the Region / Country Selection input.
 export default function AIRegionPrediction({
   form,
   disabled,
@@ -23,9 +18,6 @@ export default function AIRegionPrediction({
   const [showAll, setShowAll] = useState(false);
   const [applied, setApplied] = useState<string | null>(null);
 
-  // A prediction is only meaningful for the indication it was made for, so
-  // clear it the moment the user switches indication rather than leaving a
-  // stale recommendation on screen next to the new selection.
   useEffect(() => {
     setResult(null);
     setError(null);

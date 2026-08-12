@@ -4,9 +4,6 @@ import RegionMultiSelect from "../prediction/RegionMultiSelect";
 const PHASES = ["Phase I", "Phase II", "Phase III", "Phase IV"];
 const BUDGETS = ["Low", "Mid", "High"];
 
-// The Analysis Parameters form. Stays fixed on the left through every step
-// of the results wizard on the right — it never gets replaced or hidden,
-// only re-submitted to kick off another run.
 export default function Sidebar() {
   const { meta, form, setForm, regionOptions, running, handleSubmit } =
     usePipeline();
@@ -38,8 +35,6 @@ export default function Sidebar() {
             <select
               value={form.indication}
               onChange={(e) =>
-                // Changing indication invalidates any previously selected
-                // region/country options, since they're indication-specific.
                 setForm({ ...form, indication: e.target.value, regions: [] })
               }
               disabled={!meta}

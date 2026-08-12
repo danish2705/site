@@ -2,8 +2,6 @@ import type { SavedRunDetail } from "../../types";
 import ScoreBreakdown from "../ranking/ScoreBreakdown";
 import { CloseIcon } from "../ui/Icons";
 
-// Detail modal for a saved run. Backdrop closes on click; the panel stops
-// propagation so a click inside doesn't dismiss it.
 export default function SavedRunModal({
   run,
   onClose,
@@ -80,9 +78,6 @@ export default function SavedRunModal({
                       )}
                     </td>
                     <td>
-                      {/* Rebuilt from the flat DB columns. Nulls stay null
-                          so an unmeasured component still renders as a gap,
-                          not a zero bar. */}
                       <ScoreBreakdown
                         components={{
                           recruitment: s.recruitment_score,

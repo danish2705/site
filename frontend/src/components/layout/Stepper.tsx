@@ -1,18 +1,12 @@
 import { STAGE_LIST, type WizardStep } from "../../constants/pipeline";
 import type { StagesMap } from "../../types";
 
-// Only these three pipeline stages have a dedicated results view; the rest
-// (1-5) are internal steps with no separate panel to jump to.
 const STAGE_TO_WIZARD: Partial<Record<number, WizardStep>> = {
   6: "risk",
   7: "ranking",
   8: "recommendation",
 };
 
-// Horizontal numbered-node pipeline stepper, always visible (even before a
-// run starts) and clickable: once a stage that has its own results view
-// finishes, its node becomes a button that jumps the panel below straight
-// to that view — Risk Assessment, Site Ranking, or Recommendation.
 export default function Stepper({
   stages,
   activeWizardStep,
@@ -66,9 +60,6 @@ export default function Stepper({
   );
 }
 
-// Compact "what's happening right now" readout — no background box, sized
-// to sit inline next to the "Pipeline Progress" tag in the card's header
-// row instead of spanning full-width as a separate banner under the nodes.
 export function StepperStatus({
   stages,
   progressPct,
