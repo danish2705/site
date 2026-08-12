@@ -1,15 +1,16 @@
 import { useState } from "react";
-import "./App.css";
-import { PipelineProvider, usePipeline } from "./context/PipelineContext";
-import TopBar from "./components/TopBar";
-import Sidebar from "./components/Sidebar";
-import Stepper, { StepperStatus } from "./components/Stepper";
-import AIRegionPrediction from "./components/AIRegionPrediction";
-import RiskAssessmentPanel from "./components/RiskAssessmentPanel";
-import SiteRankingPanel from "./components/SiteRankingPanel";
-import RecommendationPanel from "./components/RecommendationPanel";
-import HistoryModal from "./components/HistoryModal";
-import ErrorBoundary from "./components/ErrorBoundary";
+import "./styles/App.css";
+import { PipelineProvider } from "./context/PipelineContext";
+import { usePipeline } from "./hooks/usePipeline";
+import TopBar from "./components/layout/TopBar";
+import Sidebar from "./components/layout/Sidebar";
+import Stepper, { StepperStatus } from "./components/layout/Stepper";
+import AIRegionPrediction from "./components/prediction/AIRegionPrediction";
+import RiskAssessmentPanel from "./components/risk/RiskAssessmentPanel";
+import SiteRankingPanel from "./components/ranking/SiteRankingPanel";
+import RecommendationPanel from "./components/recommendation/RecommendationPanel";
+import HistoryModal from "./components/runs/HistoryModal";
+import ErrorBoundary from "./components/ui/ErrorBoundary";
 
 function Dashboard() {
   const [historyOpen, setHistoryOpen] = useState(false);
@@ -71,9 +72,7 @@ function Dashboard() {
         </main>
       </div>
 
-      {historyOpen && (
-        <HistoryModal onClose={() => setHistoryOpen(false)} />
-      )}
+      {historyOpen && <HistoryModal onClose={() => setHistoryOpen(false)} />}
     </div>
   );
 }

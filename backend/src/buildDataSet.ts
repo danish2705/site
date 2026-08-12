@@ -1,42 +1,3 @@
-/**
- * scripts/build-dataset.ts — one-shot build of the enriched workbook.
- *
- *   npx tsx scripts/build-dataset.ts
- *
- * Replaces the Python build script. Two things change as a result:
- *
- *   1. NO RECALCULATION STEP. This writes computed values, not formulas, so
- *      the file is immediately readable by `xlsx` (and by pandas, and by a
- *      previewer). The Python version wrote live Excel formulas, which carry
- *      no cached value until LibreOffice or Excel evaluates them — until
- *      then every computed cell reads back as null.
- *
- *   2. ONE SOURCE OF TRUTH FOR SCORING. The component scores written here
- *      come from scoreSites() in ../src/scoring.js — the same function the
- *      pipeline uses at runtime. The workbook and the API cannot drift apart,
- *      because there is only one implementation.
- *
- * TRADE-OFF, worth deciding deliberately: the original workbook's README
- * makes a point of Suitability Score being "a LIVE FORMULA, not hardcoded",
- * so editing Site_Evaluation in Excel re-scores everything. That property is
- * lost here — the new Site Score column is a value, and re-scoring means
- * re-running this script. If you want the workbook to stay independently
- * tunable by a feasibility lead who doesn't run Node, keep the Python
- * version instead; it writes real formulas and a Scoring_Weights sheet they
- * can edit. You can't have both without maintaining the model twice.
- *
- * The existing Suitability Score / Risk Register / Site_Ranking formulas in
- * the source workbook are NOT touched — they're read through with their
- * cached values intact and written back as values.
- *
- * Generated KPI values are synthetic and correlated with the existing
- * columns per the relationships the workbook README documents. Missingness
- * in a driver column is propagated, so the ~3-4% missing-data realism
- * survives. The RNG is seeded, so runs are reproducible — but it is not the
- * same generator as the Python version, so the numbers differ from that
- * build while being statistically equivalent.
- */
-
 import xlsx from "xlsx";
 import path from "path";
 import { fileURLToPath } from "url";
@@ -44,7 +5,7 @@ import {
   scoreSites,
   DECK_WEIGHTS,
   type ExtendedEvaluationRow,
-} from "../src/scoring.js";
+} from "./pipeline/scoring.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const SRC = path.join(
@@ -60,8 +21,6 @@ const OUT = path.join(
   "Clinical_Trial_Site_Selection_v2.xlsx",
 );
 
-// ---------------------------------------------------------------- rng
-// mulberry32 — small, seeded, good enough for synthetic demo data.
 function mulberry32(seed: number): () => number {
   let a = seed >>> 0;
   return () => {
@@ -73,7 +32,6 @@ function mulberry32(seed: number): () => number {
 }
 const rand = mulberry32(20260806);
 
-/** Box-Muller. Cached second draw, since the transform yields two at a time. */
 let spare: number | null = null;
 function gauss(mean = 0, sd = 1): number {
   if (spare !== null) {
@@ -106,7 +64,6 @@ function n(v: unknown): number | null {
   return Number.isFinite(x) ? x : null;
 }
 
-// ---------------------------------------------------------------- read
 const wb = xlsx.readFile(SRC, { cellDates: true });
 
 type Row = Record<string, unknown>;
@@ -122,7 +79,6 @@ const regionData = sheet("Region_Data");
 
 const siteById = new Map(sites.map((s) => [s["Site ID"] as string, s]));
 
-// Region-level context, averaged across indications for that region.
 interface RegionCtx {
   cost: number;
   weeks: number;
@@ -156,7 +112,6 @@ const regionCtx = new Map<string, RegionCtx>();
   }
 }
 
-// ------------------------------------------------------- generate KPIs
 const COMPLEX_TA = new Set([
   "Oncology",
   "Neurology",
@@ -196,9 +151,6 @@ const enriched: ExtendedEvaluationRow[] = evals.map((e) => {
   };
   const hospType = (site["Hospital Type"] as string) ?? "";
   const complexity = COMPLEX_TA.has(site["Therapeutic Area"] as string) ? 1 : 0;
-
-  // Normalised drivers (0-1). null propagates, so a blank driver leaves the
-  // derived column blank too rather than inventing a value for it.
   const inv = n(e["Investigator Experience Score (0-10)"]);
   const dq = n(e["Data Quality Score (0-100)"]);
   const staff = n(e["Staff Availability Score (0-10)"]);
@@ -417,19 +369,6 @@ const BASE_N: Record<string, number> = {
 };
 const BUDGETS = ["Low", "Mid", "High"];
 
-/**
- * Acceptance thresholds are anchored to PERCENTILES OF THE ACTUAL SITE DATA,
- * not drawn from an arbitrary distribution.
- *
- * The first version of this generator invented plausible-looking numbers
- * (min data quality ~72, when the site median is ~60). The result was that
- * three-quarters of sites failed on that criterion alone and the joint pass
- * rate across four criteria was zero — every site was excluded on every
- * indication, which makes the whole filter useless noise.
- *
- * Anchoring to percentiles means the thresholds stay meaningful if the
- * underlying data is ever regenerated or replaced with a real feed.
- */
 function quantile(values: (number | null)[], p: number): number {
   const xs = values
     .filter((v): v is number => v !== null)
@@ -452,11 +391,6 @@ const Q = {
   screenFail: (p: number) => quantile(col("Screen Failure Rate (%)"), p),
 };
 
-/**
- * Picks a threshold at roughly the given percentile, jittered per trial so
- * protocols differ. `strict` shifts toward excluding more sites — used for
- * Phase III headline trials, which really are fussier about site quality.
- */
 function thresholdAt(
   q: (p: number) => number,
   basePercentile: number,
@@ -490,9 +424,6 @@ for (const [indication, specialty] of Object.entries(SPECIALTY)) {
         clip(gauss(heavy ? 20 : 15, 5), 6, 48, 0),
       ),
       "Budget Tier": heavy && k === 0 ? "High" : pick(BUDGETS),
-      // ~p30 for the "min" criteria and ~p75 for the "max" ones, so each
-      // criterion alone admits roughly 70% of sites and all four together
-      // admit a useful minority rather than nobody.
       "Min Enrollment Rate (pts/month)": thresholdAt(
         Q.enroll,
         0.3,
@@ -522,10 +453,6 @@ wb.SheetNames = [
   ...wb.SheetNames.filter((s) => s !== "README" && s !== "Trial_Requirements"),
 ];
 
-// ------------------------------------------------------ Scoring_Weights
-// Documentation of the model, not an input — the live weights are
-// DECK_WEIGHTS in scoring.ts. Editing this sheet changes nothing; that is
-// the cost of moving scoring out of Excel.
 const weightsWs = xlsx.utils.json_to_sheet([
   {
     Component: "Recruitment",

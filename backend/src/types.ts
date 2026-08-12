@@ -1,4 +1,4 @@
-import type { ScoredSite, ExtendedEvaluationRow } from "./scoring.js";
+import type { ScoredSite, ExtendedEvaluationRow } from "./pipeline/scoring.js";
 
 export interface RegionRow {
   Region: string;
@@ -302,4 +302,77 @@ export interface RankedSite extends SiteRow {
 export interface RecommendationResult {
   llm: string;
   text: string;
+}
+
+// ---- Saved runs (persistence shapes) --------------------------------
+// The DTOs the repository reads and writes. They live here with every
+// other shape so there is one place to look, and so controllers can type
+// a request body without importing from the repository.
+
+/** Per-component scores. null = no data, component dropped from weighting. */
+export interface SavedComponents {
+  recruitment: number | null;
+  quality: number | null;
+  retention: number | null;
+  diversity: number | null;
+  cost: number | null;
+}
+
+export interface SavedSite {
+  rank: number;
+  siteId: string;
+  siteName: string;
+  region: string;
+  score: number;
+  components: SavedComponents;
+  confidence: string;
+  caveats: string[];
+  meetsRequirements: boolean;
+  failedCriteria: string[];
+  suitabilityScore: number | null;
+  riskLevel: RiskLevel;
+  highRiskCount: number;
+}
+
+/** Exactly what POST /api/runs accepts. */
+export interface SaveRunInput {
+  label?: string;
+  indication: string;
+  phase?: string;
+  sampleSize?: number;
+  durationMonths?: number;
+  budgetTier?: string;
+  region?: string;
+  country?: string;
+  estimatedPatients?: number;
+  llm?: string;
+  final?: {
+    recommendedSite?: string;
+    siteId?: string;
+    score?: number;
+    confidence?: string;
+    riskLevel?: RiskLevel;
+    highRiskCount?: number;
+    meetsRequirements?: boolean;
+    text?: string;
+    scoreExplanation?: string;
+    requirementChecks?: unknown;
+  } | null;
+  ranking: SavedSite[];
+}
+
+export interface SavedRunSummary {
+  id: string;
+  created_at: string;
+  label: string | null;
+  indication: string;
+  phase: string | null;
+  region: string | null;
+  country: string | null;
+  recommended_site_name: string | null;
+  score: number | null;
+  confidence: string | null;
+  risk_level: string | null;
+  meets_requirements: boolean | null;
+  ranked_site_count: number;
 }

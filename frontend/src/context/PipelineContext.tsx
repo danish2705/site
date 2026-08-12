@@ -1,6 +1,5 @@
 import {
   createContext,
-  useContext,
   useEffect,
   useMemo,
   useState,
@@ -18,23 +17,10 @@ import type {
   FinalResult,
   StageEventPayload,
 } from "../types";
-import { apiFetch } from "../api";
-
-// Composite key used by the Region / Country Selection input, so each
-// checkbox option value uniquely identifies a (Region, Country) pair.
-export const regionKey = (region: string, country: string) =>
-  `${region}||${country}`;
-
-export const STAGE_LIST: { n: number; label: string }[] = [
-  { n: 1, label: "Clinical Trial Requirements" },
-  { n: 2, label: "Region / Country Selection" },
-  { n: 3, label: "Patient Population Analysis" },
-  { n: 4, label: "Candidate Site Identification" },
-  { n: 5, label: "Site Evaluation" },
-  { n: 6, label: "AI Risk Assessment" },
-  { n: 7, label: "Site Ranking" },
-  { n: 8, label: "Final Recommendation" },
-];
+import { STAGE_LIST, type WizardStep } from "../constants/pipeline";
+import { fetchMeta } from "../services/meta.service";
+import { streamRun } from "../services/pipeline.service";
+import { createRun, getRun, listRuns } from "../services/runs.service";
 
 function emptyStages(): StagesMap {
   const obj: StagesMap = {};
@@ -42,22 +28,6 @@ function emptyStages(): StagesMap {
     obj[s.n] = { status: "pending", detail: null, data: null };
   return obj;
 }
-
-// ---- Results wizard --------------------------------------------------
-// The right-hand panel shows exactly one result at a time rather than
-// stacking every section on one long page: it starts on the AI region
-// prediction, then swaps in place to Risk Assessment the moment a run
-// finishes, and the user clicks "Next" to move on to Site Ranking and
-// finally the Recommendation (+ Save). The left-hand form stays fixed
-// throughout — only this panel changes.
-export type WizardStep = "predict" | "risk" | "ranking" | "recommendation";
-
-export const WIZARD_STEPS: { key: WizardStep; label: string }[] = [
-  { key: "predict", label: "AI Prediction" },
-  { key: "risk", label: "Risk Assessment" },
-  { key: "ranking", label: "Site Ranking" },
-  { key: "recommendation", label: "Recommendation" },
-];
 
 export interface PipelineState {
   meta: MetaResponse | null;
@@ -105,7 +75,7 @@ export interface PipelineState {
   openRunError: string | null;
 }
 
-const PipelineContext = createContext<PipelineState | null>(null);
+export const PipelineContext = createContext<PipelineState | null>(null);
 
 export function PipelineProvider({ children }: { children: ReactNode }) {
   const [meta, setMeta] = useState<MetaResponse | null>(null);
@@ -163,26 +133,20 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
         durationMonths?: number;
         budgetTier?: string;
       } | null;
-      const res = await apiFetch("/api/runs", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          label: saveLabel,
-          indication: form.indication,
-          phase: stage1Data?.phase ?? form.phase,
-          sampleSize: stage1Data?.targetSampleSize ?? form.sampleSize,
-          durationMonths: stage1Data?.durationMonths ?? form.durationMonths,
-          budgetTier: stage1Data?.budgetTier ?? form.budgetTier,
-          region: finalResult?.region,
-          country: finalResult?.country,
-          estimatedPatients: finalResult?.estimatedPatients,
-          llm: llmInfo,
-          final: finalResult,
-          ranking,
-        }),
+      await createRun({
+        label: saveLabel,
+        indication: form.indication,
+        phase: stage1Data?.phase ?? form.phase,
+        sampleSize: stage1Data?.targetSampleSize ?? form.sampleSize,
+        durationMonths: stage1Data?.durationMonths ?? form.durationMonths,
+        budgetTier: stage1Data?.budgetTier ?? form.budgetTier,
+        region: finalResult?.region,
+        country: finalResult?.country,
+        estimatedPatients: finalResult?.estimatedPatients,
+        llm: llmInfo,
+        final: finalResult,
+        ranking,
       });
-      const body = await res.json();
-      if (!res.ok) throw new Error(body.error ?? `Save failed (${res.status})`);
       setSaveLabel("");
       setSaveMessage("Saved.");
       // Refresh the list so the new run is visible without a reload.
@@ -199,10 +163,7 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
   async function loadSavedRuns() {
     setLoadingRuns(true);
     try {
-      const res = await apiFetch("/api/runs");
-      const body = await res.json();
-      if (!res.ok) throw new Error(body.error ?? `Could not load saved runs`);
-      setSavedRuns(body as SavedRunSummary[]);
+      setSavedRuns(await listRuns());
     } catch (err) {
       setSaveMessage((err as Error).message);
       setSavedRuns([]);
@@ -215,10 +176,7 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
     setOpeningRunId(id);
     setOpenRunError(null);
     try {
-      const res = await apiFetch(`/api/runs/${id}`);
-      const body = await res.json();
-      if (!res.ok) throw new Error(body.error ?? "Could not open run");
-      const detail = body as SavedRunDetail;
+      const detail = await getRun(id);
       // A run row can exist with zero saved sites (e.g. an old/partial save)
       // — that's valid data, not a fetch failure, but it renders as an
       // almost-empty modal that looks identical to "View did nothing." Flag
@@ -245,8 +203,7 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
   }
 
   useEffect(() => {
-    apiFetch("/api/meta")
-      .then((r) => r.json() as Promise<MetaResponse>)
+    fetchMeta()
       .then((data) => {
         // Just populate the dropdown options — do NOT auto-select the first
         // indication. The user has to make an explicit choice.
@@ -297,23 +254,8 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
 
     let succeeded = true;
     try {
-      const res = await apiFetch("/api/run", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          ...form,
-          // Expand composite "Region||Country" keys back into
-          // {region, country} objects for the backend.
-          regions: form.regions.map((key) => {
-            const [region, country] = key.split("||");
-            return { region, country };
-          }),
-        }),
-      });
-      if (!res.body)
-        throw new Error("Streaming not supported by this browser/response.");
-
-      const reader = res.body.getReader();
+      const res = await streamRun(form);
+      const reader = res.body!.getReader();
       const decoder = new TextDecoder();
       let buffer = "";
 
@@ -414,12 +356,4 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
       {children}
     </PipelineContext.Provider>
   );
-}
-
-export function usePipeline(): PipelineState {
-  const ctx = useContext(PipelineContext);
-  if (!ctx) {
-    throw new Error("usePipeline() must be used within a PipelineProvider");
-  }
-  return ctx;
 }
