@@ -20,7 +20,11 @@ import {
   type LiveFacility,
   type FacilityHistory,
 } from "../services/ctgov.client.js";
-import { estimateSiteKpis, llmStatus } from "../llm/client.js";
+import {
+  estimateSiteKpis,
+  llmStatus,
+  type SiteKpiEstimateFields,
+} from "../llm/client.js";
 import { config } from "../config.js";
 
 export interface LiveCandidateSite {
@@ -32,7 +36,11 @@ export interface LiveCandidateSite {
 }
 
 interface EstimateCacheEntry {
-  fields: Partial<ExtendedEvaluationRow>;
+  // SiteKpiEstimateFields (not Partial<ExtendedEvaluationRow>) — this is the
+  // LLM's actual return shape, where an un-estimable field is `null`, not
+  // `undefined`. The `as unknown as ExtendedEvaluationRow` casts below
+  // handle reconciling that with EvaluationRow's stricter field types.
+  fields: SiteKpiEstimateFields;
   rationale: string;
   expiresAt: number;
 }

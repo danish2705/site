@@ -1,28 +1,7 @@
-/**
- * Thin client for the public ClinicalTrials.gov v2 API
- * (https://clinicaltrials.gov/data-api/api). No API key required.
- *
- * Every call here is best-effort: on any failure (network, timeout, bad
- * response) the function resolves to `null` / an empty result rather than
- * throwing, so callers can fall back to the existing Excel-derived value
- * without the request that triggered them failing outright.
- *
- * Requires Node 18+ (global `fetch`).
- */
 import { config } from "../config.js";
 
 const BASE_URL = "https://clinicaltrials.gov/api/v2";
 
-/**
- * Corporate-network support: Node's built-in `fetch` does NOT read
- * HTTP_PROXY / HTTPS_PROXY env vars on its own — if your machine requires a
- * proxy for outbound internet access (common on a corporate laptop), fetch
- * calls fail with a generic "fetch failed" / DNS or connection error even
- * though a browser on the same machine works fine. This block detects a
- * proxy env var and routes fetch through it via undici's ProxyAgent, if the
- * `undici` package is installed (`npm install undici` in backend/).
- * Safe no-op if no proxy env var is set or the package isn't installed.
- */
 (async () => {
   const proxyUrl =
     process.env.HTTPS_PROXY ||
@@ -31,9 +10,15 @@ const BASE_URL = "https://clinicaltrials.gov/api/v2";
     process.env.http_proxy;
   if (!proxyUrl) return;
   try {
-    const undici = await import("undici");
+    const undiciModuleName = "undici";
+    const undici: {
+      setGlobalDispatcher: (dispatcher: unknown) => void;
+      ProxyAgent: new (url: string) => unknown;
+    } = await import(undiciModuleName);
     undici.setGlobalDispatcher(new undici.ProxyAgent(proxyUrl));
-    console.log(`[ctgov] Routing ClinicalTrials.gov requests through proxy ${proxyUrl}`);
+    console.log(
+      `[ctgov] Routing ClinicalTrials.gov requests through proxy ${proxyUrl}`,
+    );
   } catch {
     console.warn(
       "[ctgov] HTTPS_PROXY/HTTP_PROXY is set but the 'undici' package isn't installed, " +
@@ -146,7 +131,10 @@ export async function getActiveCompetingTrialsCount(
     if (count !== null) setCached(cacheKey, count, config.ctgov.cacheTtlMs);
     return count;
   } catch (err) {
-    warn(`competing-trials lookup failed for "${condition}" / "${country}"`, err);
+    warn(
+      `competing-trials lookup failed for "${condition}" / "${country}"`,
+      err,
+    );
     return null;
   }
 }
@@ -327,14 +315,17 @@ export async function getFacilityHistories(
       const nctId = study.protocolSection?.identificationModule?.nctId ?? "";
       const briefTitle =
         study.protocolSection?.identificationModule?.briefTitle ?? null;
-      const overallStatus = study.protocolSection?.statusModule?.overallStatus ?? null;
-      const whyStopped = study.protocolSection?.statusModule?.whyStopped ?? null;
+      const overallStatus =
+        study.protocolSection?.statusModule?.overallStatus ?? null;
+      const whyStopped =
+        study.protocolSection?.statusModule?.whyStopped ?? null;
       const locations =
         study.protocolSection?.contactsLocationsModule?.locations ?? [];
       for (const loc of locations) {
         if (!loc.facility) continue;
         if (!locationMatchesCountry(loc.country, opts.country)) continue;
-        const key = `${loc.facility}|${loc.city ?? ""}|${loc.country ?? ""}`.toLowerCase();
+        const key =
+          `${loc.facility}|${loc.city ?? ""}|${loc.country ?? ""}`.toLowerCase();
         if (!map.has(key)) {
           map.set(key, {
             facility: loc.facility,
@@ -344,7 +335,9 @@ export async function getFacilityHistories(
             trials: [],
           });
         }
-        map.get(key)!.trials.push({ nctId, briefTitle, overallStatus, whyStopped });
+        map
+          .get(key)!
+          .trials.push({ nctId, briefTitle, overallStatus, whyStopped });
       }
     }
     setCached(cacheKey, map, config.ctgov.cacheTtlMs);
@@ -427,7 +420,13 @@ export async function getCompletedTrialBenchmarks(
   const cached = getCached<TrialBenchmark>(cacheKey);
   if (cached !== undefined) return cached;
 
-  const fields = ["NCTId", "Phase", "EnrollmentCount", "StartDate", "PrimaryCompletionDate"].join(",");
+  const fields = [
+    "NCTId",
+    "Phase",
+    "EnrollmentCount",
+    "StartDate",
+    "PrimaryCompletionDate",
+  ].join(",");
   const url =
     `${BASE_URL}/studies?query.cond=${encodeURIComponent(condition)}` +
     `&filter.overallStatus=COMPLETED&fields=${fields}&pageSize=${pageSize}`;
