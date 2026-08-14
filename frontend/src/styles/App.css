@@ -1316,9 +1316,11 @@ tbody tr:hover {
 
 .score-cell {
   display: flex;
+  flex-wrap: nowrap;
   align-items: center;
   gap: 8px;
   font-weight: 700;
+  min-width: 92px;
 }
 .score-track {
   width: 56px;
@@ -1331,6 +1333,11 @@ tbody tr:hover {
 .score-fill {
   height: 100%;
   background: var(--accent);
+}
+.score-value {
+  flex-shrink: 0;
+  white-space: nowrap;
+  color: var(--ink);
 }
 tr.row-pick td {
   background: var(--accent-soft);

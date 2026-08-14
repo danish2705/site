@@ -220,7 +220,6 @@ export default function AIRegionPrediction({
                       <th>Score</th>
                       <th>Est. Patients</th>
                       <th>Sites</th>
-                      <th>Avg Suitability</th>
                       <th>Approval</th>
                       <th>Competing</th>
                       <th>Cost/Patient</th>
@@ -250,15 +249,18 @@ export default function AIRegionPrediction({
                               <div className="score-track">
                                 <div
                                   className="score-fill"
-                                  style={{ width: `${c.score}%` }}
+                                  style={{
+                                    width: `${Math.max(0, Math.min(100, c.score ?? 0))}%`,
+                                  }}
                                 />
                               </div>
-                              <span>{c.score}</span>
+                              <span className="score-value">
+                                {c.score ?? "—"}
+                              </span>
                             </div>
                           </td>
                           <td>{c.estimatedPatients.toLocaleString()}</td>
                           <td>{c.siteCount}</td>
-                          <td>{c.avgSuitability}/100</td>
                           <td>{c.regulatoryWeeks}w</td>
                           <td>
                             {c.competingTrials}
