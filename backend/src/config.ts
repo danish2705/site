@@ -29,4 +29,12 @@ export const config = {
     azureKey: optional("AZURE_OPENAI_API_KEY"),
     openaiKey: optional("OPENAI_API_KEY"),
   },
+
+  ctgov: {
+    // Set CTGOV_ENABLED=false to fall back to the static Excel values only
+    // (e.g. offline dev, or if clinicaltrials.gov is unreachable from your network).
+    enabled: optional("CTGOV_ENABLED") !== "false",
+    timeoutMs: Number(process.env.CTGOV_TIMEOUT_MS) || 6000,
+    cacheTtlMs: Number(process.env.CTGOV_CACHE_TTL_MS) || 6 * 60 * 60 * 1000,
+  },
 } as const;

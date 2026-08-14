@@ -19,6 +19,13 @@
   --nav-h: 64px;
 }
 
+/* Any element carrying a tooltip (title attribute) should show a pointer on
+   hover, so it's obvious it has extra info — buttons/links/inputs already
+   get their own appropriate cursor, so they're excluded here. */
+[title]:not(button):not(a):not(input):not(select):not(textarea) {
+  cursor: pointer;
+}
+
 * {
   box-sizing: border-box;
 }
@@ -1252,6 +1259,21 @@ tbody tr:hover {
   padding: 5px 12px;
 }
 
+.live-chip {
+  display: inline-block;
+  margin-left: 6px;
+  font-size: 9.5px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #0a7d3c;
+  background: #e6f6ec;
+  border: 1px solid #b6e6c8;
+  border-radius: 20px;
+  padding: 1px 7px;
+  vertical-align: middle;
+}
+
 .watch-list {
   margin: 10px 0 0;
   padding-left: 18px;
@@ -1551,6 +1573,12 @@ tr.row-pick td {
   font-size: 10px;
   color: var(--med);
   white-space: nowrap;
+}
+/* On the purple gradient recommendation card, the default amber (--med) is
+   too low-contrast to read — use a light warm tone instead. */
+.recommendation-card .score-confidence {
+  color: #ffe1a8;
+  font-weight: 600;
 }
 
 .save-modal-actions {

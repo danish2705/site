@@ -1,10 +1,15 @@
-import {
-  loadStore,
-  INDICATION_TO_SPECIALTY,
-} from "../repository/excelStore.js";
 import { generateRecommendation, llmStatus } from "../llm/client.js";
-import { scoreSites, explainScore } from "./scoring.js";
+import { scoreSites, explainScore, capConfidenceForEstimate } from "./scoring.js";
 import type { ExtendedEvaluationRow } from "./scoring.js";
+import {
+  buildLiveCandidateSites,
+  type LiveCandidateSite,
+} from "./liveCandidateSites.js";
+import { buildLiveRiskRecords } from "./liveRiskAssessment.js";
+import { buildLiveTrialRequirement } from "./liveRequirements.js";
+import { buildLiveRegionRow } from "./liveRegionMetrics.js";
+import { resolveSpecialty } from "./liveIndications.js";
+import { REGION_DEFINITIONS } from "../data/regionMap.js";
 import type {
   PipelineInput,
   SendFn,
@@ -22,6 +27,17 @@ import type {
 
 const sleep = (ms: number): Promise<void> =>
   new Promise((resolve) => setTimeout(resolve, ms));
+
+// Standard 3x3 Likelihood x Impact risk matrix (industry-common convention),
+// used only to show the "derivation" text on a risk driver. This replaces
+// the Excel Risk_Matrix sheet — it is a fixed convention, not something any
+// live API publishes, so it is defined here as a code-level constant
+// instead (same rationale as data/regionMap.ts).
+const RISK_MATRIX: RiskMatrix = {
+  Low: { Low: "Low", Medium: "Low", High: "Medium" },
+  Medium: { Low: "Low", Medium: "Medium", High: "High" },
+  High: { Low: "Medium", Medium: "High", High: "High" },
+};
 
 function formatRiskDate(value: string | Date | number): string {
   if (value instanceof Date) return value.toISOString().slice(0, 10);
@@ -47,6 +63,7 @@ function toRiskRecord(r: RiskRow): RiskRecord {
     mitigationPlan: r["Mitigation Plan"],
     owner: r.Owner,
     riskScore: r["Risk Score (Numeric)"],
+    dataSource: r.dataSource ?? "excel",
   };
 }
 
@@ -214,10 +231,16 @@ function checkRequirements(
   );
 
   if (requirement["Accreditation Required"] === "Yes") {
+    const actual =
+      site.Accreditation === "Yes"
+        ? "Accredited"
+        : site.Accreditation === "Unknown"
+          ? "Unknown (live-sourced site)"
+          : "Not accredited";
     checks.push({
       criterion: "Accreditation",
       required: "Required",
-      actual: site.Accreditation === "Yes" ? "Accredited" : "Not accredited",
+      actual,
       pass: site.Accreditation === "Yes",
     });
   }
@@ -242,71 +265,86 @@ export async function runPipeline(
   input: PipelineInput,
   send: SendFn,
 ): Promise<void> {
-  const store = loadStore();
   const { indication, phase, sampleSize } = input;
 
-  if (!indication || !INDICATION_TO_SPECIALTY[indication]) {
-    throw new Error(
-      `Unknown or missing indication "${indication}". Valid options: ${store.indications.join(", ")}`,
-    );
+  if (!indication) {
+    throw new Error(`Missing indication. Pick an indication before running the analysis.`);
   }
-  const specialty = INDICATION_TO_SPECIALTY[indication];
+  const specialty = await resolveSpecialty(indication);
 
-  const requirement = store.requirementByIndication.get(indication);
+  const requirement = await buildLiveTrialRequirement({
+    indication,
+    specialty,
+    phase,
+    sampleSize,
+    durationMonths: input.durationMonths,
+  });
+  const requirementIsEstimated = requirement.requirementSource === "mixed";
   send("stage", {
     stage: 1,
     name: STAGE_NAMES[1],
     status: "complete",
-    detail: requirement
-      ? `${indication} · ${phase || requirement.Phase} · target n=${sampleSize || requirement["Target Sample Size"]} · ${specialty} site required`
-      : `${indication} · ${phase || "n/a"} · target n=${sampleSize || "n/a"} (no Trial_Requirements sheet — thresholds not applied)`,
-    data: requirement
-      ? {
-          trialId: requirement["Trial ID"],
-          indication,
-          requiredSpecialty: specialty,
-          requiredInfrastructure: requirement["Required Infrastructure"],
-          phase: phase || requirement.Phase,
-          targetSampleSize: sampleSize || requirement["Target Sample Size"],
-          durationMonths:
-            input.durationMonths || requirement["Duration (months)"],
-          budgetTier: input.budgetTier || requirement["Budget Tier"],
-          thresholds: {
-            minEnrollmentRate: requirement["Min Enrollment Rate (pts/month)"],
-            maxDropout: requirement["Max Acceptable Dropout (%)"],
-            minDataQuality: requirement["Min Data Quality Score"],
-            maxScreenFailure: requirement["Max Acceptable Screen Failure (%)"],
-            accreditationRequired: requirement["Accreditation Required"],
-          },
-        }
-      : null,
+    detail:
+      `${indication} · ${phase || requirement.Phase} · target n=${sampleSize || requirement["Target Sample Size"]} · ${specialty} site required` +
+      (requirementIsEstimated
+        ? " · data-quality/screen-failure thresholds (AI-estimated)"
+        : "") +
+      (requirement.requirementWarning ? ` — ${requirement.requirementWarning}` : ""),
+    data: {
+      trialId: requirement["Trial ID"],
+      indication,
+      requiredSpecialty: specialty,
+      requiredInfrastructure: requirement["Required Infrastructure"],
+      phase: phase || requirement.Phase,
+      targetSampleSize: sampleSize || requirement["Target Sample Size"],
+      durationMonths:
+        input.durationMonths || requirement["Duration (months)"],
+      budgetTier: input.budgetTier || requirement["Budget Tier"],
+      thresholds: {
+        minEnrollmentRate: requirement["Min Enrollment Rate (pts/month)"],
+        maxDropout: requirement["Max Acceptable Dropout (%)"],
+        minDataQuality: requirement["Min Data Quality Score"],
+        maxScreenFailure: requirement["Max Acceptable Screen Failure (%)"],
+        accreditationRequired: requirement["Accreditation Required"],
+      },
+      requirementSource: requirement.requirementSource ?? "live",
+    },
   });
   await sleep(STEP_DELAY_MS);
 
   send("stage", { stage: 2, name: STAGE_NAMES[2], status: "in-progress" });
-  let regionRows = store.regionData.filter((r) => r.Indication === indication);
-  if (regionRows.length === 0) {
-    throw new Error(`No Region_Data rows found for indication "${indication}"`);
-  }
 
   const userSelectedRegions = (input.regions || []).filter(
     (r) => r && r.region && r.country,
   );
-  if (userSelectedRegions.length > 0) {
-    const selectedSet = new Set(
-      userSelectedRegions.map((r) => `${r.region}||${r.country}`),
+  const regionDefs =
+    userSelectedRegions.length > 0
+      ? userSelectedRegions.map((r) => ({ region: r.region, country: r.country }))
+      : REGION_DEFINITIONS;
+
+  // Every defined region/country is now considered for every indication —
+  // there is no more per-indication Region_Data to filter against. Live
+  // data (competing trials) and LLM estimates (prevalence/regulatory/cost)
+  // determine each region's fit, fetched in parallel per region.
+  const regionRows = await Promise.all(
+    regionDefs.map((def) =>
+      buildLiveRegionRow({
+        region: def.region,
+        country: def.country,
+        indication,
+        specialty,
+      }),
+    ),
+  );
+  if (regionRows.length === 0) {
+    throw new Error(
+      `No region/country options are configured (see backend/src/data/regionMap.ts), so there is nothing to select from for indication "${indication}".`,
     );
-    const filtered = regionRows.filter((r) =>
-      selectedSet.has(`${r.Region}||${r.Country}`),
-    );
-    if (filtered.length === 0) {
-      throw new Error(
-        `None of your selected Region/Country options have data for indication "${indication}". ` +
-          `Pick a different region/country combination for this indication.`,
-      );
-    }
-    regionRows = filtered;
   }
+
+  const regionMetricsWarnings = regionRows
+    .filter((r) => r.metricsWarning)
+    .map((r) => r.metricsWarning as string);
 
   const rankedRegions = [...regionRows].sort((a, b) => {
     const scoreOf = (r: typeof a) =>
@@ -316,22 +354,12 @@ export async function runPipeline(
     return scoreOf(b) - scoreOf(a);
   });
 
-  const bestByFormula = rankedRegions[0];
-  const topRegion = rankedRegions.find((r) =>
-    store.sites.some(
-      (s) => s.Region === r.Region && s["Therapeutic Area"] === specialty,
-    ),
-  );
-  if (!topRegion) {
-    throw new Error(
-      `No candidate sites found for ${specialty} (required by "${indication}") in any of the ` +
-        `${rankedRegions.length} region(s) considered${
-          userSelectedRegions.length > 0
-            ? " among your selected Region/Country options"
-            : ""
-        }. Try a different indication or region/country selection.`,
-    );
-  }
+  // Live candidate sites are discovered AFTER a region is picked (Stage 4,
+  // below) — there is no more Excel Candidate_Sites list to pre-filter
+  // eligible regions against, so the top-scoring region by the formula
+  // above is simply selected. If Stage 4 then finds zero live candidates
+  // there, the existing empty-candidate check below throws a clear error.
+  const topRegion = rankedRegions[0];
   await sleep(STEP_DELAY_MS);
   send("stage", {
     stage: 2,
@@ -339,10 +367,13 @@ export async function runPipeline(
     status: "complete",
     detail:
       (userSelectedRegions.length > 0
-        ? `Selected ${topRegion.Region}, ${topRegion.Country} (best fit with available sites among your ${userSelectedRegions.length} chosen option(s))`
-        : `Selected ${topRegion.Region}, ${topRegion.Country} (auto-picked — no region/country input given)`) +
-      (topRegion !== bestByFormula
-        ? ` — ${bestByFormula.Region}, ${bestByFormula.Country} scored higher but had no ${specialty} candidate sites`
+        ? `Selected ${topRegion.Region}, ${topRegion.Country} (top-scoring among your ${userSelectedRegions.length} chosen option(s))`
+        : `Selected ${topRegion.Region}, ${topRegion.Country} (top-scoring of ${rankedRegions.length} regions considered — no region/country input given)`) +
+      (topRegion.regionMetricsSource === "llm-estimated"
+        ? " · Prevalence/Regulatory/Cost figures (AI-estimated)"
+        : "") +
+      (regionMetricsWarnings.length > 0
+        ? ` — ${regionMetricsWarnings.length} region(s) missing Prevalence/Regulatory/Cost data (see warnings)`
         : ""),
     data: rankedRegions.slice(0, 5).map((r) => ({
       region: r.Region,
@@ -350,7 +381,10 @@ export async function runPipeline(
       prevalence: r["Prevalence (per 100k)"],
       regulatoryWeeks: r["Regulatory Approval Time (weeks)"],
       competingTrials: r["Active Competing Trials"],
+      competingTrialsSource: r.competingTrialsSource ?? "live",
+      regionMetricsSource: r.regionMetricsSource ?? "unavailable",
     })),
+    warnings: regionMetricsWarnings,
   });
 
   send("stage", { stage: 3, name: STAGE_NAMES[3], status: "in-progress" });
@@ -364,44 +398,96 @@ export async function runPipeline(
     stage: 3,
     name: STAGE_NAMES[3],
     status: "complete",
-    detail: `~${estimatedPatients.toLocaleString()} estimated eligible patients (illustrative)`,
+    detail:
+      `~${estimatedPatients.toLocaleString()} estimated eligible patients (illustrative)` +
+      (topRegion.regionMetricsSource === "llm-estimated"
+        ? " — based on an (AI-estimated) prevalence figure"
+        : ""),
   });
 
   send("stage", { stage: 4, name: STAGE_NAMES[4], status: "in-progress" });
-  const candidateSites = store.sites.filter(
-    (s) => s.Region === topRegion.Region && s["Therapeutic Area"] === specialty,
+  // Candidate sites are sourced live from ClinicalTrials.gov only — the
+  // Excel Candidate_Sites sheet is intentionally not used here.
+  let liveCandidates: LiveCandidateSite[] = [];
+  try {
+    liveCandidates = await buildLiveCandidateSites({
+      indication,
+      specialty,
+      region: topRegion.Region,
+      country: topRegion.Country,
+      regulatoryWeeks: topRegion["Regulatory Approval Time (weeks)"],
+      regionCompetingTrials: topRegion["Active Competing Trials"],
+      avgCostPerPatient: topRegion["Avg Cost per Patient (USD)"],
+    });
+  } catch (err) {
+    console.warn(
+      `[live-sites] Could not fetch live facilities for "${indication}" in ${topRegion.Country}: ${(err as Error).message}`,
+    );
+  }
+
+  const liveSiteWarnings = liveCandidates
+    .filter((c) => c.warning)
+    .map((c) => c.warning as string);
+  const liveEvalById = new Map(
+    liveCandidates
+      .filter((c) => c.evalRow)
+      .map((c) => [c.site["Site ID"], c.evalRow as ExtendedEvaluationRow]),
   );
+  const liveCandidateBySiteId = new Map(
+    liveCandidates.map((c) => [c.site["Site ID"], c]),
+  );
+  const candidateSites: SiteRow[] = liveCandidates.map((c) => c.site);
+
   await sleep(STEP_DELAY_MS);
   send("stage", {
     stage: 4,
     name: STAGE_NAMES[4],
     status: "complete",
-    detail: `${candidateSites.length} candidate site(s) found in ${topRegion.Region}`,
+    detail:
+      `${candidateSites.length} candidate site(s) found in ${topRegion.Region}, live from ClinicalTrials.gov` +
+      (liveSiteWarnings.length > 0
+        ? ` — ${liveSiteWarnings.length} could not be scored (see warnings)`
+        : ""),
+    data: candidateSites.map((s) => ({
+      siteId: s["Site ID"],
+      siteName: s["Site Name"],
+      dataSource: s.dataSource ?? "live",
+    })),
+    warnings: liveSiteWarnings,
   });
 
   if (candidateSites.length === 0) {
     throw new Error(
-      `No candidate sites found for ${specialty} in ${topRegion.Region}. Try a different indication.`,
+      `No live candidate sites found for ${specialty} in ${topRegion.Region} on ClinicalTrials.gov. Try a different indication or region/country selection.`,
     );
   }
 
   send("stage", { stage: 5, name: STAGE_NAMES[5], status: "in-progress" });
 
+  // Candidate sites are 100% live-sourced at this point (buildLiveCandidateSites
+  // above), so every eval row is looked up from liveEvalById only — there is
+  // no Excel-backed fallback map to fall through to anymore.
+  const getEvalRow = (siteId: string): ExtendedEvaluationRow | undefined =>
+    liveEvalById.get(siteId);
+
   const evalRows = candidateSites
-    .map((s) => store.evalBySiteId.get(s["Site ID"]))
+    .map((s) => getEvalRow(s["Site ID"]))
     .filter((e): e is NonNullable<typeof e> => !!e);
-  const scoredById = new Map(scoreSites(evalRows).map((s) => [s.siteId, s]));
+  const scoredRaw = scoreSites(evalRows);
+  const scoredById = new Map(
+    scoredRaw.map((s, i) => [s.siteId, capConfidenceForEstimate(s, evalRows[i])]),
+  );
 
   const evaluated = candidateSites
     .map((site) => {
-      const evalRow = store.evalBySiteId.get(site["Site ID"]);
+      const evalRow = getEvalRow(site["Site ID"]);
       const scored = evalRow ? scoredById.get(site["Site ID"]) : undefined;
       if (!evalRow || !scored) return null; // no evaluation record on file
       return {
         ...site,
-        siteId: site["Site ID"], 
-        siteName: site["Site Name"], 
-        suitabilityScore: evalRow["Suitability Score (0-100)"],
+        siteId: site["Site ID"],
+        siteName: site["Site Name"],
+        suitabilityScore: evalRow["Suitability Score (0-100)"] ?? null,
         scored,
         evalRow,
         requirementChecks: checkRequirements(site, evalRow, requirement),
@@ -421,9 +507,7 @@ export async function runPipeline(
     status: "complete",
     detail:
       `Scored ${evaluated.length} site(s) on the weighted model` +
-      (requirement
-        ? ` — ${meetingRequirements.length} meet all protocol thresholds`
-        : "") +
+      ` — ${meetingRequirements.length} meet all protocol thresholds` +
       (lowConfidence.length
         ? `; ${lowConfidence.length} scored on incomplete data`
         : ""),
@@ -438,35 +522,65 @@ export async function runPipeline(
       caveats: s.scored.caveats,
       requirementChecks: s.requirementChecks,
       meetsRequirements: s.requirementChecks.every((c) => c.pass),
+      dataSource: s.evalRow.dataSource ?? "llm-estimated",
+      estimateRationale: s.evalRow.estimateRationale ?? null,
     })),
   });
 
   send("stage", { stage: 6, name: STAGE_NAMES[6], status: "in-progress" });
-  const withRisk: RankedSite[] = evaluated.map((site) => {
-    const risks = store.risksBySiteId.get(site["Site ID"]) || [];
-    const highCount = risks.filter(
-      (r) => r["Overall Risk Rating"] === "High",
-    ).length;
-    const medCount = risks.filter(
-      (r) => r["Overall Risk Rating"] === "Medium",
-    ).length;
-    const overallRisk: RiskLevel =
-      highCount > 0 ? "High" : medCount > 0 ? "Medium" : "Low";
-    return {
-      ...site,
-      risks,
-      highRiskCount: highCount,
-      mediumRiskCount: medCount,
-      overallRisk,
-      riskExplanation: explainRisk(risks, store.riskMatrix),
-    };
-  });
+  const riskWarnings: string[] = [];
+  const withRisk: RankedSite[] = await Promise.all(
+    evaluated.map(async (site) => {
+      const siteId = site["Site ID"];
+      // candidateSites is 100% live-sourced (buildLiveCandidateSites, Stage 4
+      // above), so every siteId is present in liveCandidateBySiteId — there
+      // is no Excel-backed risk list to fall through to anymore.
+      const live = liveCandidateBySiteId.get(siteId);
+      if (!live) {
+        throw new Error(
+          `Internal error: site ${siteId} was not found among the live candidates built in Stage 4.`,
+        );
+      }
+      const result = await buildLiveRiskRecords({
+        siteId,
+        facilityName: site["Site Name"],
+        city: site.City || null,
+        country: site.Country,
+        indication,
+        specialty,
+        region: topRegion.Region,
+        history: live.history,
+      });
+      const risks = result.risks;
+      if (result.warning) riskWarnings.push(result.warning);
+      const highCount = risks.filter(
+        (r) => r["Overall Risk Rating"] === "High",
+      ).length;
+      const medCount = risks.filter(
+        (r) => r["Overall Risk Rating"] === "Medium",
+      ).length;
+      const overallRisk: RiskLevel =
+        highCount > 0 ? "High" : medCount > 0 ? "Medium" : "Low";
+      return {
+        ...site,
+        risks,
+        highRiskCount: highCount,
+        mediumRiskCount: medCount,
+        overallRisk,
+        riskExplanation: explainRisk(risks, RISK_MATRIX),
+      };
+    }),
+  );
   await sleep(STEP_DELAY_MS);
   send("stage", {
     stage: 6,
     name: STAGE_NAMES[6],
     status: "complete",
-    detail: `Risk-scored ${withRisk.length} site(s) across ${withRisk.reduce((n, s) => n + s.risks.length, 0)} risk records`,
+    detail:
+      `Risk-scored ${withRisk.length} site(s) across ${withRisk.reduce((n, s) => n + s.risks.length, 0)} risk records` +
+      (riskWarnings.length > 0
+        ? ` — ${riskWarnings.length} live site(s) had partial risk data (see warnings)`
+        : ""),
     data: withRisk.map((s) => ({
       siteId: s.siteId,
       siteName: s.siteName,
@@ -475,7 +589,9 @@ export async function runPipeline(
       highRiskCount: s.highRiskCount,
       mediumRiskCount: s.mediumRiskCount,
       riskRecords: s.risks.map(toRiskRecord),
+      dataSource: s.evalRow.dataSource ?? "llm-estimated",
     })),
+    warnings: riskWarnings,
   });
 
   send("stage", { stage: 7, name: STAGE_NAMES[7], status: "in-progress" });
@@ -511,6 +627,7 @@ export async function runPipeline(
       suitabilityScore: s.suitabilityScore,
       riskLevel: s.overallRisk,
       highRiskCount: s.highRiskCount,
+      dataSource: s.evalRow.dataSource ?? "llm-estimated",
     })),
   });
 
@@ -556,6 +673,7 @@ export async function runPipeline(
       riskLevel: top.overallRisk,
       highRiskCount: top.highRiskCount,
       riskExplanation: top.riskExplanation,
+      dataSource: top.evalRow.dataSource ?? "llm-estimated",
       text: recommendation.text,
     },
   });

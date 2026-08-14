@@ -4,6 +4,7 @@ import { config } from "./config.js";
 import { errorHandler } from "./middleware/errorHandler.js";
 import { notFound } from "./middleware/notFound.js";
 import { healthRoutes } from "./routes/health.routes.js";
+import { liveTrialsRoutes } from "./routes/liveTrials.routes.js";
 import { metaRoutes } from "./routes/meta.routes.js";
 import { regionRoutes } from "./routes/region.routes.js";
 import { runRoutes } from "./routes/run.routes.js";
@@ -26,6 +27,7 @@ export function createApp() {
   app.use("/api", regionRoutes);
   app.use("/api", runRoutes);
   app.use("/api", runsRoutes);
+  app.use("/api", liveTrialsRoutes);
 
   app.use(notFound);
   app.use(errorHandler);

@@ -260,7 +260,17 @@ export default function AIRegionPrediction({
                           <td>{c.siteCount}</td>
                           <td>{c.avgSuitability}/100</td>
                           <td>{c.regulatoryWeeks}w</td>
-                          <td>{c.competingTrials}</td>
+                          <td>
+                            {c.competingTrials}
+                            {c.competingTrialsSource === "live" && (
+                              <span
+                                className="chip live-chip"
+                                title="Live count from ClinicalTrials.gov"
+                              >
+                                live
+                              </span>
+                            )}
+                          </td>
                           <td>${c.avgCostPerPatient.toLocaleString()}</td>
                           <td>
                             {c.monthsToEnroll === null

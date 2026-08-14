@@ -22,7 +22,6 @@ export default function RiskRegisterTable({
             <th>Status</th>
             <th>Mitigation Plan</th>
             <th>Owner</th>
-            <th>Score</th>
           </tr>
         </thead>
         <tbody>
@@ -49,7 +48,6 @@ export default function RiskRegisterTable({
               <td>{r.status}</td>
               <td className="col-wide">{r.mitigationPlan}</td>
               <td>{r.owner}</td>
-              <td>{r.riskScore}</td>
             </tr>
           ))}
         </tbody>

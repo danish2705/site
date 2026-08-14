@@ -184,6 +184,10 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
     fetchMeta()
       .then((data) => {
         setMeta(data);
+        // metaWarning means indications fell back to a static list because
+        // the live ClinicalTrials.gov vocabulary lookup returned nothing —
+        // surface it (non-blocking; the fallback list keeps the form usable).
+        if (data.metaWarning) setError(data.metaWarning);
       })
       .catch((err: Error) =>
         setError(`Could not reach backend: ${err.message}`),
@@ -195,13 +199,13 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
   ).length;
   const progressPct = Math.round((completedCount / STAGE_LIST.length) * 100);
   const pipelineDone = completedCount === STAGE_LIST.length;
-  const regionOptions = useMemo(
-    () =>
-      (meta?.regionOptions ?? []).filter(
-        (o) => o.indication === form.indication,
-      ),
-    [meta, form.indication],
-  );
+  // Region options are no longer indication-specific — every region/country
+  // in data/regionMap.ts (backend) applies to every indication now, so the
+  // old indication-equality filter (which relied on Region_Data being
+  // per-indication) is removed. `meta.regionOptions` entries carry a "*"
+  // wildcard `indication` field for backward compatibility with the
+  // RegionOption type, but nothing filters on it anymore.
+  const regionOptions = useMemo(() => meta?.regionOptions ?? [], [meta]);
 
   async function handleSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();

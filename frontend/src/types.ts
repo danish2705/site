@@ -13,11 +13,23 @@ export interface RegionOption {
   country: string;
 }
 
+export interface LiveFieldValue {
+  value: string;
+  count: number;
+}
+
 export interface MetaResponse {
   indications: string[];
+  /** "fallback" means the live ClinicalTrials.gov vocabulary lookup failed and `indications` is a static safety-net list, not live data. */
+  indicationsSource?: "live" | "fallback";
+  /** Set when indicationsSource is "fallback" — explains why and what's still live. */
+  metaWarning?: string;
   regions: string[];
   regionOptions: RegionOption[];
   specialties: Record<string, string>;
+  /** Live, ranked vocabulary from ClinicalTrials.gov (supplementary — may be empty on API outage). */
+  liveConditions?: LiveFieldValue[];
+  liveCountries?: LiveFieldValue[];
 }
 
 export interface RegionCandidate {
@@ -26,6 +38,7 @@ export interface RegionCandidate {
   prevalence: number;
   regulatoryWeeks: number;
   competingTrials: number;
+  competingTrialsSource?: "live" | "excel";
   avgCostPerPatient: number;
   siteCount: number;
   avgSuitability: number;
@@ -118,6 +131,7 @@ export interface RiskRecord {
   mitigationPlan: string;
   owner: string;
   riskScore: number;
+  dataSource?: "excel" | "live" | "llm-estimated";
 }
 
 export interface RiskAssessmentRow {
@@ -159,6 +173,8 @@ export interface RankingRow {
   suitabilityScore: number | null;
   riskLevel: "Low" | "Medium" | "High";
   highRiskCount: number;
+  /** "llm-estimated" = this site's KPIs came from an LLM estimate on a live ClinicalTrials.gov facility, not Site_Evaluation. */
+  dataSource?: "excel" | "llm-estimated";
 }
 
 export interface FinalResult {
@@ -177,6 +193,7 @@ export interface FinalResult {
   riskLevel: "Low" | "Medium" | "High";
   highRiskCount: number;
   riskExplanation: RiskExplanation;
+  dataSource?: "excel" | "llm-estimated";
   text: string;
 }
 
@@ -187,6 +204,8 @@ export interface StageEventPayload {
   detail?: string;
   data?: unknown;
   llm?: string;
+  /** Explicit per-item issues (e.g. a live site that couldn't be scored) — sibling to `data`, not nested in it. */
+  warnings?: string[];
 }
 
 export interface SavedRunSummary {
@@ -236,4 +255,31 @@ export interface SavedRunDetail {
     llm: string | null;
   };
   sites: SavedRunSite[];
+}
+
+export interface LiveFacilityRow {
+  nctId: string;
+  briefTitle: string | null;
+  facility: string | null;
+  city: string | null;
+  state: string | null;
+  country: string | null;
+  status: string | null;
+}
+
+export interface LiveTrialBenchmark {
+  sampleCount: number;
+  phaseDistribution: Record<string, number>;
+  medianSampleSize: number | null;
+  medianDurationMonths: number | null;
+}
+
+export interface LiveTrialLandscapeResponse {
+  indication: string;
+  country: string | null;
+  activeCompetingTrials: number | null;
+  facilities: LiveFacilityRow[];
+  benchmark: LiveTrialBenchmark;
+  fetchedAt: string;
+  warnings: string[];
 }

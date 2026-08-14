@@ -1,8 +1,10 @@
-import {
-  loadStore,
-  INDICATION_TO_SPECIALTY,
-} from "../repository/excelStore.js";
 import { predictRegionWithLLM, llmStatus } from "./client.js";
+import { REGION_DEFINITIONS } from "../data/regionMap.js";
+import { buildLiveRegionRow } from "../pipeline/liveRegionMetrics.js";
+import { buildLiveCandidateSites } from "../pipeline/liveCandidateSites.js";
+import { buildLiveRiskRecords } from "../pipeline/liveRiskAssessment.js";
+import { scoreSites } from "../pipeline/scoring.js";
+import { resolveSpecialty } from "../pipeline/liveIndications.js";
 import type {
   PipelineInput,
   RegionCandidate,
@@ -32,61 +34,80 @@ function costWeightForTier(budgetTier?: string): number {
   }
 }
 
-function buildCandidates(
+async function buildCandidates(
   input: PipelineInput,
   specialty: string,
-): { candidates: RegionCandidate[]; excludedNoSites: number } {
-  const store = loadStore();
+): Promise<{ candidates: RegionCandidate[]; excludedNoSites: number }> {
   const { sampleSize = 300, durationMonths = 18, budgetTier } = input;
 
-  const regionRows = store.regionData.filter(
-    (r) => r.Indication === input.indication,
+  const regionRows = await Promise.all(
+    REGION_DEFINITIONS.map((def) =>
+      buildLiveRegionRow({
+        region: def.region,
+        country: def.country,
+        indication: input.indication,
+        specialty,
+      }),
+    ),
   );
-
-  const seen = new Set<string>();
-  const raw = regionRows.filter((r) => {
-    const key = `${r.Region}||${r.Country}`;
-    if (seen.has(key)) return false;
-    seen.add(key);
-    return true;
-  });
 
   let excludedNoSites = 0;
 
-  const rows = raw
-    .map((r) => {
-      const sites = store.sites.filter(
-        (s) => s.Region === r.Region && s["Therapeutic Area"] === specialty,
-      );
-      if (sites.length === 0) {
+  const avg = (arr: number[]) =>
+    arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : 0;
+
+  const built = await Promise.all(
+    regionRows.map(async (r) => {
+      const liveCandidates = await buildLiveCandidateSites({
+        indication: input.indication,
+        specialty,
+        region: r.Region,
+        country: r.Country,
+        regulatoryWeeks: r["Regulatory Approval Time (weeks)"],
+        regionCompetingTrials: r["Active Competing Trials"],
+        avgCostPerPatient: r["Avg Cost per Patient (USD)"],
+      }).catch(() => []);
+
+      const scorable = liveCandidates.filter((c) => c.evalRow);
+      if (scorable.length === 0) {
         excludedNoSites += 1;
         return null;
       }
 
-      const evals = sites
-        .map((s) => store.evalBySiteId.get(s["Site ID"]))
-        .filter((e): e is NonNullable<typeof e> => !!e);
+      const evalRows = scorable.map((c) => c.evalRow!);
+      const scored = scoreSites(evalRows);
+      const suitabilities = scored.map((s) => s.score);
 
-      const suitabilities = evals
-        .map((e) => e["Suitability Score (0-100)"])
-        .filter((n): n is number => typeof n === "number");
-
-      const enrollmentRates = evals
+      const enrollmentRates = evalRows
         .map((e) => e["Historical Enrollment Rate (pts/month)"])
         .filter((n): n is number => typeof n === "number");
 
-      const highRiskCount = sites.reduce((n, s) => {
-        const risks = store.risksBySiteId.get(s["Site ID"]) || [];
-        return (
-          n + risks.filter((x) => x["Overall Risk Rating"] === "High").length
-        );
-      }, 0);
-
-      const avg = (arr: number[]) =>
-        arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : 0;
+      const highRiskCount = (
+        await Promise.all(
+          scorable.map(async (c) => {
+            try {
+              const result = await buildLiveRiskRecords({
+                siteId: c.site["Site ID"],
+                facilityName: c.site["Site Name"],
+                city: c.site.City || null,
+                country: c.site.Country,
+                indication: input.indication,
+                specialty,
+                region: r.Region,
+                history: c.history,
+              });
+              return result.risks.filter(
+                (x) => x["Overall Risk Rating"] === "High",
+              ).length;
+            } catch {
+              return 0;
+            }
+          }),
+        )
+      ).reduce((a, b) => a + b, 0);
 
       const avgEnrollmentRate = avg(enrollmentRates);
-      const capacityPerMonth = avgEnrollmentRate * sites.length;
+      const capacityPerMonth = avgEnrollmentRate * scorable.length;
       const monthsToEnroll =
         capacityPerMonth > 0 ? sampleSize / capacityPerMonth : Infinity;
 
@@ -96,12 +117,14 @@ function buildCandidates(
         prevalence: r["Prevalence (per 100k)"],
         regulatoryWeeks: r["Regulatory Approval Time (weeks)"],
         competingTrials: r["Active Competing Trials"],
+        competingTrialsSource: r.competingTrialsSource ?? "live",
         avgCostPerPatient: r["Avg Cost per Patient (USD)"],
-        siteCount: sites.length,
+        siteCount: scorable.length,
         avgSuitability: Math.round(avg(suitabilities) * 10) / 10,
         bestSuitability: suitabilities.length ? Math.max(...suitabilities) : 0,
         highRiskCount,
-        highRiskPerSite: Math.round((highRiskCount / sites.length) * 100) / 100,
+        highRiskPerSite:
+          Math.round((highRiskCount / scorable.length) * 100) / 100,
         avgEnrollmentRate: Math.round(avgEnrollmentRate * 10) / 10,
         estimatedPatients: Math.round(
           (r["Prevalence (per 100k)"] / 100000) * ASSUMED_CATCHMENT,
@@ -112,8 +135,10 @@ function buildCandidates(
             : Math.round(monthsToEnroll * 10) / 10,
         score: 0, // filled in below, once the whole set is known
       };
-    })
-    .filter((r): r is NonNullable<typeof r> => r !== null);
+    }),
+  );
+
+  const rows = built.filter((r): r is NonNullable<typeof r> => r !== null);
 
   if (rows.length === 0) return { candidates: [], excludedNoSites };
 
@@ -136,12 +161,12 @@ function buildCandidates(
     const score =
       0.22 * nPrevalence[i] +
       0.2 * nSuitability[i] +
-      0.16 * enrollFeasibility + 
+      0.16 * enrollFeasibility +
       0.12 * (1 - nRegulatory[i]) +
-      0.1 * (1 - nCompeting[i]) + 
-      0.1 * (1 - nRisk[i]) + 
-      0.1 * nDepth[i] + 
-      0.08 * costWeight * (1 - nCost[i]); 
+      0.1 * (1 - nCompeting[i]) +
+      0.1 * (1 - nRisk[i]) +
+      0.1 * nDepth[i] +
+      0.08 * costWeight * (1 - nCost[i]);
 
     r.score = Math.round((score / (1 + 0.08 * costWeight)) * 1000) / 10;
   });
@@ -194,7 +219,9 @@ function heuristicPrediction(
     rationale:
       `${note} ${top.region}, ${top.country} ranks first on the weighted composite score ` +
       `(${top.score}/100) built from prevalence, site suitability, enrollment capacity, ` +
-      `regulatory timeline, competing-trial load, risk density and cost.`,
+      `regulatory timeline, competing-trial load, risk density and cost. Prevalence, ` +
+      `regulatory timeline and cost figures are (AI-estimated) — no public source publishes them ` +
+      `at this granularity.`,
     keyFactors,
     watchOuts,
     alternatives: candidates.slice(1, 3).map((c) => ({
@@ -208,20 +235,20 @@ function heuristicPrediction(
 export async function predictRegion(
   input: PipelineInput,
 ): Promise<RegionPredictionResponse> {
-  const store = loadStore();
   const { indication } = input;
 
-  if (!indication || !INDICATION_TO_SPECIALTY[indication]) {
-    throw new Error(
-      `Unknown or missing indication "${indication}". Valid options: ${store.indications.join(", ")}`,
-    );
+  if (!indication) {
+    throw new Error(`Missing indication. Pick an indication before predicting a region.`);
   }
-  const specialty = INDICATION_TO_SPECIALTY[indication];
+  const specialty = await resolveSpecialty(indication);
 
-  const { candidates, excludedNoSites } = buildCandidates(input, specialty);
+  const { candidates, excludedNoSites } = await buildCandidates(
+    input,
+    specialty,
+  );
   if (candidates.length === 0) {
     throw new Error(
-      `No region on file has ${specialty} candidate sites for "${indication}", so there is nothing to predict from.`,
+      `No region has live ${specialty} candidate sites on ClinicalTrials.gov for "${indication}", so there is nothing to predict from.`,
     );
   }
 

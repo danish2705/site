@@ -8,6 +8,40 @@ export interface RegionRow {
   "Regulatory Approval Time (weeks)": number;
   "Active Competing Trials": number;
   "Avg Cost per Patient (USD)": number;
+  /** Set by services/liveRegionData.ts once a row has been enriched. */
+  competingTrialsSource?: "live" | "excel";
+  /** Source of Prevalence/Regulatory/Cost fields on this row — see pipeline/liveRegionMetrics.ts. */
+  regionMetricsSource?: "live" | "llm-estimated" | "unavailable";
+  /** Set when regionMetricsSource is "unavailable" (LLM not configured or the call failed), explaining why those fields are 0 rather than a real/estimated figure. */
+  metricsWarning?: string;
+}
+
+export interface LiveFacilityRow {
+  nctId: string;
+  briefTitle: string | null;
+  facility: string | null;
+  city: string | null;
+  state: string | null;
+  country: string | null;
+  status: string | null;
+}
+
+export interface LiveTrialBenchmark {
+  sampleCount: number;
+  phaseDistribution: Record<string, number>;
+  medianSampleSize: number | null;
+  medianDurationMonths: number | null;
+  medianEnrollmentRatePerMonth: number | null;
+}
+
+export interface LiveTrialLandscapeResponse {
+  indication: string;
+  country: string | null;
+  activeCompetingTrials: number | null;
+  facilities: LiveFacilityRow[];
+  benchmark: LiveTrialBenchmark;
+  fetchedAt: string;
+  warnings: string[];
 }
 
 export interface TrialRequirementRow {
@@ -44,6 +78,8 @@ export interface SiteRow {
   "Therapeutic Area": string;
   "Hospital Type": string;
   Accreditation: string;
+  /** "live" = real facility pulled from ClinicalTrials.gov this run; absent/"excel" = from Candidate_Sites. */
+  dataSource?: "excel" | "live";
 }
 
 export interface EvaluationRow {
@@ -108,6 +144,8 @@ export interface RiskRow {
   "Mitigation Plan": string;
   Owner: string;
   "Risk Score (Numeric)": number;
+  /** "live" = real, disclosed ClinicalTrials.gov trial-status fact; "llm-estimated" = AI-estimated for a category with no public source; absent/"excel" = from Risk_Register. */
+  dataSource?: "excel" | "live" | "llm-estimated";
 }
 
 export interface RegionOptionRow {
@@ -152,6 +190,7 @@ export interface RegionCandidate {
   prevalence: number;
   regulatoryWeeks: number;
   competingTrials: number;
+  competingTrialsSource?: "live" | "excel";
   avgCostPerPatient: number;
   siteCount: number;
   avgSuitability: number;
@@ -203,6 +242,7 @@ export interface RiskRecord {
   mitigationPlan: string;
   owner: string;
   riskScore: number;
+  dataSource?: "excel" | "live" | "llm-estimated";
 }
 
 export interface RiskAssessmentRow {
@@ -224,6 +264,8 @@ export interface StageEvent {
   detail?: string;
   data?: unknown;
   llm?: string;
+  /** Explicit per-item issues (e.g. a live site that couldn't be scored) — sibling to `data`, not nested in it. */
+  warnings?: string[];
 }
 
 export type SendFn = (event: string, data: unknown) => void;

@@ -80,6 +80,33 @@ export interface ExtendedEvaluationRow extends EvaluationRow {
   "Site Cost per Patient (USD)"?: number | null;
   "Catchment Population"?: number | null;
   "Diversity Index (0-100)"?: number | null;
+  /** "llm-estimated" = KPIs guessed by an LLM for a real live-sourced site with no measured data; absent/"excel" = measured, from Site_Evaluation. */
+  dataSource?: "excel" | "llm-estimated";
+  /** Set only when dataSource === "llm-estimated" — the model's own explanation of what it grounded the estimate in. */
+  estimateRationale?: string;
+}
+
+/**
+ * LLM-estimated KPIs are, by construction, never as certain as a measured
+ * Site_Evaluation row — even with every field populated. This caps a
+ * ScoredSite's confidence at "Medium" for such rows and adds a caveat
+ * explaining why, rather than letting the ordinary coverage/completeness
+ * math claim "High" confidence for a guess.
+ */
+export function capConfidenceForEstimate(
+  scored: ScoredSite,
+  row: ExtendedEvaluationRow,
+): ScoredSite {
+  if (row.dataSource !== "llm-estimated") return scored;
+  const caveats = [...scored.caveats];
+  if (scored.confidence === "High") {
+    caveats.push(
+      "KPI data for this site is LLM-estimated, not measured — confidence capped at Medium regardless of field coverage.",
+    );
+    return { ...scored, confidence: "Medium", caveats };
+  }
+  caveats.push("KPI data for this site is LLM-estimated, not measured.");
+  return { ...scored, caveats };
 }
 
 export const THRESHOLDS = {
