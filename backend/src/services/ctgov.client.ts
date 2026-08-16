@@ -236,6 +236,16 @@ export async function getFacilitiesForCondition(
 /* 2b. Real per-facility trial-status history (for risk assessment)       */
 /* ---------------------------------------------------------------------- */
 
+// NOTE ON FIELD NAMES BELOW: EnrollmentCount/EnrollmentType, DesignAllocation/
+// DesignInterventionModel/DesignMasking, InterventionType, LastUpdatePostDate
+// and StatusVerifiedDate are documented v2 API fields, but this sandbox has no
+// live network access to clinicaltrials.gov to confirm the exact response
+// shape at runtime (only the already-used fields above them were verified
+// this way, earlier in this project). The parsing below is defensive — any
+// field that's missing, renamed, or shaped differently just comes back
+// `null`/empty (same "absence, not a crash" pattern as everywhere else in
+// this file) — but spot-check one real response against these paths once
+// this is deployed, before trusting the new categories that depend on them.
 export interface FacilityTrialRecord {
   nctId: string;
   briefTitle: string | null;
@@ -243,6 +253,26 @@ export interface FacilityTrialRecord {
   overallStatus: string | null;
   /** Sponsor-disclosed reason, present mainly on TERMINATED/WITHDRAWN/SUSPENDED trials. */
   whyStopped: string | null;
+  /** Whether ClinicalTrials.gov has a results section posted for this study — a disclosed fact, not an estimate. */
+  hasResults: boolean | null;
+  /** protocolSection.statusModule.primaryCompletionDateStruct.date, as reported — used only to flag overdue/missing results reporting. */
+  primaryCompletionDate: string | null;
+  /** designModule.enrollmentInfo.count — total across all sites in the study, not facility-specific. */
+  enrollmentCount: number | null;
+  /** designModule.enrollmentInfo.type — "ACTUAL" (post-completion, reliable) or "ESTIMATED" (a target, not a result). */
+  enrollmentType: string | null;
+  /** designModule.designInfo.allocation — e.g. RANDOMIZED, NON_RANDOMIZED, NA. */
+  designAllocation: string | null;
+  /** designModule.designInfo.interventionModel — e.g. PARALLEL, CROSSOVER, FACTORIAL, SINGLE_GROUP, SEQUENTIAL. */
+  designInterventionModel: string | null;
+  /** designModule.designInfo.maskingInfo.masking — NONE, SINGLE, DOUBLE, TRIPLE, QUADRUPLE. */
+  designMasking: string | null;
+  /** armsInterventionsModule.interventions[].type — Drug, Device, Biological, Behavioral, etc. (can be more than one per study). */
+  interventionTypes: string[];
+  /** statusModule.lastUpdatePostDateStruct.date — when the sponsor last updated this record on the registry. */
+  lastUpdatePostDate: string | null;
+  /** statusModule.statusVerifiedDate — when the sponsor last attested the record is still accurate; distinct from LastUpdatePostDate. */
+  statusVerifiedDate: string | null;
 }
 
 export interface FacilityHistory {
@@ -253,31 +283,113 @@ export interface FacilityHistory {
   trials: FacilityTrialRecord[];
 }
 
-interface HistoryStudiesResponse {
-  studies?: Array<{
-    protocolSection?: {
-      identificationModule?: { nctId?: string; briefTitle?: string };
-      statusModule?: { overallStatus?: string; whyStopped?: string };
-      contactsLocationsModule?: {
-        locations?: Array<{
-          facility?: string;
-          city?: string;
-          state?: string;
-          country?: string;
-        }>;
+interface RawHistoryStudy {
+  hasResults?: boolean;
+  protocolSection?: {
+    identificationModule?: { nctId?: string; briefTitle?: string };
+    statusModule?: {
+      overallStatus?: string;
+      whyStopped?: string;
+      primaryCompletionDateStruct?: { date?: string };
+      lastUpdatePostDateStruct?: { date?: string };
+      statusVerifiedDate?: string;
+    };
+    designModule?: {
+      enrollmentInfo?: { count?: number; type?: string };
+      designInfo?: {
+        allocation?: string;
+        interventionModel?: string;
+        maskingInfo?: { masking?: string };
       };
     };
-  }>;
+    armsInterventionsModule?: {
+      interventions?: Array<{ type?: string }>;
+    };
+    contactsLocationsModule?: {
+      locations?: Array<{
+        facility?: string;
+        city?: string;
+        state?: string;
+        country?: string;
+      }>;
+    };
+  };
+}
+
+interface HistoryStudiesResponse {
+  studies?: RawHistoryStudy[];
+}
+
+const HISTORY_FIELDS = [
+  "NCTId",
+  "BriefTitle",
+  "OverallStatus",
+  "WhyStopped",
+  "HasResults",
+  "PrimaryCompletionDate",
+  "EnrollmentCount",
+  "EnrollmentType",
+  "DesignAllocation",
+  "DesignInterventionModel",
+  "DesignMasking",
+  "InterventionType",
+  "LastUpdatePostDate",
+  "StatusVerifiedDate",
+  "LocationFacility",
+  "LocationCity",
+  "LocationState",
+  "LocationCountry",
+].join(",");
+
+function trialRecordFrom(study: RawHistoryStudy): FacilityTrialRecord {
+  return {
+    nctId: study.protocolSection?.identificationModule?.nctId ?? "",
+    briefTitle: study.protocolSection?.identificationModule?.briefTitle ?? null,
+    overallStatus: study.protocolSection?.statusModule?.overallStatus ?? null,
+    whyStopped: study.protocolSection?.statusModule?.whyStopped ?? null,
+    hasResults: typeof study.hasResults === "boolean" ? study.hasResults : null,
+    primaryCompletionDate:
+      study.protocolSection?.statusModule?.primaryCompletionDateStruct?.date ??
+      null,
+    enrollmentCount:
+      typeof study.protocolSection?.designModule?.enrollmentInfo?.count ===
+      "number"
+        ? (study.protocolSection.designModule.enrollmentInfo.count as number)
+        : null,
+    enrollmentType:
+      study.protocolSection?.designModule?.enrollmentInfo?.type ?? null,
+    designAllocation:
+      study.protocolSection?.designModule?.designInfo?.allocation ?? null,
+    designInterventionModel:
+      study.protocolSection?.designModule?.designInfo?.interventionModel ??
+      null,
+    designMasking:
+      study.protocolSection?.designModule?.designInfo?.maskingInfo?.masking ??
+      null,
+    interventionTypes: (
+      study.protocolSection?.armsInterventionsModule?.interventions ?? []
+    )
+      .map((i) => i.type)
+      .filter((t): t is string => !!t),
+    lastUpdatePostDate:
+      study.protocolSection?.statusModule?.lastUpdatePostDateStruct?.date ??
+      null,
+    statusVerifiedDate:
+      study.protocolSection?.statusModule?.statusVerifiedDate ?? null,
+  };
 }
 
 /**
  * Real, factual risk signal — deliberately does NOT filter by overallStatus,
  * so it captures TERMINATED/WITHDRAWN/SUSPENDED trials at a facility, not
- * just currently-recruiting ones. This is the only live, non-estimated
- * source of per-site risk signal: a facility whose trials were terminated
- * (with a disclosed reason) is a real, disclosed fact, not a guess.
- * GET /studies?query.cond={condition}[&query.locn={country}]
- *     &fields=NCTId,BriefTitle,OverallStatus,WhyStopped,LocationFacility,LocationCity,LocationState,LocationCountry
+ * just currently-recruiting ones. This is a live, non-estimated source of
+ * per-site risk signal: a facility whose trials were terminated (with a
+ * disclosed reason) is a real, disclosed fact, not a guess. It also carries
+ * HasResults/PrimaryCompletionDate so callers can flag overdue/missing
+ * results reporting, plus enrollment/design/reporting-diligence fields for
+ * the Enrollment-shortfall, Protocol Complexity and Reporting Diligence
+ * signals — all real, disclosed facts, not guesses.
+ * GET /studies?query.cond={condition}[&query.locn={country}]&fields=...
  */
 export async function getFacilityHistories(
   condition: string,
@@ -289,20 +401,9 @@ export async function getFacilityHistories(
   const cached = getCached<Map<string, FacilityHistory>>(cacheKey);
   if (cached !== undefined) return cached;
 
-  const fields = [
-    "NCTId",
-    "BriefTitle",
-    "OverallStatus",
-    "WhyStopped",
-    "LocationFacility",
-    "LocationCity",
-    "LocationState",
-    "LocationCountry",
-  ].join(",");
-
   let url =
     `${BASE_URL}/studies?query.cond=${encodeURIComponent(condition)}` +
-    `&fields=${fields}&pageSize=${pageSize}`;
+    `&fields=${HISTORY_FIELDS}&pageSize=${pageSize}`;
   if (opts.country) url += `&query.locn=${encodeURIComponent(opts.country)}`;
 
   try {
@@ -312,13 +413,7 @@ export async function getFacilityHistories(
     );
     const map = new Map<string, FacilityHistory>();
     for (const study of json.studies ?? []) {
-      const nctId = study.protocolSection?.identificationModule?.nctId ?? "";
-      const briefTitle =
-        study.protocolSection?.identificationModule?.briefTitle ?? null;
-      const overallStatus =
-        study.protocolSection?.statusModule?.overallStatus ?? null;
-      const whyStopped =
-        study.protocolSection?.statusModule?.whyStopped ?? null;
+      const record = trialRecordFrom(study);
       const locations =
         study.protocolSection?.contactsLocationsModule?.locations ?? [];
       for (const loc of locations) {
@@ -335,9 +430,7 @@ export async function getFacilityHistories(
             trials: [],
           });
         }
-        map
-          .get(key)!
-          .trials.push({ nctId, briefTitle, overallStatus, whyStopped });
+        map.get(key)!.trials.push(record);
       }
     }
     setCached(cacheKey, map, config.ctgov.cacheTtlMs);
@@ -345,6 +438,80 @@ export async function getFacilityHistories(
   } catch (err) {
     warn(`facility-history lookup failed for "${condition}"`, err);
     return new Map();
+  }
+}
+
+/**
+ * Broader, facility-only version of getFacilityHistories: queries by facility
+ * NAME (via query.locn, which free-text-matches location fields including
+ * facility name — the same parameter already used for country matching
+ * elsewhere in this file) with NO condition filter, so it returns this one
+ * facility's trial history across ALL indications, not just the one being
+ * evaluated. This exists to fix a real statistical problem: the
+ * indication-scoped history above is often just 1-2 trials per facility,
+ * making termination/overdue rates noisy. A facility's overall track record
+ * across every trial it has run is a bigger, steadier sample.
+ *
+ * PRECISION CAVEAT (real, not hypothetical): query.locn does a broad
+ * free-text match across location fields, not an exact facility-name match.
+ * A generic or very common facility name could over-match unrelated studies
+ * at a same-named-but-different facility elsewhere. City is used as a
+ * secondary filter to reduce false positives, but this is a best-effort
+ * widening, not a guaranteed-precise one — treat the resulting rate as
+ * "this facility's likely broader track record," not an exact figure.
+ * Returns null (not an empty history) on any fetch failure or zero results,
+ * so callers can fall back to the indication-scoped history rather than
+ * silently substituting a misleadingly empty one.
+ */
+export async function getFacilityWideHistory(
+  facility: string,
+  city: string | null,
+  country: string | null,
+): Promise<FacilityHistory | null> {
+  if (!config.ctgov.enabled || !facility) return null;
+  const cacheKey = `facility-wide:${facility.toLowerCase()}|${(city ?? "").toLowerCase()}|${(country ?? "").toLowerCase()}`;
+  const cached = getCached<FacilityHistory | null>(cacheKey);
+  if (cached !== undefined) return cached;
+
+  const url =
+    `${BASE_URL}/studies?query.locn=${encodeURIComponent(facility)}` +
+    `&fields=${HISTORY_FIELDS}&pageSize=100`;
+
+  try {
+    const json = await fetchJson<HistoryStudiesResponse>(
+      url,
+      config.ctgov.timeoutMs,
+    );
+    const cityKey = (city ?? "").trim().toLowerCase();
+    const facilityKey = facility.trim().toLowerCase();
+    const trials: FacilityTrialRecord[] = [];
+    for (const study of json.studies ?? []) {
+      const locations =
+        study.protocolSection?.contactsLocationsModule?.locations ?? [];
+      const matches = locations.some((loc) => {
+        if (!loc.facility) return false;
+        if (loc.facility.trim().toLowerCase() !== facilityKey) return false;
+        if (cityKey && (loc.city ?? "").trim().toLowerCase() !== cityKey) {
+          return false;
+        }
+        if (!locationMatchesCountry(loc.country, country ?? undefined)) {
+          return false;
+        }
+        return true;
+      });
+      if (!matches) continue;
+      trials.push(trialRecordFrom(study));
+    }
+    if (trials.length === 0) {
+      setCached(cacheKey, null, config.ctgov.cacheTtlMs);
+      return null;
+    }
+    const result: FacilityHistory = { facility, city, state: null, country, trials };
+    setCached(cacheKey, result, config.ctgov.cacheTtlMs);
+    return result;
+  } catch (err) {
+    warn(`facility-wide history lookup failed for "${facility}"`, err);
+    return null;
   }
 }
 

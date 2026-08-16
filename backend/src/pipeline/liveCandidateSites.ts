@@ -17,6 +17,7 @@ import {
   getFacilitiesForCondition,
   getCompletedTrialBenchmarks,
   getFacilityHistories,
+  getFacilityWideHistory,
   type LiveFacility,
   type FacilityHistory,
 } from "../services/ctgov.client.js";
@@ -31,8 +32,64 @@ export interface LiveCandidateSite {
   site: SiteRow;
   evalRow: ExtendedEvaluationRow | null;
   warning: string | null;
-  /** Real trial-status history for this facility, for risk-record generation. */
+  /** Real trial-status history for this facility, SCOPED TO THIS INDICATION — used for the per-trial category rows (Enrollment/Safety/Operational/etc, Protocol Complexity) and as a fallback rate source. */
   history?: FacilityHistory;
+  /**
+   * Real trial-status history for this facility across ALL indications
+   * (query.locn on facility name, no condition filter) — a bigger, steadier
+   * sample for the Trial History Likelihood rate and the Data Integrity
+   * overdue-results check than the indication-scoped `history` above, which
+   * is often just 1-2 trials. null if the lookup found nothing or failed;
+   * callers should fall back to `history` in that case. See the precision
+   * caveat on getFacilityWideHistory in ctgov.client.ts.
+   */
+  facilityWideHistory?: FacilityHistory | null;
+  /**
+   * Real, per-facility count of OTHER actively-recruiting/not-yet-recruiting
+   * trial locations for this indication in the same city — used for the
+   * Competitive risk-register category instead of reusing one country-wide
+   * total for every site in the run. Capped by COMPETING_POOL_PAGE_SIZE, so
+   * a very crowded field could still undercount rather than overcount.
+   */
+  nearbyCompetingTrials: number;
+  /**
+   * Real median completed-trial sample size for this indication (from
+   * getCompletedTrialBenchmarks, already fetched once per region/indication
+   * for the LLM KPI estimate) — reused for the Enrollment-shortfall risk
+   * signal, comparing a facility's own ACTUAL enrollment counts against this
+   * benchmark. null if the LLM benchmark call wasn't made/failed.
+   */
+  benchmarkMedianSampleSize: number | null;
+}
+
+const RECRUITING_LOCATION_STATUSES = new Set([
+  "RECRUITING",
+  "NOT_YET_RECRUITING",
+]);
+
+// Deliberately larger than the maxSites*2 pull used to find candidate sites
+// themselves — this pool exists purely to count nearby competing activity,
+// so it needs broader coverage of the same indication/country, not just
+// enough rows to find a handful of candidates.
+const COMPETING_POOL_PAGE_SIZE = 150;
+
+function countNearbyCompetingTrials(
+  facility: LiveFacility,
+  pool: LiveFacility[],
+): number {
+  if (!facility.city) return 0;
+  const cityKey = facility.city.trim().toLowerCase();
+  const ownName = (facility.facility ?? "").trim().toLowerCase();
+  return pool.filter((p) => {
+    if (!p.city || p.city.trim().toLowerCase() !== cityKey) return false;
+    if (!p.status || !RECRUITING_LOCATION_STATUSES.has(p.status)) return false;
+    // Exclude this exact facility's own listing(s) so a site never counts as
+    // its own competitor.
+    if (ownName && (p.facility ?? "").trim().toLowerCase() === ownName) {
+      return false;
+    }
+    return true;
+  }).length;
 }
 
 interface EstimateCacheEntry {
@@ -108,7 +165,7 @@ export async function buildLiveCandidateSites(
   if (facilities.length === 0) return [];
 
   const { configured: llmConfigured } = llmStatus();
-  const [benchmark, histories] = await Promise.all([
+  const [benchmark, histories, competingPool] = await Promise.all([
     llmConfigured
       ? getCompletedTrialBenchmarks(params.indication)
       : Promise.resolve({
@@ -119,13 +176,28 @@ export async function buildLiveCandidateSites(
           medianEnrollmentRatePerMonth: null,
         }),
     getFacilityHistories(params.indication, { country: params.country }),
+    getFacilitiesForCondition(params.indication, {
+      country: params.country,
+      pageSize: COMPETING_POOL_PAGE_SIZE,
+    }),
   ]);
+
+  const benchmarkMedianSampleSize = benchmark.medianSampleSize ?? null;
 
   const results = await Promise.allSettled(
     facilities.map(async (f): Promise<LiveCandidateSite> => {
       const siteId = siteIdFor(f.facility!, f.city, f.country);
       const historyKey = `${f.facility}|${f.city ?? ""}|${f.country ?? ""}`.toLowerCase();
       const history = histories.get(historyKey);
+      const nearbyCompetingTrials = countNearbyCompetingTrials(f, competingPool);
+      // Best-effort, non-blocking: a failed/empty facility-wide lookup just
+      // resolves to null (see getFacilityWideHistory's own try/catch) — never
+      // throws, so it can't take down this facility's whole candidate build.
+      const facilityWideHistory = await getFacilityWideHistory(
+        f.facility!,
+        f.city,
+        f.country,
+      );
       const site: SiteRow = {
         "Site ID": siteId,
         "Site Name": displayNameFor(f),
@@ -144,6 +216,9 @@ export async function buildLiveCandidateSites(
           evalRow: null,
           warning: `${f.facility}: LLM is not configured, so no KPI estimate could be produced — this site is shown but not scored.`,
           history,
+          facilityWideHistory,
+          nearbyCompetingTrials,
+          benchmarkMedianSampleSize,
         };
       }
 
@@ -156,7 +231,15 @@ export async function buildLiveCandidateSites(
           dataSource: "llm-estimated",
           estimateRationale: cached.rationale,
         } as unknown as ExtendedEvaluationRow;
-        return { site, evalRow, warning: null, history };
+        return {
+          site,
+          evalRow,
+          warning: null,
+          history,
+          facilityWideHistory,
+          nearbyCompetingTrials,
+          benchmarkMedianSampleSize,
+        };
       }
 
       try {
@@ -184,13 +267,24 @@ export async function buildLiveCandidateSites(
           dataSource: "llm-estimated",
           estimateRationale: estimate.rationale,
         } as unknown as ExtendedEvaluationRow;
-        return { site, evalRow, warning: null, history };
+        return {
+          site,
+          evalRow,
+          warning: null,
+          history,
+          facilityWideHistory,
+          nearbyCompetingTrials,
+          benchmarkMedianSampleSize,
+        };
       } catch (err) {
         return {
           site,
           evalRow: null,
           warning: `${f.facility}: LLM KPI estimate failed (${(err as Error).message}) — this site is shown but not scored.`,
           history,
+          facilityWideHistory,
+          nearbyCompetingTrials,
+          benchmarkMedianSampleSize,
         };
       }
     }),
@@ -213,6 +307,12 @@ export async function buildLiveCandidateSites(
           },
           evalRow: null,
           warning: `${facilities[i].facility ?? "A live site"}: unexpected error building this candidate — shown but not scored.`,
+          nearbyCompetingTrials: countNearbyCompetingTrials(
+            facilities[i],
+            competingPool,
+          ),
+          facilityWideHistory: null,
+          benchmarkMedianSampleSize,
         },
   );
 }

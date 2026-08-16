@@ -1,24 +1,72 @@
 /**
  * Builds risk-register rows for a live, ClinicalTrials.gov-sourced site.
  *
- * Two distinct sources, kept explicitly separate and tagged differently:
- *  - REAL signal: trial-status history at that exact facility (terminated /
- *    withdrawn / suspended trials, with the sponsor-disclosed reason where
- *    available). This is a disclosed fact, not a guess — dataSource: "live".
- *  - LLM-ESTIMATED signal: categories nobody discloses publicly at all
- *    (Compliance, Data Integrity, Staff Turnover, Competitive) — dataSource:
- *    "llm-estimated", generated only for categories the real signal didn't
- *    already cover.
+ * Every category here is REAL signal (dataSource: "live"), derived from
+ * disclosed ClinicalTrials.gov data, no LLM involved:
+ *   - trial-status history at that exact facility (terminated/withdrawn/
+ *     suspended trials, with the sponsor-disclosed reason where available)
+ *     -> Enrollment/Safety/Operational/Regulatory/Clinical categories. The
+ *     shared Likelihood rate prefers a facility-wide (all-indications) trial
+ *     sample when one is available, since the indication-scoped sample is
+ *     often just 1-2 trials — see realRiskRecordsFrom.
+ *   - per-facility count of nearby (same-city) actively-recruiting/
+ *     not-yet-recruiting trial locations for this indication, computed
+ *     in liveCandidateSites.ts from ClinicalTrials.gov's per-location
+ *     status field -> Competitive category. (Distinct from the
+ *     country-wide "Active Competing Trials" figure used for
+ *     region-level scoring — that one number is the same for every site
+ *     in a run, so it isn't fine-grained enough for a per-site rating.)
+ *   - overdue/missing results reporting at this facility's past trials
+ *     (HasResults + PrimaryCompletionDate, both disclosed fields) ->
+ *     Data Integrity category. Also prefers the facility-wide sample.
+ *   - a facility's own ACTUAL enrollment counts vs. the completed-trial
+ *     benchmark median for this indication -> Enrollment-shortfall signal,
+ *     folded into the Enrollment category (see enrollmentShortfallRiskRecordFrom).
+ *   - the design attributes (masking, allocation, intervention model) of
+ *     this facility's own trials for this indication -> Protocol Complexity
+ *     category (see protocolComplexityRiskRecordFrom).
+ *   - how long ago the sponsor last verified/updated this facility's trial
+ *     records -> Reporting Diligence category (see
+ *     reportingDiligenceRiskRecordFrom) — a real, disclosed proxy for
+ *     disclosure diligence, NOT the same thing as a GCP compliance
+ *     inspection finding (no such data exists publicly for any facility).
  *
- * If neither source produces anything (no history + LLM unavailable/fails),
- * an explicit single placeholder row is returned rather than an empty list,
- * so "no risk data" is visibly different from "assessed and found low-risk."
+ * Compliance (the old AI-guessed category) has been dropped entirely — see
+ * the frontend's static disclaimer in RiskAssessmentAccordion.tsx for why.
+ * Staff Turnover was dropped earlier for the same reason: no real source
+ * exists for it and there was no way to ground even a plausible estimate.
+ *
+ * If nothing produces anything (no history at all), an explicit single
+ * placeholder row is returned rather than an empty list, so "no risk data"
+ * is visibly different from "assessed and found low-risk."
  */
 import type { RiskRow } from "../types.js";
-import type { FacilityHistory } from "../services/ctgov.client.js";
-import { estimateSiteRisks, llmStatus } from "../llm/client.js";
+import type { FacilityHistory, FacilityTrialRecord } from "../services/ctgov.client.js";
 
 const TERMINAL_STATUSES = new Set(["TERMINATED", "WITHDRAWN", "SUSPENDED"]);
+
+// Same fixed Likelihood x Impact convention used for the "derivation" text in
+// runPipeline.ts's RISK_MATRIX — duplicated here (not imported) to avoid a
+// circular import between runPipeline.ts and this module. Used for every
+// code-computed category below (Competitive, Data Integrity, Enrollment
+// Shortfall, Protocol Complexity, Reporting Diligence), not for the
+// trial-history-derived categories, which set their own Overall rating
+// directly from a per-trial Impact.
+const RISK_MATRIX: Record<"Low" | "Medium" | "High", Record<"Low" | "Medium" | "High", "Low" | "Medium" | "High">> = {
+  Low: { Low: "Low", Medium: "Low", High: "Medium" },
+  Medium: { Low: "Low", Medium: "Medium", High: "High" },
+  High: { Low: "Medium", Medium: "High", High: "High" },
+};
+
+const MS_PER_DAY = 24 * 60 * 60 * 1000;
+
+/** Whole months between an ISO-ish date string and today; null if unparseable. */
+function monthsSince(dateStr: string): number | null {
+  const then = new Date(dateStr);
+  if (Number.isNaN(then.getTime())) return null;
+  const days = (Date.now() - then.getTime()) / MS_PER_DAY;
+  return days / 30.44;
+}
 
 function categorizeWhyStopped(whyStopped: string | null): string {
   const w = (whyStopped ?? "").toLowerCase();
@@ -38,9 +86,23 @@ function today(): string {
   return new Date().toISOString().slice(0, 10);
 }
 
+// Generic 0-1 proportion -> Low/Medium/High bander, reused for every
+// facility-level rate below (termination rate, results-overdue rate). A
+// facility where most of its trials ran into trouble gets a higher
+// Likelihood than one with a single isolated incident; the threshold
+// numbers themselves are still a stated convention (any Low/Medium/High
+// banding needs one), but the rate they're applied to is always a real,
+// live figure, never a fixed constant.
+function bandRate(rate: number): "Low" | "Medium" | "High" {
+  if (rate >= 0.5) return "High";
+  if (rate >= 0.2) return "Medium";
+  return "Low";
+}
+
 function realRiskRecordsFrom(
   siteId: string,
   history: FacilityHistory | undefined,
+  facilityWideHistory?: FacilityHistory | null,
 ): { risks: RiskRow[]; summary: string } {
   if (!history || history.trials.length === 0) {
     return { risks: [], summary: "No prior trial history found at this facility." };
@@ -57,38 +119,429 @@ function realRiskRecordsFrom(
     };
   }
 
+  // The indication-scoped `history` is often just 1-2 trials, which makes a
+  // termination rate noisy. When a broader, facility-wide (all-indications)
+  // sample is available and non-empty, use IT for the shared rate instead —
+  // a bigger, steadier denominator — while still listing a row per
+  // indication-specific terminal trial below (those descriptions stay
+  // relevant to the indication actually being evaluated).
+  const usingFacilityWide =
+    !!facilityWideHistory && facilityWideHistory.trials.length > 0;
+  const rateSource = usingFacilityWide ? facilityWideHistory! : history;
+  const rateTerminal = rateSource.trials.filter(
+    (t) => t.overallStatus && TERMINAL_STATUSES.has(t.overallStatus),
+  );
+  const terminationRate = rateTerminal.length / rateSource.trials.length;
+  const likelihood = bandRate(terminationRate);
+  const rateScopeText = usingFacilityWide
+    ? "across all indications on file at this facility"
+    : "on file at this facility";
+
   const risks: RiskRow[] = terminal.map((t) => {
-    const impact: "High" | "Medium" =
-      t.overallStatus === "TERMINATED" ? "High" : "Medium";
     const category = categorizeWhyStopped(t.whyStopped);
+    // Safety-related stoppages are treated as High impact regardless of the
+    // exact status wording (a safety-driven termination and a safety-driven
+    // withdrawal are both serious) — everything else keeps the existing
+    // TERMINATED-is-worse-than-WITHDRAWN/SUSPENDED distinction. Both signals
+    // (category, status) come from the real, disclosed `whyStopped` /
+    // `overallStatus` fields, not an AI guess.
+    const impact: "High" | "Medium" =
+      category === "Safety" || t.overallStatus === "TERMINATED"
+        ? "High"
+        : "Medium";
+    const overall = RISK_MATRIX[likelihood][impact];
     return {
       "Risk ID": `R-LIVE-${t.nctId || siteId}`,
       "Site ID": siteId,
       "Risk Category": category,
       Description:
         `Trial ${t.nctId}${t.briefTitle ? ` (${t.briefTitle})` : ""} at this facility was ` +
-        `${t.overallStatus}${t.whyStopped ? `: ${t.whyStopped}` : " — no reason disclosed"}.`,
-      Likelihood: "Medium",
+        `${t.overallStatus}${t.whyStopped ? `: ${t.whyStopped}` : " — no reason disclosed"}. ` +
+        `${rateTerminal.length} of ${rateSource.trials.length} prior trial(s) ${rateScopeText} ` +
+        `were terminated/withdrawn/suspended (${Math.round(terminationRate * 100)}%), which sets ` +
+        `this facility's Likelihood to ${likelihood}.`,
+      Likelihood: likelihood,
       Impact: impact,
-      "Overall Risk Rating": impact,
+      "Overall Risk Rating": overall,
       "Date Identified": today(),
       Status: "Open",
       "Mitigation Plan":
         "Confirm root cause with the site directly before allocating enrollment; " +
         "request updated staffing/enrollment plan if history repeats.",
       Owner: "Clinical Ops Manager",
-      "Risk Score (Numeric)": riskScoreFor(impact),
+      "Risk Score (Numeric)": riskScoreFor(overall),
       dataSource: "live",
     };
   });
 
   const summary =
     `${terminal.length} of ${history.trials.length} prior trial(s) at this facility were ` +
-    `terminated/withdrawn/suspended (reasons: ${terminal
-      .map((t) => t.whyStopped || "undisclosed")
-      .join("; ")}).`;
+    `terminated/withdrawn/suspended (${Math.round(terminationRate * 100)}% termination rate, ` +
+    `reasons: ${terminal.map((t) => t.whyStopped || "undisclosed").join("; ")}).`;
 
   return { risks, summary };
+}
+
+// Thresholds are a stated convention, not a public standard — recalibrated
+// for a SAME-CITY count (typically small, since it's one facility's local
+// competition), unlike the old country-wide total this replaced. A single
+// nearby competing trial is already a meaningful signal at this granularity,
+// so the bar for Medium/High is much lower than a country-level count would
+// need. Documented here so the rule is visible/adjustable, same spirit as
+// the Risk_Matrix convention.
+function bandCompetingTrials(count: number): "Low" | "Medium" | "High" {
+  if (count >= 3) return "High";
+  if (count >= 1) return "Medium";
+  return "Low";
+}
+
+/**
+ * Real Competitive-risk record: derived from a real, per-facility count of
+ * OTHER actively-recruiting/not-yet-recruiting trial locations for this
+ * indication in the SAME CITY (computed in liveCandidateSites.ts from
+ * ClinicalTrials.gov's per-location status field) — not an LLM guess, and
+ * not the country-wide total used for region-level scoring, which would
+ * have given every site in a run the identical rating regardless of how
+ * crowded its own city actually is. Likelihood and Impact are both banded
+ * off that one real number, and Overall comes from the same fixed matrix
+ * convention used elsewhere, not a second guess.
+ */
+function competitiveRiskRecordFrom(
+  siteId: string,
+  nearbyCompetingTrials: number,
+): RiskRow | null {
+  if (nearbyCompetingTrials <= 0) return null;
+  const band = bandCompetingTrials(nearbyCompetingTrials);
+  const overall = RISK_MATRIX[band][band];
+  return {
+    "Risk ID": `R-COMPETE-${siteId}`,
+    "Site ID": siteId,
+    "Risk Category": "Competitive",
+    Description:
+      `${nearbyCompetingTrials} other actively recruiting or soon-to-recruit trial location(s) ` +
+      `for this indication were found on ClinicalTrials.gov in the same city, competing for the ` +
+      `same patient pool.`,
+    Likelihood: band,
+    Impact: band,
+    "Overall Risk Rating": overall,
+    "Date Identified": today(),
+    Status: "Open",
+    "Mitigation Plan":
+      "Confirm this site's projected enrollment rate accounts for competing trials in the area; " +
+      "consider a backup site if enrollment lags the benchmark.",
+    Owner: "Clinical Ops Manager",
+    "Risk Score (Numeric)": riskScoreFor(overall),
+    dataSource: "live",
+  };
+}
+
+const RESULTS_OVERDUE_MONTHS = 12; // FDAAA 801's usual reporting window for applicable trials
+const RESULTS_SEVERELY_OVERDUE_MONTHS = 24;
+
+/**
+ * Real Data-Integrity-adjacent record: flags this facility's past trials
+ * that are well past their primary completion date with no results posted
+ * (HasResults + PrimaryCompletionDate — both disclosed ClinicalTrials.gov
+ * fields, not an estimate). This reports the reporting-status FACT only —
+ * it does not assert that FDAAA 801 legally applies to a given trial or
+ * declare a compliance violation, since that depends on trial-specific
+ * details (funding, product type) this data doesn't confirm.
+ */
+function dataIntegrityRiskRecordFrom(
+  siteId: string,
+  history: FacilityHistory | undefined,
+  facilityWideHistory?: FacilityHistory | null,
+): RiskRow | null {
+  // "Not reporting results on time" is a facility/sponsor behavior pattern,
+  // not something specific to one indication, so this prefers the broader
+  // facility-wide sample when available — same reasoning as the termination
+  // rate above — falling back to the indication-scoped one otherwise.
+  const usingFacilityWide =
+    !!facilityWideHistory && facilityWideHistory.trials.length > 0;
+  const source = usingFacilityWide ? facilityWideHistory! : history;
+  if (!source || source.trials.length === 0) return null;
+  const scopeText = usingFacilityWide
+    ? "across all indications on file at this facility"
+    : "at this facility";
+
+  // Only trials that have actually reached their primary completion date are
+  // even eligible to be judged on results-reporting timeliness — a trial
+  // still recruiting hasn't missed anything yet, so it's excluded from both
+  // the numerator and the denominator below, not counted as "on time."
+  const eligible = source.trials.filter((t) => {
+    if (!t.primaryCompletionDate) return false;
+    const months = monthsSince(t.primaryCompletionDate);
+    return months !== null && months >= 0;
+  });
+
+  const overdue = eligible.filter((t) => {
+    if (t.hasResults !== false) return false; // null (unknown) or true (posted) — not flaggable
+    const months = monthsSince(t.primaryCompletionDate as string);
+    return months !== null && months >= RESULTS_OVERDUE_MONTHS;
+  });
+  if (overdue.length === 0) return null;
+
+  // Real, facility-level rate — same treatment as the termination rate
+  // above — instead of a fixed "Medium" constant: what fraction of this
+  // facility's completed trials are overdue on posting results.
+  const overdueRate = overdue.length / eligible.length;
+  const likelihood = bandRate(overdueRate);
+
+  const severelyOverdueCount = overdue.filter((t) => {
+    const months = monthsSince(t.primaryCompletionDate as string);
+    return months !== null && months >= RESULTS_SEVERELY_OVERDUE_MONTHS;
+  }).length;
+
+  const impact: "High" | "Medium" =
+    severelyOverdueCount > 0 ? "High" : "Medium";
+  const overall = RISK_MATRIX[likelihood][impact];
+
+  return {
+    "Risk ID": `R-DATAINTEG-${siteId}`,
+    "Site ID": siteId,
+    "Risk Category": "Data Integrity",
+    Description:
+      `${overdue.length} of ${eligible.length} completed trial(s) ${scopeText} ` +
+      `(${overdue.map((t) => t.nctId).join(", ")}) show no results posted on ClinicalTrials.gov ` +
+      `more than ${RESULTS_OVERDUE_MONTHS} months after primary completion ` +
+      `(${Math.round(overdueRate * 100)}% overdue rate, which sets this facility's Likelihood to ` +
+      `${likelihood})` +
+      (severelyOverdueCount > 0
+        ? `, ${severelyOverdueCount} of them more than ${RESULTS_SEVERELY_OVERDUE_MONTHS} months overdue`
+        : "") +
+      `. This reports the reporting-status fact only, not a confirmed FDAAA violation — ` +
+      `applicability depends on trial-specific details not available here.`,
+    Likelihood: likelihood,
+    Impact: impact,
+    "Overall Risk Rating": overall,
+    "Date Identified": today(),
+    Status: "Open",
+    "Mitigation Plan":
+      "Confirm current results-reporting status directly with the sponsor/investigator before " +
+      "relying on this facility's data-transparency track record.",
+    Owner: "Data Management Lead",
+    "Risk Score (Numeric)": riskScoreFor(overall),
+    dataSource: "live",
+  };
+}
+
+// Band, not a public standard — a facility whose own ACTUAL enrollment came
+// in under a quarter of the typical (median) completed trial for this
+// indication is flagged High; under half is Medium. 0.5+ isn't flagged at
+// all, same "absence of signal, not a Low rating" pattern as Competitive.
+function bandEnrollmentRatio(ratio: number): "Low" | "Medium" | "High" | null {
+  if (ratio < 0.25) return "High";
+  if (ratio < 0.5) return "Medium";
+  return null;
+}
+
+/**
+ * Real Enrollment-shortfall record: compares this facility's own trials'
+ * ACTUAL (not estimated/target) enrollment counts — a disclosed
+ * EnrollmentCount + EnrollmentType field, not a guess — against the
+ * completed-trial benchmark median sample size for this indication (already
+ * fetched live for the LLM KPI estimate, reused here). Note this is a
+ * per-STUDY figure, not broken down per site within a multi-site trial, so
+ * it reflects "trials this facility took part in came in short," not
+ * necessarily this facility's own individual enrollment — a real but
+ * indirect signal, disclosed as such in the description.
+ */
+function enrollmentShortfallRiskRecordFrom(
+  siteId: string,
+  history: FacilityHistory | undefined,
+  benchmarkMedianSampleSize: number | null,
+): RiskRow | null {
+  if (!history || !benchmarkMedianSampleSize || benchmarkMedianSampleSize <= 0) {
+    return null;
+  }
+  const actualTrials = history.trials.filter(
+    (t) => t.enrollmentType === "ACTUAL" && typeof t.enrollmentCount === "number",
+  );
+  if (actualTrials.length === 0) return null;
+
+  const avgActual =
+    actualTrials.reduce((sum, t) => sum + (t.enrollmentCount as number), 0) /
+    actualTrials.length;
+  const ratio = avgActual / benchmarkMedianSampleSize;
+  const band = bandEnrollmentRatio(ratio);
+  if (!band) return null;
+  const overall = RISK_MATRIX[band][band];
+
+  return {
+    "Risk ID": `R-ENROLLSHORT-${siteId}`,
+    "Site ID": siteId,
+    "Risk Category": "Enrollment",
+    Description:
+      `Across ${actualTrials.length} trial(s) at this facility for this indication with reported ` +
+      `ACTUAL enrollment (${actualTrials.map((t) => t.nctId).join(", ")}), average enrollment was ` +
+      `${Math.round(ratio * 100)}% of the ${Math.round(benchmarkMedianSampleSize)}-patient median for ` +
+      `completed trials in this indication. This reflects the whole trial's enrollment, not this ` +
+      `facility's individual contribution within a multi-site study — a real but indirect signal.`,
+    Likelihood: band,
+    Impact: band,
+    "Overall Risk Rating": overall,
+    "Date Identified": today(),
+    Status: "Open",
+    "Mitigation Plan":
+      "Confirm this facility's own per-site enrollment contribution directly with the sponsor before " +
+      "relying on the whole-trial enrollment figure alone.",
+    Owner: "Clinical Ops Manager",
+    "Risk Score (Numeric)": riskScoreFor(overall),
+    dataSource: "live",
+  };
+}
+
+// Fixed convention, not a validated severity scale — each real, disclosed
+// design attribute below adds one point: any blinding (SINGLE/DOUBLE/TRIPLE/
+// QUADRUPLE masking), RANDOMIZED allocation, and a CROSSOVER/FACTORIAL
+// intervention model. A simple open-label single-arm study scores 0.
+function complexityScoreFor(t: FacilityTrialRecord): number {
+  let score = 0;
+  if (t.designMasking && t.designMasking !== "NONE") score += 1;
+  if (t.designAllocation === "RANDOMIZED") score += 1;
+  if (
+    t.designInterventionModel === "CROSSOVER" ||
+    t.designInterventionModel === "FACTORIAL"
+  ) {
+    score += 1;
+  }
+  return score;
+}
+
+/**
+ * Real Protocol-Complexity record: derived from this facility's own trials'
+ * disclosed design attributes for this indication (masking, allocation,
+ * intervention model — all real, registry-disclosed fields, not a guess).
+ * A blinded, randomized, crossover/factorial trial is inherently harder to
+ * run correctly than an open-label single-arm one, independent of this
+ * facility's own track record — this flags that complexity as its own
+ * signal rather than folding it into Trial History.
+ */
+function protocolComplexityRiskRecordFrom(
+  siteId: string,
+  history: FacilityHistory | undefined,
+): RiskRow | null {
+  if (!history || history.trials.length === 0) return null;
+  const withDesignData = history.trials.filter(
+    (t) => t.designMasking || t.designAllocation || t.designInterventionModel,
+  );
+  if (withDesignData.length === 0) return null;
+
+  let worst: FacilityTrialRecord | null = null;
+  let worstScore = -1;
+  for (const t of withDesignData) {
+    const score = complexityScoreFor(t);
+    if (score > worstScore) {
+      worstScore = score;
+      worst = t;
+    }
+  }
+  if (!worst || worstScore < 2) return null;
+
+  const band: "Medium" | "High" = worstScore >= 3 ? "High" : "Medium";
+  const overall = RISK_MATRIX[band][band];
+  const traits = [
+    worst.designMasking && worst.designMasking !== "NONE"
+      ? `${worst.designMasking.toLowerCase()}-masked`
+      : null,
+    worst.designAllocation === "RANDOMIZED" ? "randomized" : null,
+    worst.designInterventionModel === "CROSSOVER" ||
+    worst.designInterventionModel === "FACTORIAL"
+      ? worst.designInterventionModel.toLowerCase()
+      : null,
+  ].filter(Boolean);
+
+  return {
+    "Risk ID": `R-COMPLEXITY-${siteId}`,
+    "Site ID": siteId,
+    "Risk Category": "Protocol Complexity",
+    Description:
+      `Trial ${worst.nctId}${worst.briefTitle ? ` (${worst.briefTitle})` : ""} at this facility for ` +
+      `this indication is ${traits.join(", ") || "a complex design"} — a complexity score of ` +
+      `${worstScore}/3 by a fixed convention (blinding, randomization, and crossover/factorial design ` +
+      `each add a point). Complex designs carry inherently higher operational and data-quality risk, ` +
+      `independent of this facility's own track record.`,
+    Likelihood: band,
+    Impact: band,
+    "Overall Risk Rating": overall,
+    "Date Identified": today(),
+    Status: "Open",
+    "Mitigation Plan":
+      "Confirm the site's experience with this specific design pattern (blinding/randomization/" +
+      "crossover) during site initiation; add extra monitoring visits if this is the site's first.",
+    Owner: "Clinical Ops Manager",
+    "Risk Score (Numeric)": riskScoreFor(overall),
+    dataSource: "live",
+  };
+}
+
+const REPORTING_DILIGENCE_STALE_DAYS = 365;
+const REPORTING_DILIGENCE_SEVERELY_STALE_DAYS = 730;
+
+/**
+ * Real Reporting-Diligence record: NOT a substitute for a GCP compliance
+ * inspection (no such public data exists for any facility) — this measures
+ * something narrower but real and disclosed: how long ago the sponsor last
+ * verified or updated this facility's trial record(s) on ClinicalTrials.gov
+ * (StatusVerifiedDate / LastUpdatePostDate, both disclosed fields). A
+ * facility whose trial records go a long time without being confirmed
+ * accurate is a genuine, if indirect, disclosure-diligence signal.
+ */
+function reportingDiligenceRiskRecordFrom(
+  siteId: string,
+  history: FacilityHistory | undefined,
+  facilityWideHistory?: FacilityHistory | null,
+): RiskRow | null {
+  const usingFacilityWide =
+    !!facilityWideHistory && facilityWideHistory.trials.length > 0;
+  const source = usingFacilityWide ? facilityWideHistory! : history;
+  if (!source || source.trials.length === 0) return null;
+  const scopeText = usingFacilityWide
+    ? "across all indications on file at this facility"
+    : "at this facility";
+
+  const daysSince = (dateStr: string): number | null => {
+    const then = new Date(dateStr);
+    if (Number.isNaN(then.getTime())) return null;
+    return (Date.now() - then.getTime()) / MS_PER_DAY;
+  };
+
+  const staleness: number[] = [];
+  for (const t of source.trials) {
+    const dateStr = t.statusVerifiedDate ?? t.lastUpdatePostDate;
+    if (!dateStr) continue;
+    const days = daysSince(dateStr);
+    if (days !== null && days >= 0) staleness.push(days);
+  }
+  if (staleness.length === 0) return null;
+
+  const avgDays = staleness.reduce((a, b) => a + b, 0) / staleness.length;
+  if (avgDays < REPORTING_DILIGENCE_STALE_DAYS) return null;
+  const band: "Medium" | "High" =
+    avgDays >= REPORTING_DILIGENCE_SEVERELY_STALE_DAYS ? "High" : "Medium";
+  const overall = RISK_MATRIX[band][band];
+
+  return {
+    "Risk ID": `R-REPORTDILIGENCE-${siteId}`,
+    "Site ID": siteId,
+    "Risk Category": "Reporting Diligence",
+    Description:
+      `Across ${staleness.length} trial record(s) ${scopeText}, the sponsor last verified or updated ` +
+      `the ClinicalTrials.gov record an average of ${Math.round(avgDays)} days ago. This is a real, ` +
+      `disclosed signal about record-keeping diligence — it is NOT the same as a GCP compliance ` +
+      `inspection finding, which no public source discloses for any facility.`,
+    Likelihood: band,
+    Impact: band,
+    "Overall Risk Rating": overall,
+    "Date Identified": today(),
+    Status: "Open",
+    "Mitigation Plan":
+      "Request a current status update directly from the sponsor/investigator before relying on " +
+      "this facility's registry record as up to date.",
+    Owner: "Regulatory Affairs Lead",
+    "Risk Score (Numeric)": riskScoreFor(overall),
+    dataSource: "live",
+  };
 }
 
 export interface BuildLiveRiskRecordsParams {
@@ -99,55 +552,57 @@ export interface BuildLiveRiskRecordsParams {
   indication: string;
   specialty: string;
   region: string;
+  /** Real, per-facility count of nearby (same-city) actively-recruiting/not-yet-recruiting competing trial locations. */
+  nearbyCompetingTrials: number;
   history?: FacilityHistory;
+  /** Real, facility-wide (all-indications) trial history — a bigger sample for Trial History/Data Integrity/Reporting Diligence than the indication-scoped `history`. null/undefined falls back to `history` in each function. See getFacilityWideHistory's precision caveat in ctgov.client.ts. */
+  facilityWideHistory?: FacilityHistory | null;
+  /** Real completed-trial benchmark median sample size for this indication, reused from the LLM KPI estimate's benchmark fetch — feeds the Enrollment-shortfall signal. null if unavailable. */
+  benchmarkMedianSampleSize?: number | null;
 }
 
 export async function buildLiveRiskRecords(
   params: BuildLiveRiskRecordsParams,
 ): Promise<{ risks: RiskRow[]; warning: string | null }> {
-  const { risks: realRisks, summary } = realRiskRecordsFrom(
+  const { risks: realRisks } = realRiskRecordsFrom(
+    params.siteId,
+    params.history,
+    params.facilityWideHistory,
+  );
+
+  const competitiveRisk = competitiveRiskRecordFrom(
+    params.siteId,
+    params.nearbyCompetingTrials,
+  );
+  const dataIntegrityRisk = dataIntegrityRiskRecordFrom(
+    params.siteId,
+    params.history,
+    params.facilityWideHistory,
+  );
+  const enrollmentShortfallRisk = enrollmentShortfallRiskRecordFrom(
+    params.siteId,
+    params.history,
+    params.benchmarkMedianSampleSize ?? null,
+  );
+  const protocolComplexityRisk = protocolComplexityRiskRecordFrom(
     params.siteId,
     params.history,
   );
+  const reportingDiligenceRisk = reportingDiligenceRiskRecordFrom(
+    params.siteId,
+    params.history,
+    params.facilityWideHistory,
+  );
+  const codeComputedRisks = [
+    competitiveRisk,
+    dataIntegrityRisk,
+    enrollmentShortfallRisk,
+    protocolComplexityRisk,
+    reportingDiligenceRisk,
+  ].filter((r): r is RiskRow => r !== null);
 
-  const { configured: llmConfigured } = llmStatus();
-  let estimatedRisks: RiskRow[] = [];
+  const risks = [...realRisks, ...codeComputedRisks];
   let warning: string | null = null;
-
-  if (llmConfigured) {
-    try {
-      const estimate = await estimateSiteRisks({
-        facilityName: params.facilityName,
-        city: params.city,
-        country: params.country,
-        indication: params.indication,
-        specialty: params.specialty,
-        region: params.region,
-        realHistorySummary: summary,
-      });
-      estimatedRisks = estimate.records.map((r, i) => ({
-        "Risk ID": `R-EST-${params.siteId}-${i + 1}`,
-        "Site ID": params.siteId,
-        "Risk Category": r.category,
-        Description: r.description,
-        Likelihood: r.likelihood,
-        Impact: r.impact,
-        "Overall Risk Rating": r.overallRisk,
-        "Date Identified": today(),
-        Status: "Open",
-        "Mitigation Plan": r.mitigationPlan,
-        Owner: r.owner,
-        "Risk Score (Numeric)": riskScoreFor(r.overallRisk),
-        dataSource: "llm-estimated",
-      }));
-    } catch (err) {
-      warning = `${params.facilityName}: LLM risk estimate failed (${(err as Error).message}).`;
-    }
-  } else {
-    warning = `${params.facilityName}: LLM not configured — no estimated risk entries for Compliance/Data Integrity/Staff Turnover/Competitive categories.`;
-  }
-
-  const risks = [...realRisks, ...estimatedRisks];
 
   if (risks.length === 0) {
     risks.push({
@@ -155,9 +610,10 @@ export async function buildLiveRiskRecords(
       "Site ID": params.siteId,
       "Risk Category": "Data Availability",
       Description:
-        "No risk data is available for this live-sourced site — no terminated/withdrawn " +
-        "trial history was found at this facility, and no LLM estimate could be produced. " +
-        "This is NOT a confirmed low-risk assessment; it reflects an absence of data.",
+        "No risk data is available for this live-sourced site — no terminated/withdrawn trial " +
+        "history, no competing-trials signal, no overdue-results signal, no enrollment-shortfall " +
+        "signal, no protocol-complexity signal, and no reporting-diligence signal were found for " +
+        "this facility. This is NOT a confirmed low-risk assessment; it reflects an absence of data.",
       Likelihood: "Low",
       Impact: "Low",
       "Overall Risk Rating": "Low",
@@ -168,7 +624,7 @@ export async function buildLiveRiskRecords(
       "Risk Score (Numeric)": 1,
       dataSource: "live",
     });
-    warning = warning ?? `${params.facilityName}: no risk data available (real or estimated).`;
+    warning = `${params.facilityName}: no risk data available for this facility.`;
   }
 
   return { risks, warning };

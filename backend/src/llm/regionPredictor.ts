@@ -104,7 +104,10 @@ async function buildCandidates(
                 indication: input.indication,
                 specialty,
                 region: r.Region,
+                nearbyCompetingTrials: c.nearbyCompetingTrials,
                 history: c.history,
+                facilityWideHistory: c.facilityWideHistory,
+                benchmarkMedianSampleSize: c.benchmarkMedianSampleSize,
               });
               return result.risks.filter(
                 (x) => x["Overall Risk Rating"] === "High",

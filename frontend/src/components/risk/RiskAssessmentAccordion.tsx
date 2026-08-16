@@ -4,6 +4,13 @@ import RiskRegisterTable from "./RiskRegisterTable";
 
 function overallRiskTooltip(r: RiskAssessmentRow): string {
   const total = r.riskRecords.length;
+  if (r.riskDataUnavailable) {
+    return (
+      "No risk data available for this site — no terminated/withdrawn trial history, no " +
+      "competing-trials signal, no overdue-results signal, and no AI estimate could be produced. " +
+      "This is NOT a confirmed low-risk assessment; treat it as unassessed."
+    );
+  }
   if (r.overallRisk === "High") {
     return (
       `Overall: High — ${r.highRiskCount} of ${total} risk record(s) is rated High. ` +
@@ -70,24 +77,43 @@ export default function RiskAssessmentAccordion({
               </span>
               <span className="risk-accordion-region">{r.region}</span>
               <span className="risk-accordion-badge-col">
-                <span
-                  className={`badge ${r.overallRisk.toLowerCase()}`}
-                  title={overallRiskTooltip(r)}
-                >
-                  {r.overallRisk} Risk
-                </span>
+                {r.riskDataUnavailable ? (
+                  <span className="badge no-data" title={overallRiskTooltip(r)}>
+                    Unassessed
+                  </span>
+                ) : (
+                  <span
+                    className={`badge ${r.overallRisk.toLowerCase()}`}
+                    title={overallRiskTooltip(r)}
+                  >
+                    {r.overallRisk} Risk
+                  </span>
+                )}
               </span>
               <span
                 className="risk-accordion-counts"
                 title={overallRiskTooltip(r)}
               >
-                {r.highRiskCount} high · {r.mediumRiskCount} medium
+                {r.riskDataUnavailable
+                  ? "unassessed"
+                  : `${r.highRiskCount} high · ${r.mediumRiskCount} medium`}
               </span>
               <span className="risk-accordion-caret">{isOpen ? "−" : "+"}</span>
             </button>
             {isOpen && (
               <div className="risk-accordion-body">
                 <RiskRegisterTable records={r.riskRecords} />
+                {/* Static, non-scored note — Compliance is no longer generated as a
+                    risk-register row (it had no real/disclosed data behind it and
+                    could distort the Overall Risk badge with a fabricated rating).
+                    This applies to every site equally, so it's shown here as plain
+                    text rather than as a scored row. */}
+                <p className="compliance-disclaimer">
+                  Note: Compliance / GCP inspection history is not available from any
+                  public source for these facilities. Verify current compliance status
+                  directly with the CRO or site monitor before relying on this
+                  assessment for a site activation decision.
+                </p>
               </div>
             )}
           </div>

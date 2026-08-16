@@ -141,6 +141,8 @@ export interface RiskAssessmentRow {
   overallRisk: "Low" | "Medium" | "High";
   highRiskCount: number;
   mediumRiskCount: number;
+  /** True when this site has no real or estimated risk data at all — show "No Data" instead of trusting overallRisk's "Low". */
+  riskDataUnavailable: boolean;
   riskRecords: RiskRecord[];
 }
 

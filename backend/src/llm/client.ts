@@ -357,143 +357,19 @@ ${Object.entries(NUMERIC_FIELD_RANGES)
 }
 
 /* ---------------------------------------------------------------------- */
-/* Live-site risk estimation (categories with no public source)          */
+/* NOTE: Compliance risk estimation (estimateSiteRisks) was removed here. */
+/* It was the last risk-register category with no real/disclosed data     */
+/* behind it — every field (description, Likelihood, Impact, Overall,     */
+/* mitigation, owner) was the LLM's own invention, grounded only in the    */
+/* facility's name/location, yet it still fed into a site's Overall Risk  */
+/* rating like any real category. No live source exists to fix that (FDA  */
+/* BIMO is periodic/investigator-keyed only; India's CDSCO has no public   */
+/* API/database at all), so rather than keep shipping a fabricated rating */
+/* that can move a site's risk badge, this category was dropped entirely. */
+/* liveRiskAssessment.ts now surfaces a static, non-scored disclaimer      */
+/* instead, so the app can note that compliance/GCP history is unknown    */
+/* without inventing a number for it.                                     */
 /* ---------------------------------------------------------------------- */
-
-const RISK_LEVELS = new Set(["Low", "Medium", "High"]);
-
-export interface SiteRiskEstimateInput {
-  facilityName: string;
-  city: string | null;
-  country: string;
-  indication: string;
-  specialty: string;
-  region: string;
-  /** Plain-language summary of the REAL trial-history risk signal already found for this site, so the LLM doesn't duplicate it. */
-  realHistorySummary: string;
-}
-
-export interface SiteRiskEstimateRecord {
-  category: string;
-  description: string;
-  likelihood: "Low" | "Medium" | "High";
-  impact: "Low" | "Medium" | "High";
-  overallRisk: "Low" | "Medium" | "High";
-  mitigationPlan: string;
-  owner: string;
-}
-
-export interface SiteRiskEstimate {
-  records: SiteRiskEstimateRecord[];
-  rationale: string;
-}
-
-/**
- * Estimates risk-register entries for categories that are NEVER publicly
- * disclosed anywhere (Compliance, Data Integrity, Staff Turnover,
- * Competitive/shared-patient-pool) — as opposed to the real, disclosed
- * trial-termination history handled separately in liveRiskAssessment.ts.
- * Throws (no mock fallback) if the LLM is unconfigured or the call fails,
- * so callers can surface an explicit warning instead of fabricated risk data.
- */
-export async function estimateSiteRisks(
-  input: SiteRiskEstimateInput,
-): Promise<SiteRiskEstimate> {
-  if (!client) {
-    throw new Error(
-      "LLM not configured — cannot estimate risk-register entries for this live site.",
-    );
-  }
-
-  const prompt = `You are a clinical trial risk-assessment analyst. A real facility below is being
-considered as a trial site, sourced from ClinicalTrials.gov, which does NOT publicly disclose
-site-level compliance, data-integrity, staff-turnover, or competitive-enrollment information for
-any facility. Give your best-informed estimate of risk-register entries for ONLY those categories:
-Compliance, Data Integrity, Staff Turnover, Competitive (shared patient pool with nearby sites).
-
-Do NOT generate Operational/Regulatory/Enrollment/Safety entries — those are handled separately
-from real, disclosed ClinicalTrials.gov trial-status history, summarized here so you don't
-duplicate it:
-${input.realHistorySummary}
-
-FACILITY
-Name: ${input.facilityName}
-Location: ${[input.city, input.country].filter(Boolean).join(", ")}
-Required specialty: ${input.specialty}
-Indication: ${input.indication}
-Region grouping: ${input.region}
-
-Generate 2-4 plausible entries, reasoned from the facility type/name and location context. If you
-have no reasonable basis for a category at all, omit it rather than inventing detail.
-
-Reply with ONLY a JSON object, no prose or markdown fences, in exactly this shape:
-{
-  "records": [
-    {
-      "category": "Compliance" | "Data Integrity" | "Staff Turnover" | "Competitive",
-      "description": "<1-2 sentences, specific to this facility/location, not generic boilerplate>",
-      "likelihood": "Low" | "Medium" | "High",
-      "impact": "Low" | "Medium" | "High",
-      "overallRisk": "Low" | "Medium" | "High",
-      "mitigationPlan": "<1 sentence>",
-      "owner": "<a role, e.g. Clinical Ops Manager, Data Management Lead, Regulatory Affairs Lead>"
-    }
-  ],
-  "rationale": "<1-2 sentences on what you grounded these estimates in>"
-}`;
-
-  const completion = await client.chat.completions.create({
-    model: MODEL,
-    messages: [{ role: "user", content: prompt }],
-    temperature: 0.4,
-    response_format: { type: "json_object" },
-  });
-
-  const raw = completion.choices[0].message.content ?? "";
-  const parsed = parseJsonResponse<
-    Partial<{ records: Partial<SiteRiskEstimateRecord>[]; rationale: string }>
-  >(raw);
-
-  const records: SiteRiskEstimateRecord[] = (
-    Array.isArray(parsed.records) ? parsed.records : []
-  )
-    .filter(
-      (r): r is SiteRiskEstimateRecord =>
-        !!r &&
-        typeof r.category === "string" &&
-        typeof r.description === "string" &&
-        RISK_LEVELS.has(r.likelihood as string) &&
-        RISK_LEVELS.has(r.impact as string) &&
-        RISK_LEVELS.has(r.overallRisk as string),
-    )
-    .map((r) => ({
-      category: r.category,
-      description: r.description,
-      likelihood: r.likelihood,
-      impact: r.impact,
-      overallRisk: r.overallRisk,
-      mitigationPlan:
-        typeof r.mitigationPlan === "string" && r.mitigationPlan.trim()
-          ? r.mitigationPlan.trim()
-          : "To be defined during site initiation visit.",
-      owner:
-        typeof r.owner === "string" && r.owner.trim()
-          ? r.owner.trim()
-          : "Clinical Ops Manager",
-    }));
-
-  if (records.length === 0) {
-    throw new Error("LLM returned no usable risk records for this site.");
-  }
-
-  return {
-    records,
-    rationale:
-      typeof parsed.rationale === "string" && parsed.rationale.trim()
-        ? parsed.rationale.trim()
-        : "No rationale returned by the model.",
-  };
-}
 
 /* ---------------------------------------------------------------------- */
 /* Live-region metric estimation (no public source for these figures)     */

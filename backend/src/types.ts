@@ -282,6 +282,8 @@ export interface RankedSite extends SiteRow {
   mediumRiskCount: number;
   overallRisk: RiskLevel;
   riskExplanation: RiskExplanation;
+  /** True when `risks` is just the single "no data available" placeholder — lets the UI show "No Data" instead of a misleadingly clean "Low Risk" badge. */
+  riskDataUnavailable: boolean;
 }
 
 export interface RecommendationResult {

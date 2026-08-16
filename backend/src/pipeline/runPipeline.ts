@@ -549,7 +549,10 @@ export async function runPipeline(
         indication,
         specialty,
         region: topRegion.Region,
+        nearbyCompetingTrials: live.nearbyCompetingTrials,
         history: live.history,
+        facilityWideHistory: live.facilityWideHistory,
+        benchmarkMedianSampleSize: live.benchmarkMedianSampleSize,
       });
       const risks = result.risks;
       if (result.warning) riskWarnings.push(result.warning);
@@ -561,12 +564,20 @@ export async function runPipeline(
       ).length;
       const overallRisk: RiskLevel =
         highCount > 0 ? "High" : medCount > 0 ? "Medium" : "Low";
+      // True only when the ENTIRE risk list for this site is the single
+      // "no data available" placeholder (see liveRiskAssessment.ts) — not
+      // when a site genuinely has one real Low-rated record. Used so the UI
+      // can show "No Data" instead of a "Low Risk" badge that would look
+      // identical to a site that was actually assessed and found clean.
+      const riskDataUnavailable =
+        risks.length === 1 && risks[0]["Risk Category"] === "Data Availability";
       return {
         ...site,
         risks,
         highRiskCount: highCount,
         mediumRiskCount: medCount,
         overallRisk,
+        riskDataUnavailable,
         riskExplanation: explainRisk(risks, RISK_MATRIX),
       };
     }),
@@ -588,6 +599,7 @@ export async function runPipeline(
       overallRisk: s.overallRisk,
       highRiskCount: s.highRiskCount,
       mediumRiskCount: s.mediumRiskCount,
+      riskDataUnavailable: s.riskDataUnavailable,
       riskRecords: s.risks.map(toRiskRecord),
       dataSource: s.evalRow.dataSource ?? "llm-estimated",
     })),

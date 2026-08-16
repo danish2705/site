@@ -13,6 +13,8 @@
   --med-bg: #fdf1dc;
   --high: #c23b3b;
   --high-bg: #fbe9e9;
+  --no-data: #5f6579;
+  --no-data-bg: #e6e8f0;
   --shadow-sm: 0 1px 2px rgba(23, 27, 46, 0.04);
   --shadow: 0 1px 2px rgba(23, 27, 46, 0.04), 0 10px 28px rgba(23, 27, 46, 0.07);
   --radius: 14px;
@@ -916,6 +918,11 @@ tbody tr:hover {
   color: var(--high);
   background: var(--high-bg);
 }
+.badge.no-data {
+  color: var(--no-data);
+  background: var(--no-data-bg);
+  font-style: italic;
+}
 .risk-accordion {
   display: flex;
   flex-direction: column;
@@ -991,6 +998,15 @@ tbody tr:hover {
 .risk-accordion-body {
   padding: 4px 16px 16px;
   background: #fbfbfd;
+}
+.compliance-disclaimer {
+  margin: 10px 2px 0;
+  padding: 8px 12px;
+  font-size: 12.5px;
+  font-style: italic;
+  color: var(--no-data);
+  background: var(--no-data-bg);
+  border-radius: 8px;
 }
 @media (max-width: 720px) {
   .risk-accordion-header {
