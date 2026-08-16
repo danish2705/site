@@ -524,6 +524,7 @@ export async function runPipeline(
       meetsRequirements: s.requirementChecks.every((c) => c.pass),
       dataSource: s.evalRow.dataSource ?? "llm-estimated",
       estimateRationale: s.evalRow.estimateRationale ?? null,
+      liveKpiFields: s.evalRow.liveKpiFields ?? [],
     })),
   });
 
@@ -640,6 +641,7 @@ export async function runPipeline(
       riskLevel: s.overallRisk,
       highRiskCount: s.highRiskCount,
       dataSource: s.evalRow.dataSource ?? "llm-estimated",
+      liveKpiFields: s.evalRow.liveKpiFields ?? [],
     })),
   });
 
@@ -686,6 +688,7 @@ export async function runPipeline(
       highRiskCount: top.highRiskCount,
       riskExplanation: top.riskExplanation,
       dataSource: top.evalRow.dataSource ?? "llm-estimated",
+      liveKpiFields: top.evalRow.liveKpiFields ?? [],
       text: recommendation.text,
     },
   });

@@ -273,6 +273,8 @@ export interface FacilityTrialRecord {
   lastUpdatePostDate: string | null;
   /** statusModule.statusVerifiedDate — when the sponsor last attested the record is still accurate; distinct from LastUpdatePostDate. */
   statusVerifiedDate: string | null;
+  /** statusModule.startDateStruct.date — when the trial began; paired with primaryCompletionDate to derive a real (trial-total, not per-site) enrollment-rate proxy. */
+  startDate: string | null;
 }
 
 export interface FacilityHistory {
@@ -293,6 +295,7 @@ interface RawHistoryStudy {
       primaryCompletionDateStruct?: { date?: string };
       lastUpdatePostDateStruct?: { date?: string };
       statusVerifiedDate?: string;
+      startDateStruct?: { date?: string };
     };
     designModule?: {
       enrollmentInfo?: { count?: number; type?: string };
@@ -335,6 +338,7 @@ const HISTORY_FIELDS = [
   "InterventionType",
   "LastUpdatePostDate",
   "StatusVerifiedDate",
+  "StartDate",
   "LocationFacility",
   "LocationCity",
   "LocationState",
@@ -376,6 +380,7 @@ function trialRecordFrom(study: RawHistoryStudy): FacilityTrialRecord {
       null,
     statusVerifiedDate:
       study.protocolSection?.statusModule?.statusVerifiedDate ?? null,
+    startDate: study.protocolSection?.statusModule?.startDateStruct?.date ?? null,
   };
 }
 
@@ -511,6 +516,167 @@ export async function getFacilityWideHistory(
     return result;
   } catch (err) {
     warn(`facility-wide history lookup failed for "${facility}"`, err);
+    return null;
+  }
+}
+
+/* ---------------------------------------------------------------------- */
+/* 2c. Real posted-results signal (dropout / diversity) for one trial      */
+/* ---------------------------------------------------------------------- */
+
+/**
+ * Real, disclosed dropout and diversity figures pulled from a single trial's
+ * POSTED RESULTS (resultsSection) — not an estimate. Two structural limits,
+ * both real and worth repeating anywhere this is surfaced:
+ *
+ *  1. Only trials with `HasResults = true` have a resultsSection at all —
+ *     historically a minority of registered trials (most completed
+ *     interventional trials post results eventually, but many never do, and
+ *     ongoing/recently-completed trials usually haven't yet).
+ *  2. Everything in resultsSection is reported per treatment ARM for the
+ *     WHOLE TRIAL — ClinicalTrials.gov has no per-site breakout anywhere in
+ *     its public schema. So this is "the dropout rate / participant
+ *     diversity of this trial, aggregated across every site that ran it,"
+ *     not "this specific facility's own patients." Callers should present it
+ *     as a real-but-trial-level signal, not a site-level one.
+ *
+ * Field/module names below (resultsSection.participantFlowModule,
+ * resultsSection.baselineCharacteristicsModule) are documented v2 API shape
+ * but NOT live-verified in this sandbox (no network access to
+ * clinicaltrials.gov) — spot-check one real response once deployed. Parsing
+ * is defensive: any missing/renamed/reshaped field just yields `null` rather
+ * than throwing.
+ */
+export interface FacilityResultsSignal {
+  /** 0-100. null if no STARTED/COMPLETED milestone data could be parsed. */
+  dropoutRatePercent: number | null;
+  /** 0-100 (Gini-Simpson diversity index over Race/Ethnicity categories, scaled). null if no race/ethnicity breakdown was found. */
+  diversityIndex: number | null;
+  /** The NCTId this signal was pulled from, so callers/UI can cite the source trial. */
+  sourceNctId: string;
+}
+
+interface FlowAchievement {
+  groupId?: string;
+  numSubjects?: string;
+}
+interface FlowMilestone {
+  type?: string;
+  achievements?: FlowAchievement[];
+}
+interface FlowPeriod {
+  title?: string;
+  milestones?: FlowMilestone[];
+}
+interface BaselineMeasurement {
+  groupId?: string;
+  value?: string;
+}
+interface BaselineCategory {
+  title?: string;
+  measurements?: BaselineMeasurement[];
+}
+interface BaselineClass {
+  categories?: BaselineCategory[];
+}
+interface BaselineMeasure {
+  title?: string;
+  classes?: BaselineClass[];
+}
+interface StudyResultsResponse {
+  resultsSection?: {
+    participantFlowModule?: { periods?: FlowPeriod[] };
+    baselineCharacteristicsModule?: { measures?: BaselineMeasure[] };
+  };
+}
+
+function sumMilestone(period: FlowPeriod, type: string): number | null {
+  const milestone = period.milestones?.find(
+    (m) => (m.type ?? "").toUpperCase() === type,
+  );
+  if (!milestone?.achievements?.length) return null;
+  let total = 0;
+  let any = false;
+  for (const a of milestone.achievements) {
+    const n = Number(a.numSubjects);
+    if (Number.isFinite(n)) {
+      total += n;
+      any = true;
+    }
+  }
+  return any ? total : null;
+}
+
+function raceDiversityIndex(measures: BaselineMeasure[] | undefined): number | null {
+  const raceMeasure = (measures ?? []).find((m) =>
+    /race|ethnicity/i.test(m.title ?? ""),
+  );
+  if (!raceMeasure) return null;
+  const totals: number[] = [];
+  for (const cls of raceMeasure.classes ?? []) {
+    for (const cat of cls.categories ?? []) {
+      let catTotal = 0;
+      let any = false;
+      for (const m of cat.measurements ?? []) {
+        const n = Number(m.value);
+        if (Number.isFinite(n)) {
+          catTotal += n;
+          any = true;
+        }
+      }
+      if (any) totals.push(catTotal);
+    }
+  }
+  const grandTotal = totals.reduce((a, b) => a + b, 0);
+  if (grandTotal <= 0 || totals.length < 2) return null;
+  // Gini-Simpson diversity index: 1 - sum(p_i^2), scaled to 0-100.
+  const sumSquares = totals.reduce((sum, t) => sum + Math.pow(t / grandTotal, 2), 0);
+  return Math.round((1 - sumSquares) * 1000) / 10;
+}
+
+export async function getFacilityResultsSignal(
+  nctId: string,
+): Promise<FacilityResultsSignal | null> {
+  if (!config.ctgov.enabled || !nctId) return null;
+  const cacheKey = `results-signal:${nctId.toUpperCase()}`;
+  const cached = getCached<FacilityResultsSignal | null>(cacheKey);
+  if (cached !== undefined) return cached;
+
+  const fields = [
+    "resultsSection.participantFlowModule",
+    "resultsSection.baselineCharacteristicsModule",
+  ].join(",");
+  const url = `${BASE_URL}/studies/${encodeURIComponent(nctId)}?fields=${fields}`;
+
+  try {
+    const json = await fetchJson<StudyResultsResponse>(url, config.ctgov.timeoutMs);
+    const periods = json.resultsSection?.participantFlowModule?.periods ?? [];
+    let dropoutRatePercent: number | null = null;
+    for (const period of periods) {
+      const started = sumMilestone(period, "STARTED");
+      const completed = sumMilestone(period, "COMPLETED");
+      if (started !== null && started > 0 && completed !== null) {
+        dropoutRatePercent =
+          Math.round(((started - completed) / started) * 1000) / 10;
+        break;
+      }
+    }
+    const diversityIndex = raceDiversityIndex(
+      json.resultsSection?.baselineCharacteristicsModule?.measures,
+    );
+    if (dropoutRatePercent === null && diversityIndex === null) {
+      setCached(cacheKey, null, config.ctgov.cacheTtlMs);
+      return null;
+    }
+    const result: FacilityResultsSignal = {
+      dropoutRatePercent,
+      diversityIndex,
+      sourceNctId: nctId,
+    };
+    setCached(cacheKey, result, config.ctgov.cacheTtlMs);
+    return result;
+  } catch (err) {
+    warn(`results-signal lookup failed for "${nctId}"`, err);
     return null;
   }
 }

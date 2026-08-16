@@ -44,7 +44,10 @@ export default function SiteRankingPanel() {
                     )}
                   </td>
                   <td>
-                    <ScoreBreakdown components={r.components} />
+                    <ScoreBreakdown
+                      components={r.components}
+                      liveKpiFields={r.liveKpiFields}
+                    />
                   </td>
                   <td>
                     {r.meetsRequirements ? (

@@ -12,10 +12,23 @@ const SCORE_COMPONENTS: {
   { key: "cost", label: "Cost", weight: 10 },
 ];
 
+// Which raw KPI field (as it would appear in a row's liveKpiFields list)
+// partly or fully feeds each component — used only to show a "backed by
+// real ClinicalTrials.gov data" note in the tooltip. Quality and Cost have
+// no live source at all, so they're intentionally absent here.
+const LIVE_FIELD_FOR_COMPONENT: Partial<Record<keyof ComponentScores, string>> = {
+  recruitment: "Historical Enrollment Rate (pts/month)",
+  retention: "Dropout Rate (%)",
+  diversity: "Diversity Index (0-100)",
+};
+
 export default function ScoreBreakdown({
   components,
+  liveKpiFields,
 }: {
   components: ComponentScores;
+  /** Raw KPI field names on this site's row that are real ClinicalTrials.gov data rather than an LLM estimate. */
+  liveKpiFields?: string[];
 }) {
   return (
     <div className="score-breakdown">
@@ -23,13 +36,18 @@ export default function ScoreBreakdown({
         const raw = components[key];
         const value = raw === null || raw === undefined ? null : Number(raw);
         const isValid = value !== null && !Number.isNaN(value);
+        const liveField = LIVE_FIELD_FOR_COMPONENT[key];
+        const isPartlyLive = !!liveField && !!liveKpiFields?.includes(liveField);
         return (
           <div
             key={key}
-            className="score-component"
+            className={`score-component${isPartlyLive ? " score-component--live" : ""}`}
             title={
               isValid
-                ? `${label} (${weight}%): ${value.toFixed(1)}/100`
+                ? `${label} (${weight}%): ${value.toFixed(1)}/100` +
+                  (isPartlyLive
+                    ? " — partly backed by real ClinicalTrials.gov data"
+                    : "")
                 : `${label} (${weight}%): no data — excluded, weight redistributed`
             }
           >

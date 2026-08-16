@@ -1,7 +1,25 @@
 /**
  * Builds candidate sites from real, live ClinicalTrials.gov facilities for a
  * region/indication, and estimates their Site_Evaluation KPIs via the LLM
- * (since ClinicalTrials.gov has no operational data on any site).
+ * (since ClinicalTrials.gov has no operational data on any site) — EXCEPT for
+ * the handful of KPI fields real data now exists for, which override the LLM
+ * guess (see applyLiveKpiOverrides below):
+ *  - Historical Enrollment Rate (pts/month): computed from this facility's
+ *    own on-file trials (EnrollmentCount ÷ StartDate→PrimaryCompletionDate
+ *    duration), not the LLM. Trial-total, not literally this site's patients
+ *    (CT.gov doesn't break enrollment out per site), but real and specific to
+ *    trials this facility ran.
+ *  - Dropout Rate (%) / Diversity Index (0-100): pulled from ONE of this
+ *    facility's on-file trials that has POSTED RESULTS (a minority of
+ *    trials), via getFacilityResultsSignal. These are trial-WIDE figures
+ *    (every site that ran that trial, not just this one) — real, disclosed,
+ *    but not literally this facility's own number. Falls back to the LLM
+ *    estimate whenever no facility trial has posted results, or the posted
+ *    results don't include a usable participant-flow/race breakdown.
+ * Every other KPI field (Quality's components, Cost, Staff Turnover,
+ * Investigator Experience, etc.) has no live source anywhere and stays
+ * LLM-estimated — see the ClinicalTrials.gov data-availability review this
+ * was built from for why.
  *
  * Per-facility failure handling is explicit, never silent:
  *  - LLM not configured  -> site is returned with evalRow: null + a warning.
@@ -18,8 +36,11 @@ import {
   getCompletedTrialBenchmarks,
   getFacilityHistories,
   getFacilityWideHistory,
+  getFacilityResultsSignal,
   type LiveFacility,
   type FacilityHistory,
+  type FacilityTrialRecord,
+  type FacilityResultsSignal,
 } from "../services/ctgov.client.js";
 import {
   estimateSiteKpis,
@@ -27,6 +48,119 @@ import {
   type SiteKpiEstimateFields,
 } from "../llm/client.js";
 import { config } from "../config.js";
+
+function median(values: number[]): number | null {
+  if (values.length === 0) return null;
+  const sorted = [...values].sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+  return sorted.length % 2 === 0
+    ? (sorted[mid - 1] + sorted[mid]) / 2
+    : sorted[mid];
+}
+
+function monthsBetween(start: string, end: string): number | null {
+  const startDate = new Date(start);
+  const endDate = new Date(end);
+  if (Number.isNaN(startDate.getTime()) || Number.isNaN(endDate.getTime())) {
+    return null;
+  }
+  const months =
+    (endDate.getFullYear() - startDate.getFullYear()) * 12 +
+    (endDate.getMonth() - startDate.getMonth());
+  return months > 0 ? months : null;
+}
+
+/**
+ * Real, facility-specific enrollment-rate proxy: median of
+ * (ACTUAL EnrollmentCount ÷ StartDate→PrimaryCompletionDate months) across
+ * this facility's own on-file trials. null if no trial has enough real data
+ * to compute even one rate — callers then keep the LLM estimate.
+ */
+function computeRealEnrollmentRate(
+  trials: FacilityTrialRecord[],
+): number | null {
+  const rates: number[] = [];
+  for (const t of trials) {
+    if (t.enrollmentType !== "ACTUAL" || typeof t.enrollmentCount !== "number") {
+      continue;
+    }
+    if (!t.startDate || !t.primaryCompletionDate) continue;
+    const months = monthsBetween(t.startDate, t.primaryCompletionDate);
+    if (months === null) continue;
+    rates.push(t.enrollmentCount / months);
+  }
+  return median(rates);
+}
+
+/**
+ * Picks one NCTId to pull a posted-results signal from: the facility's most
+ * recently-completed on-file trial that has HasResults = true, preferring
+ * the broader facility-wide pool (bigger sample) over the indication-scoped
+ * one. null if nothing on file has posted results.
+ */
+function pickResultsNctId(
+  history: FacilityHistory | undefined,
+  facilityWideHistory: FacilityHistory | null | undefined,
+): string | null {
+  const pool = [
+    ...(facilityWideHistory?.trials ?? []),
+    ...(history?.trials ?? []),
+  ].filter((t) => t.hasResults === true && t.nctId);
+  if (pool.length === 0) return null;
+  pool.sort((a, b) => {
+    const ad = a.primaryCompletionDate ?? a.lastUpdatePostDate ?? "";
+    const bd = b.primaryCompletionDate ?? b.lastUpdatePostDate ?? "";
+    return bd.localeCompare(ad);
+  });
+  return pool[0].nctId;
+}
+
+/**
+ * Overrides specific LLM-estimated KPI fields with real ClinicalTrials.gov
+ * data when it's available, and records exactly which fields were replaced
+ * (liveKpiFields) so the UI/caveats can say so honestly rather than treating
+ * the whole row as either "all real" or "all estimated." Leaves every other
+ * field (Quality, Cost, Staff Turnover, etc. — no live source exists) as the
+ * LLM produced it.
+ */
+function applyLiveKpiOverrides(
+  evalRow: ExtendedEvaluationRow,
+  real: {
+    realEnrollmentRate: number | null;
+    resultsSignal: FacilityResultsSignal | null;
+  },
+): ExtendedEvaluationRow {
+  const liveKpiFields: string[] = [];
+  const out: ExtendedEvaluationRow = { ...evalRow };
+
+  if (real.realEnrollmentRate !== null) {
+    out["Historical Enrollment Rate (pts/month)"] =
+      Math.round(real.realEnrollmentRate * 10) / 10;
+    liveKpiFields.push("Historical Enrollment Rate (pts/month)");
+  }
+  if (real.resultsSignal?.dropoutRatePercent != null) {
+    out["Dropout Rate (%)"] = real.resultsSignal.dropoutRatePercent;
+    liveKpiFields.push("Dropout Rate (%)");
+  }
+  if (real.resultsSignal?.diversityIndex != null) {
+    out["Diversity Index (0-100)"] = real.resultsSignal.diversityIndex;
+    liveKpiFields.push("Diversity Index (0-100)");
+  }
+
+  if (liveKpiFields.length > 0) {
+    out.liveKpiFields = liveKpiFields;
+    out.liveKpiSourceNctId = real.resultsSignal?.sourceNctId ?? null;
+    out.estimateRationale =
+      `${out.estimateRationale ?? ""}` +
+      `${out.estimateRationale ? " " : ""}` +
+      `[Real ClinicalTrials.gov data overrides the LLM estimate for: ${liveKpiFields.join(", ")}` +
+      (real.resultsSignal
+        ? ` — Dropout Rate/Diversity Index are from ${real.resultsSignal.sourceNctId}'s posted results (trial-wide across all its sites, not this facility alone).`
+        : ".") +
+      `]`;
+  }
+  return out;
+}
 
 export interface LiveCandidateSite {
   site: SiteRow;
@@ -222,15 +356,31 @@ export async function buildLiveCandidateSites(
         };
       }
 
+      // Real KPI signal, computed only once we know this site will actually
+      // be scored (LLM configured) — avoids a wasted extra API call
+      // (getFacilityResultsSignal) for sites that would just get evalRow:
+      // null and never use it anyway.
+      const enrollmentPool =
+        facilityWideHistory?.trials ?? history?.trials ?? [];
+      const realEnrollmentRate = computeRealEnrollmentRate(enrollmentPool);
+      const resultsNctId = pickResultsNctId(history, facilityWideHistory);
+      const resultsSignal = resultsNctId
+        ? await getFacilityResultsSignal(resultsNctId).catch(() => null)
+        : null;
+      const realKpiSignal = { realEnrollmentRate, resultsSignal };
+
       const cacheKey = `${siteId}|${params.indication}`;
       const cached = estimateCache.get(cacheKey);
       if (cached && Date.now() < cached.expiresAt) {
-        const evalRow = {
-          "Site ID": siteId,
-          ...cached.fields,
-          dataSource: "llm-estimated",
-          estimateRationale: cached.rationale,
-        } as unknown as ExtendedEvaluationRow;
+        const evalRow = applyLiveKpiOverrides(
+          {
+            "Site ID": siteId,
+            ...cached.fields,
+            dataSource: "llm-estimated",
+            estimateRationale: cached.rationale,
+          } as unknown as ExtendedEvaluationRow,
+          realKpiSignal,
+        );
         return {
           site,
           evalRow,
@@ -261,12 +411,15 @@ export async function buildLiveCandidateSites(
           rationale: estimate.rationale,
           expiresAt: Date.now() + config.ctgov.cacheTtlMs,
         });
-        const evalRow = {
-          "Site ID": siteId,
-          ...estimate.fields,
-          dataSource: "llm-estimated",
-          estimateRationale: estimate.rationale,
-        } as unknown as ExtendedEvaluationRow;
+        const evalRow = applyLiveKpiOverrides(
+          {
+            "Site ID": siteId,
+            ...estimate.fields,
+            dataSource: "llm-estimated",
+            estimateRationale: estimate.rationale,
+          } as unknown as ExtendedEvaluationRow,
+          realKpiSignal,
+        );
         return {
           site,
           evalRow,

@@ -84,6 +84,20 @@ export interface ExtendedEvaluationRow extends EvaluationRow {
   dataSource?: "excel" | "llm-estimated";
   /** Set only when dataSource === "llm-estimated" — the model's own explanation of what it grounded the estimate in. */
   estimateRationale?: string;
+  /**
+   * Names of the raw KPI fields on THIS row that were overridden with real
+   * ClinicalTrials.gov data instead of the LLM estimate — e.g.
+   * "Historical Enrollment Rate (pts/month)", "Dropout Rate (%)",
+   * "Diversity Index (0-100)". Undefined/empty means every field on this row
+   * is still LLM-estimated (or, for dataSource "excel", measured). See
+   * liveCandidateSites.ts's applyLiveKpiOverrides for what's real and why;
+   * Dropout Rate / Diversity Index are trial-level, not site-level, figures
+   * (ClinicalTrials.gov has no per-site breakout for either) — see
+   * liveKpiSourceNctId for which trial they came from.
+   */
+  liveKpiFields?: string[];
+  /** The NCTId that Dropout Rate (%) / Diversity Index (0-100) were sourced from, when either is in liveKpiFields. null/absent otherwise. */
+  liveKpiSourceNctId?: string | null;
 }
 
 /**
@@ -337,6 +351,14 @@ export function scoreSites(
     }
     if (availableWeight === 0) {
       caveats.push("No usable KPI data at all — this site cannot be scored.");
+    }
+    if (row.liveKpiFields && row.liveKpiFields.length > 0) {
+      caveats.push(
+        `Real ClinicalTrials.gov data used for: ${row.liveKpiFields.join(", ")}` +
+          (row.liveKpiSourceNctId
+            ? ` (Dropout Rate/Diversity Index, if listed, are from ${row.liveKpiSourceNctId}'s posted results — trial-wide, not this specific site).`
+            : "."),
+      );
     }
 
     return {

@@ -177,6 +177,8 @@ export interface RankingRow {
   highRiskCount: number;
   /** "llm-estimated" = this site's KPIs came from an LLM estimate on a live ClinicalTrials.gov facility, not Site_Evaluation. */
   dataSource?: "excel" | "llm-estimated";
+  /** Raw KPI field names (e.g. "Historical Enrollment Rate (pts/month)") overridden with real ClinicalTrials.gov data instead of the LLM estimate. Empty when every field is still estimated. */
+  liveKpiFields?: string[];
 }
 
 export interface FinalResult {
@@ -196,6 +198,7 @@ export interface FinalResult {
   highRiskCount: number;
   riskExplanation: RiskExplanation;
   dataSource?: "excel" | "llm-estimated";
+  liveKpiFields?: string[];
   text: string;
 }
 
