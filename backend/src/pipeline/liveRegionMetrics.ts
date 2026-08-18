@@ -1,18 +1,3 @@
-/**
- * Builds a live RegionRow for a region/country/indication combination.
- *
- * - Active Competing Trials: always real, from ClinicalTrials.gov
- *   (getActiveCompetingTrialsCount). Falls back to 0 if the lookup returns
- *   null; competingTrialsSource is always "live" since a null result still
- *   means "we asked the live API," not "we used Excel."
- * - Prevalence / Regulatory Approval Time / Avg Cost per Patient: no public
- *   source exists for these at this granularity (confirmed) — LLM-estimated
- *   via estimateRegionMetrics when an LLM is configured, cached per
- *   region|country|indication. If the LLM is unconfigured or the call
- *   fails, these fields become 0 and the row is explicitly tagged
- *   regionMetricsSource: "unavailable" with a metricsWarning, rather than
- *   silently returning fabricated-looking zeros with no indication.
- */
 import type { RegionRow } from "../types.js";
 import { getActiveCompetingTrialsCount } from "../services/ctgov.client.js";
 import { estimateRegionMetrics, llmStatus } from "../llm/client.js";

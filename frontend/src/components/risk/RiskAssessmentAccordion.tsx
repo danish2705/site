@@ -2,10 +2,6 @@ import { useEffect, useMemo, useState } from "react";
 import type { RiskAssessmentRow } from "../../types";
 import RiskRegisterTable from "./RiskRegisterTable";
 
-/** True when every risk category assessed for this site came back Low
- * likelihood and Low impact — i.e. no real signal was found in any
- * category, as opposed to a "Low" rating that still reflects an observed
- * (if minor) signal. */
 function isAllNoRisk(r: RiskAssessmentRow): boolean {
   return (
     !r.riskDataUnavailable &&

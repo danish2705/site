@@ -1,14 +1,3 @@
-/**
- * Resolves the medical specialty required for an indication.
- *
- * INDICATION_TO_SPECIALTY (from repository/excelStore.ts) is kept as a fast
- * default map — a reasonable static lookup table, not an Excel dependency —
- * since most indications used in this app are already in it. For any
- * indication not in that map (e.g. picked from the live ClinicalTrials.gov
- * condition vocabulary), this falls back to inferSpecialtyForIndication
- * (LLM), caching the LLM result in a module-level Map so an indication is
- * never re-inferred more than once per process lifetime.
- */
 import { INDICATION_TO_SPECIALTY } from "../repository/excelStore.js";
 import { inferSpecialtyForIndication } from "../llm/client.js";
 

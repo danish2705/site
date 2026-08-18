@@ -12,10 +12,6 @@ const SCORE_COMPONENTS: {
   { key: "cost", label: "Cost", weight: 10 },
 ];
 
-// Which raw KPI field (as it would appear in a row's liveKpiFields list)
-// partly or fully feeds each component — used only to show a "backed by
-// real ClinicalTrials.gov data" note in the tooltip. Quality and Cost have
-// no live source at all, so they're intentionally absent here.
 const LIVE_FIELD_FOR_COMPONENT: Partial<Record<keyof ComponentScores, string>> = {
   recruitment: "Historical Enrollment Rate (pts/month)",
   retention: "Dropout Rate (%)",

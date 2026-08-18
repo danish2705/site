@@ -290,3 +290,38 @@ export interface LiveTrialLandscapeResponse {
   fetchedAt: string;
   warnings: string[];
 }
+
+/** One trial site plotted on the Site Map tab — see the backend's pipeline/liveMapData.ts for exactly what's live vs. synthetic vs. approximate in each field. */
+export interface MapSiteRow {
+  siteId: string;
+  siteName: string;
+  city: string | null;
+  state: string | null;
+  country: string;
+  status: string | null;
+  lat: number;
+  lng: number;
+  /** "live-google" if the backend has GOOGLE_MAPS_API_KEY configured and Google's geocode call succeeded; "live-nominatim" if the free OpenStreetMap lookup succeeded instead; "approximate" only if both live tiers were unavailable (not precisely geocoded). */
+  coordsSource: "live-google" | "live-nominatim" | "approximate";
+  radiusMiles: number;
+  populationInRadius: number;
+  populationSource: "synthetic";
+  prevalencePer100k: number;
+  grossEligiblePatients: number;
+  netAvailablePatients: number;
+  recruitmentRateAssumed: number;
+  riskScore: number | null;
+  riskLevel: "Low" | "Medium" | "High" | "Unknown";
+  riskRationale: string;
+  riskSource: "llm-estimated" | "unavailable";
+}
+
+export interface LiveMapResponse {
+  indication: string;
+  /** null = global search across every country ClinicalTrials.gov returned. */
+  country: string | null;
+  radiusMiles: number;
+  sites: MapSiteRow[];
+  warnings: string[];
+  fetchedAt: string;
+}

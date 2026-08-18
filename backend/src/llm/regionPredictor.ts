@@ -38,14 +38,6 @@ async function buildCandidates(
   input: PipelineInput,
   specialty: string,
 ): Promise<{ candidates: RegionCandidate[]; excludedNoSites: number }> {
-  // Destructuring defaults only kick in for `undefined` — but the form
-  // sends an empty string ("") for an untouched numeric field (this feature
-  // is commonly used BEFORE filling in Target Enrollment/Duration), and ""
-  // is not undefined. That let 0 slip through, which turned
-  // "durationMonths * 0.6 / monthsToEnroll" into a 0/0 = NaN, which then
-  // poisoned the whole composite score (NaN serializes to `null` in JSON —
-  // this is why every region's score showed as missing). Number(x) || fallback
-  // treats "", null, undefined AND 0 the same way: fall back to the default.
   const sampleSize = Number(input.sampleSize) || 300;
   const durationMonths = Number(input.durationMonths) || 18;
   const { budgetTier } = input;
@@ -251,7 +243,9 @@ export async function predictRegion(
   const { indication } = input;
 
   if (!indication) {
-    throw new Error(`Missing indication. Pick an indication before predicting a region.`);
+    throw new Error(
+      `Missing indication. Pick an indication before predicting a region.`,
+    );
   }
   const specialty = await resolveSpecialty(indication);
 

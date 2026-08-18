@@ -3,11 +3,6 @@ export interface RegionDefinition {
   country: string;
 }
 
-// Code-level geography grouping — not sourced from Excel or any live API,
-// since sub-national "region" labels like "South India" are this app's own
-// taxonomy, not something any public data source defines. Extend this list
-// as needed; it is the single place region/country options are defined now
-// that Region_Data.xlsx is no longer used.
 export const REGION_DEFINITIONS: RegionDefinition[] = [
   { region: "South India", country: "India" },
   { region: "North India", country: "India" },

@@ -667,6 +667,12 @@ body {
   margin-top: 10px;
 }
 
+.warning-text {
+  color: var(--med);
+  font-size: 12.5px;
+  margin: 0 0 8px;
+}
+
 .btn-primary {
   display: inline-flex;
   align-items: center;
@@ -894,6 +900,20 @@ th {
 tbody tr:hover {
   background: #fafbff;
 }
+/* Site Map facility table: rows are shorter/denser than the default table,
+   and the facility-name column wraps instead of forcing a wide nowrap row
+   (raw ClinicalTrials.gov facility names occasionally include long contact
+   instructions rather than just a short site name). */
+.site-map-table th,
+.site-map-table td {
+  padding: 6px 10px;
+  font-size: 12.5px;
+}
+.site-map-table td:first-child {
+  white-space: normal;
+  max-width: 280px;
+  line-height: 1.35;
+}
 .site-id {
   font-size: 11.5px;
   color: var(--sub);
@@ -923,6 +943,11 @@ tbody tr:hover {
   background: var(--high-bg);
 }
 .badge.no-data {
+  color: var(--no-data);
+  background: var(--no-data-bg);
+  font-style: italic;
+}
+.badge.unknown {
   color: var(--no-data);
   background: var(--no-data-bg);
   font-style: italic;
@@ -1774,4 +1799,315 @@ tr.row-pick td {
 .run-modal-head p {
   margin: 0;
   font-size: 12px;
+}
+
+/* ---- Predicted Region / Site Map tabs ---- */
+.predict-tabs {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 16px;
+  border-bottom: 1px solid var(--line);
+}
+.predict-tab {
+  appearance: none;
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  padding: 8px 4px 10px;
+  margin-right: 18px;
+  font-family: inherit;
+  font-size: 13.5px;
+  font-weight: 700;
+  color: var(--sub);
+  cursor: pointer;
+}
+.predict-tab:hover {
+  color: var(--ink);
+}
+.predict-tab.active {
+  color: var(--accent-dark);
+  border-bottom-color: var(--accent);
+}
+
+/* ---- Site Map ---- */
+.map-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 18px;
+  margin: 4px 0 6px;
+  padding: 14px 16px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--bg);
+}
+.map-field {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  font-size: 11.5px;
+  font-weight: 700;
+  color: var(--sub);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+.map-field input,
+.map-field select {
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--ink);
+  text-transform: none;
+  letter-spacing: normal;
+  padding: 7px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+  min-width: 160px;
+}
+.map-field-note {
+  display: block;
+  max-width: 240px;
+  font-size: 11px;
+  font-weight: 500;
+  text-transform: none;
+  letter-spacing: normal;
+  color: var(--sub);
+  font-style: italic;
+}
+.map-metric-toggle {
+  display: flex;
+  gap: 16px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--ink);
+}
+.map-metric-toggle label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+}
+.map-warnings {
+  margin-bottom: 6px;
+}
+.map-canvas-wrap {
+  position: relative;
+  margin-top: 14px;
+}
+.site-map-svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #d7e6f5;
+  cursor: grab;
+  touch-action: none;
+}
+.site-map-svg.dragging {
+  cursor: grabbing;
+}
+.map-bg {
+  fill: #d7e6f5;
+}
+.map-grid-line {
+  stroke: #d6dbf0;
+  stroke-width: 1;
+}
+.map-graticule {
+  fill: none;
+  stroke: #b7cde6;
+  stroke-width: 0.5;
+  pointer-events: none;
+}
+.map-land {
+  fill: #eef3e6;
+  stroke: #b9c9ab;
+  stroke-width: 0.6;
+  pointer-events: none;
+}
+.map-marker {
+  cursor: pointer;
+}
+.map-marker circle {
+  transition: stroke-width 0.12s ease;
+}
+.map-marker:hover circle {
+  stroke-width: 1.6;
+}
+.map-cluster-label {
+  font-size: 9px;
+  font-weight: 700;
+  fill: #fff;
+  pointer-events: none;
+  user-select: none;
+}
+.map-zoom-controls {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 4px;
+  background: rgba(255, 255, 255, 0.92);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 4px;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.12);
+}
+.map-zoom-controls button {
+  appearance: none;
+  width: 28px;
+  height: 26px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #fff;
+  color: var(--ink);
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1;
+  cursor: pointer;
+}
+.map-zoom-controls button:hover {
+  background: var(--bg);
+}
+.map-zoom-level {
+  text-align: center;
+  font-size: 10.5px;
+  font-weight: 700;
+  color: var(--sub);
+  padding-top: 2px;
+  border-top: 1px solid var(--line);
+}
+.map-tooltip {
+  position: relative;
+  margin-top: 10px;
+  padding: 10px 34px 10px 14px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--card);
+  font-size: 12.5px;
+  color: var(--ink);
+  line-height: 1.5;
+}
+.map-tooltip strong {
+  font-size: 13.5px;
+}
+.map-tooltip-close {
+  position: absolute;
+  top: 6px;
+  right: 8px;
+  appearance: none;
+  background: none;
+  border: none;
+  font-size: 17px;
+  line-height: 1;
+  color: var(--sub);
+  cursor: pointer;
+  padding: 2px 6px;
+}
+.map-tooltip-close:hover {
+  color: var(--ink);
+}
+.map-tooltip-rationale {
+  margin-top: 4px;
+  color: var(--sub);
+  font-style: italic;
+}
+.map-tooltip-caveat {
+  margin-top: 4px;
+  color: var(--sub);
+  font-size: 11.5px;
+}
+.map-table-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 16px;
+  margin-bottom: 8px;
+}
+.map-search-input {
+  flex: 1 1 260px;
+  max-width: 320px;
+  font-family: inherit;
+  font-size: 13px;
+  padding: 7px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+  color: var(--ink);
+}
+.map-table-count {
+  font-size: 11.5px;
+  color: var(--sub);
+  white-space: nowrap;
+}
+.map-csv-btn {
+  margin-left: auto;
+  appearance: none;
+  font-family: inherit;
+  font-size: 12.5px;
+  font-weight: 700;
+  padding: 7px 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+  color: var(--accent-dark);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.map-csv-btn:hover:not(:disabled) {
+  background: var(--bg);
+}
+.map-csv-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+th.sortable {
+  cursor: pointer;
+  user-select: none;
+  white-space: nowrap;
+}
+th.sortable:hover {
+  color: var(--accent-dark);
+}
+tr.pinned-row {
+  background: rgba(103, 126, 234, 0.08);
+}
+.table-scroll tbody tr {
+  cursor: pointer;
+}
+.map-legend {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 16px;
+  margin-top: 10px;
+  font-size: 12px;
+  color: var(--sub);
+}
+.map-legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.map-legend i {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+}
+.map-legend-note {
+  margin-left: auto;
+  font-style: italic;
+}
+.map-caveats {
+  margin-top: 16px;
+  padding-top: 12px;
+  border-top: 1px dashed var(--line);
+  font-size: 11.5px;
+  color: var(--sub);
+  line-height: 1.6;
 }

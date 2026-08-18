@@ -1,33 +1,3 @@
-/**
- * Builds candidate sites from real, live ClinicalTrials.gov facilities for a
- * region/indication, and estimates their Site_Evaluation KPIs via the LLM
- * (since ClinicalTrials.gov has no operational data on any site) — EXCEPT for
- * the handful of KPI fields real data now exists for, which override the LLM
- * guess (see applyLiveKpiOverrides below):
- *  - Historical Enrollment Rate (pts/month): computed from this facility's
- *    own on-file trials (EnrollmentCount ÷ StartDate→PrimaryCompletionDate
- *    duration), not the LLM. Trial-total, not literally this site's patients
- *    (CT.gov doesn't break enrollment out per site), but real and specific to
- *    trials this facility ran.
- *  - Dropout Rate (%) / Diversity Index (0-100): pulled from ONE of this
- *    facility's on-file trials that has POSTED RESULTS (a minority of
- *    trials), via getFacilityResultsSignal. These are trial-WIDE figures
- *    (every site that ran that trial, not just this one) — real, disclosed,
- *    but not literally this facility's own number. Falls back to the LLM
- *    estimate whenever no facility trial has posted results, or the posted
- *    results don't include a usable participant-flow/race breakdown.
- * Every other KPI field (Quality's components, Cost, Staff Turnover,
- * Investigator Experience, etc.) has no live source anywhere and stays
- * LLM-estimated — see the ClinicalTrials.gov data-availability review this
- * was built from for why.
- *
- * Per-facility failure handling is explicit, never silent:
- *  - LLM not configured  -> site is returned with evalRow: null + a warning.
- *  - LLM call fails/parses badly -> same: evalRow: null + a warning.
- * No mock/fabricated KPI numbers are ever substituted in either case; a site
- * with evalRow: null simply doesn't get scored (same as an Excel site with
- * no Site_Evaluation row today), and the warning explains why.
- */
 import { createHash } from "node:crypto";
 import type { SiteRow } from "../types.js";
 import type { ExtendedEvaluationRow } from "./scoring.js";
@@ -289,7 +259,7 @@ export interface BuildLiveCandidateSitesParams {
 export async function buildLiveCandidateSites(
   params: BuildLiveCandidateSitesParams,
 ): Promise<LiveCandidateSite[]> {
-  const maxSites = params.maxSites ?? 8;
+  const maxSites = params.maxSites ?? 40;
 
   const rawFacilities = await getFacilitiesForCondition(params.indication, {
     country: params.country,

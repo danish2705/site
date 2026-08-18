@@ -37,4 +37,20 @@ export const config = {
     timeoutMs: Number(process.env.CTGOV_TIMEOUT_MS) || 6000,
     cacheTtlMs: Number(process.env.CTGOV_CACHE_TTL_MS) || 6 * 60 * 60 * 1000,
   },
+
+  google: {
+    mapsApiKey: optional("GOOGLE_MAPS_API_KEY"),
+  },
+
+  geo: {
+    contactEmail: optional("GEO_CONTACT_EMAIL"),
+  },
+
+  map: {
+    defaultRadiusMiles: Number(process.env.MAP_DEFAULT_RADIUS_MILES) || 50,
+
+    baselineRecruitmentRate:
+      Number(process.env.MAP_BASELINE_RECRUITMENT_RATE) || 0.225,
+    addressableFraction: Number(process.env.MAP_ADDRESSABLE_FRACTION) || 0.02,
+  },
 } as const;

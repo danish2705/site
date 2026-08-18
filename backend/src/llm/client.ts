@@ -637,3 +637,105 @@ Reply with ONLY a JSON object: { "specialty": "<specialty name>" }, no prose.`;
 export function llmStatus(): { configured: boolean; model: string } {
   return { configured: !!client, model: MODEL };
 }
+
+/* ---------------------------------------------------------------------- */
+/* Live-site geographic risk estimation (Site Map feature)                */
+/* ---------------------------------------------------------------------- */
+
+export interface SiteGeoRiskInput {
+  facilityName: string;
+  city: string | null;
+  state: string | null;
+  country: string;
+  indication: string;
+}
+
+export interface SiteGeoRiskEstimate {
+  riskScore: number;
+  riskLevel: "Low" | "Medium" | "High";
+  rationale: string;
+}
+
+const geoRiskCache = new Map<
+  string,
+  { estimate: SiteGeoRiskEstimate; expiresAt: number }
+>();
+
+function clampScore(v: number): number {
+  return Math.max(0, Math.min(100, Math.round(v)));
+}
+
+/**
+ * Estimates a single 0-100 "site risk score" for the Site Map view. No
+ * public database of per-site clinical-trial risk scores was found, so this
+ * is grounded only in the facility's name/location/indication (same honesty
+ * pattern as estimateSiteKpis) — the model's general knowledge of
+ * regulatory maturity, healthcare infrastructure, and trial density for
+ * that geography, NOT any measured fact about this specific facility.
+ *
+ * Throws if the LLM is unconfigured or the call fails, so callers show
+ * riskLevel: "Unknown" instead of a fabricated score.
+ */
+export async function estimateSiteGeoRisk(
+  input: SiteGeoRiskInput,
+): Promise<SiteGeoRiskEstimate> {
+  if (!client) {
+    throw new Error("LLM not configured — cannot estimate a site risk score.");
+  }
+
+  const cacheKey =
+    `${input.facilityName}|${input.city ?? ""}|${input.country}|${input.indication}`.toLowerCase();
+  const cached = geoRiskCache.get(cacheKey);
+  if (cached && Date.now() < cached.expiresAt) return cached.estimate;
+
+  const prompt = `You are a clinical trial feasibility analyst. No public database of per-site
+clinical-trial risk scores exists, so give your best-informed general risk assessment for running
+a trial at this facility, reasoning only from its location's regulatory maturity, healthcare
+infrastructure maturity, and typical trial density for this indication — NOT any measured fact
+about this specific facility (none is public).
+
+FACILITY
+Name: ${input.facilityName}
+Location: ${[input.city, input.state, input.country].filter(Boolean).join(", ")}
+Indication: ${input.indication}
+
+Reply with ONLY a JSON object, no prose or markdown fences:
+{
+  "riskScore": <number 0-100, higher = riskier>,
+  "riskLevel": "Low" | "Medium" | "High",
+  "rationale": "<1-2 sentences on what you grounded this in>"
+}`;
+
+  const completion = await client.chat.completions.create({
+    model: MODEL,
+    messages: [{ role: "user", content: prompt }],
+    temperature: 0.3,
+    response_format: { type: "json_object" },
+  });
+
+  const raw = completion.choices[0].message.content ?? "";
+  const parsed = parseJsonResponse<Partial<SiteGeoRiskEstimate>>(raw);
+
+  if (typeof parsed.riskScore !== "number" || !Number.isFinite(parsed.riskScore)) {
+    throw new Error("LLM returned no usable risk score.");
+  }
+
+  const estimate: SiteGeoRiskEstimate = {
+    riskScore: clampScore(parsed.riskScore),
+    riskLevel:
+      parsed.riskLevel === "Low" || parsed.riskLevel === "High"
+        ? parsed.riskLevel
+        : "Medium",
+    rationale:
+      "(AI-estimated) " +
+      (typeof parsed.rationale === "string" && parsed.rationale.trim()
+        ? parsed.rationale.trim()
+        : "No rationale returned by the model."),
+  };
+
+  geoRiskCache.set(cacheKey, {
+    estimate,
+    expiresAt: Date.now() + config.ctgov.cacheTtlMs,
+  });
+  return estimate;
+}

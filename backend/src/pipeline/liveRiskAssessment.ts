@@ -1,63 +1,8 @@
-/**
- * Builds risk-register rows for a live, ClinicalTrials.gov-sourced site.
- *
- * Every category here is REAL signal (dataSource: "live"), derived from
- * disclosed ClinicalTrials.gov data, no LLM involved:
- *   - trial-status history at that exact facility (terminated/withdrawn/
- *     suspended trials, with the sponsor-disclosed reason where available)
- *     -> Enrollment/Safety/Operational/Regulatory/Clinical categories. The
- *     shared Likelihood rate prefers a facility-wide (all-indications) trial
- *     sample when one is available, since the indication-scoped sample is
- *     often just 1-2 trials — see realRiskRecordsFrom.
- *   - per-facility count of nearby (same-city) actively-recruiting/
- *     not-yet-recruiting trial locations for this indication, computed
- *     in liveCandidateSites.ts from ClinicalTrials.gov's per-location
- *     status field -> Competitive category. (Distinct from the
- *     country-wide "Active Competing Trials" figure used for
- *     region-level scoring — that one number is the same for every site
- *     in a run, so it isn't fine-grained enough for a per-site rating.)
- *   - overdue/missing results reporting at this facility's past trials
- *     (HasResults + PrimaryCompletionDate, both disclosed fields) ->
- *     Data Integrity category. Also prefers the facility-wide sample.
- *   - a facility's own ACTUAL enrollment counts vs. the completed-trial
- *     benchmark median for this indication -> Enrollment-shortfall signal,
- *     folded into the Enrollment category (see enrollmentShortfallRiskRecordFrom).
- *   - the design attributes (masking, allocation, intervention model) of
- *     this facility's own trials for this indication -> Protocol Complexity
- *     category (see protocolComplexityRiskRecordFrom).
- *   - how long ago the sponsor last verified/updated this facility's trial
- *     records -> Reporting Diligence category (see
- *     reportingDiligenceRiskRecordFrom) — a real, disclosed proxy for
- *     disclosure diligence, NOT the same thing as a GCP compliance
- *     inspection finding (no such data exists publicly for any facility).
- *
- * Compliance (the old AI-guessed category) has been dropped entirely — see
- * the frontend's static disclaimer in RiskAssessmentAccordion.tsx for why.
- * Staff Turnover was dropped earlier for the same reason: no real source
- * exists for it and there was no way to ground even a plausible estimate.
- *
- * Every one of the 5 code-computed categories above (Competitive, Data
- * Integrity, Enrollment Shortfall, Protocol Complexity, Reporting
- * Diligence) is ALWAYS included in a site's risk register, even when no
- * real signal was found — a clean category comes back as a Likelihood
- * Low / Impact Low row (rendered "No Risk", green, on the frontend)
- * instead of being silently skipped, so no risk category is ever missing
- * from a site's output. The single "Data Availability" placeholder below
- * is now only a defensive fallback (in practice unreachable, since the 5
- * categories always produce a row).
- */
 import type { RiskRow } from "../types.js";
 import type { FacilityHistory, FacilityTrialRecord } from "../services/ctgov.client.js";
 
 const TERMINAL_STATUSES = new Set(["TERMINATED", "WITHDRAWN", "SUSPENDED"]);
 
-// Same fixed Likelihood x Impact convention used for the "derivation" text in
-// runPipeline.ts's RISK_MATRIX — duplicated here (not imported) to avoid a
-// circular import between runPipeline.ts and this module. Used for every
-// code-computed category below (Competitive, Data Integrity, Enrollment
-// Shortfall, Protocol Complexity, Reporting Diligence), not for the
-// trial-history-derived categories, which set their own Overall rating
-// directly from a per-trial Impact.
 const RISK_MATRIX: Record<"Low" | "Medium" | "High", Record<"Low" | "Medium" | "High", "Low" | "Medium" | "High">> = {
   Low: { Low: "Low", Medium: "Low", High: "Medium" },
   Medium: { Low: "Low", Medium: "Medium", High: "High" },
@@ -92,13 +37,6 @@ function today(): string {
   return new Date().toISOString().slice(0, 10);
 }
 
-// Generic 0-1 proportion -> Low/Medium/High bander, reused for every
-// facility-level rate below (termination rate, results-overdue rate). A
-// facility where most of its trials ran into trouble gets a higher
-// Likelihood than one with a single isolated incident; the threshold
-// numbers themselves are still a stated convention (any Low/Medium/High
-// banding needs one), but the rate they're applied to is always a real,
-// live figure, never a fixed constant.
 function bandRate(rate: number): "Low" | "Medium" | "High" {
   if (rate >= 0.5) return "High";
   if (rate >= 0.2) return "Medium";
@@ -125,12 +63,6 @@ function realRiskRecordsFrom(
     };
   }
 
-  // The indication-scoped `history` is often just 1-2 trials, which makes a
-  // termination rate noisy. When a broader, facility-wide (all-indications)
-  // sample is available and non-empty, use IT for the shared rate instead —
-  // a bigger, steadier denominator — while still listing a row per
-  // indication-specific terminal trial below (those descriptions stay
-  // relevant to the indication actually being evaluated).
   const usingFacilityWide =
     !!facilityWideHistory && facilityWideHistory.trials.length > 0;
   const rateSource = usingFacilityWide ? facilityWideHistory! : history;
@@ -145,12 +77,6 @@ function realRiskRecordsFrom(
 
   const risks: RiskRow[] = terminal.map((t) => {
     const category = categorizeWhyStopped(t.whyStopped);
-    // Safety-related stoppages are treated as High impact regardless of the
-    // exact status wording (a safety-driven termination and a safety-driven
-    // withdrawal are both serious) — everything else keeps the existing
-    // TERMINATED-is-worse-than-WITHDRAWN/SUSPENDED distinction. Both signals
-    // (category, status) come from the real, disclosed `whyStopped` /
-    // `overallStatus` fields, not an AI guess.
     const impact: "High" | "Medium" =
       category === "Safety" || t.overallStatus === "TERMINATED"
         ? "High"

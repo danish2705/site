@@ -1,19 +1,3 @@
-/**
- * Builds a live TrialRequirementRow for an indication/specialty/phase.
- *
- * - Target Sample Size / Duration (months) / Min Enrollment Rate /
- *   Max Acceptable Dropout: derived from REAL ClinicalTrials.gov completed-
- *   trial benchmarks (getCompletedTrialBenchmarks, getDropoutRateBenchmark).
- *   The two "acceptable" thresholds are reasonable derivations from real
- *   medians (documented below), not LLM guesses.
- * - Min Data Quality Score / Max Acceptable Screen Failure: no public source
- *   discloses protocol thresholds — LLM-estimated via
- *   estimateRequirementThresholds. If the LLM is unconfigured or fails,
- *   these stay null and requirementWarning is set.
- * - Trial ID / Required Specialty / Trial Type / Cohort tag / Accreditation /
- *   Required Infrastructure: no live/LLM source and no real meaning outside
- *   the old Excel taxonomy — reasonable static defaults, documented inline.
- */
 import type { TrialRequirementRow } from "../types.js";
 import {
   getCompletedTrialBenchmarks,

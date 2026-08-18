@@ -44,6 +44,44 @@ export interface LiveTrialLandscapeResponse {
   warnings: string[];
 }
 
+/** One trial site plotted on the Site Map tab — see pipeline/liveMapData.ts for exactly what's live vs. synthetic vs. approximate in each field. */
+export interface MapSiteRow {
+  siteId: string;
+  siteName: string;
+  city: string | null;
+  state: string | null;
+  country: string;
+  status: string | null;
+  lat: number;
+  lng: number;
+  /** "live-google" if GOOGLE_MAPS_API_KEY is configured and Google's geocode call succeeded; "live-nominatim" if the free OpenStreetMap Nominatim lookup succeeded instead; "approximate" only if both live tiers were unavailable (deterministic placement near the country/city, not precisely geocoded) — see services/geo.service.ts. */
+  coordsSource: "live-google" | "live-nominatim" | "approximate";
+  radiusMiles: number;
+  /** Sum of synthetic catchment population within radiusMiles of this site — see data/syntheticPopulation.ts for why this is synthetic, not real, data. */
+  populationInRadius: number;
+  populationSource: "synthetic";
+  /** LLM-estimated prevalence per 100k for this indication/country — see liveRegionMetrics.ts (no live source exists at this granularity). */
+  prevalencePer100k: number;
+  grossEligiblePatients: number;
+  netAvailablePatients: number;
+  /** Fraction of gross-eligible patients assumed already enrolled elsewhere — derived from the real completed-trial benchmark median sample size when available, else a fixed baseline (config.map.baselineRecruitmentRate). */
+  recruitmentRateAssumed: number;
+  riskScore: number | null;
+  riskLevel: "Low" | "Medium" | "High" | "Unknown";
+  riskRationale: string;
+  riskSource: "llm-estimated" | "unavailable";
+}
+
+export interface LiveMapResponse {
+  indication: string;
+  /** null = global search across every country ClinicalTrials.gov returned. */
+  country: string | null;
+  radiusMiles: number;
+  sites: MapSiteRow[];
+  warnings: string[];
+  fetchedAt: string;
+}
+
 export interface TrialRequirementRow {
   "Trial ID": string;
   Indication: string;

@@ -28,26 +28,11 @@ import type {
 const sleep = (ms: number): Promise<void> =>
   new Promise((resolve) => setTimeout(resolve, ms));
 
-// A blank "Target Enrollment" / "Duration (months)" input on the frontend
-// arrives here as "" at runtime (even though PipelineInput types them as
-// `number | undefined`) — left unsanitized, that "" was flowing straight
-// through into buildLiveTrialRequirement, coming back out as an empty-string
-// "Target Sample Size"/"Duration (months)", and eventually hitting a
-// Postgres integer column on Save Run ("invalid input syntax for type
-// integer: ''"). Normalizing right at the pipeline entry means every
-// downstream consumer (the requirement builder, the Stage 1 detail/data
-// payload, and the values a saved run is built from) only ever sees a real
-// positive number or undefined.
 function toPositiveNumberOrUndefined(value: unknown): number | undefined {
   const n = typeof value === "number" ? value : Number(value);
   return Number.isFinite(n) && n > 0 ? n : undefined;
 }
 
-// Standard 3x3 Likelihood x Impact risk matrix (industry-common convention),
-// used only to show the "derivation" text on a risk driver. This replaces
-// the Excel Risk_Matrix sheet — it is a fixed convention, not something any
-// live API publishes, so it is defined here as a code-level constant
-// instead (same rationale as data/regionMap.ts).
 const RISK_MATRIX: RiskMatrix = {
   Low: { Low: "Low", Medium: "Low", High: "Medium" },
   Medium: { Low: "Low", Medium: "Medium", High: "High" },
