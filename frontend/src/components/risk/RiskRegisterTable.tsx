@@ -32,6 +32,13 @@ export default function RiskRegisterTable({
             // comes from that one placeholder, so it's a safe, deterministic
             // way to flag it for a distinct "Unassessed" badge instead.
             const isNoData = r.category === "Data Availability";
+            // A record with both Likelihood and Impact at Low reflects no
+            // real signal found for this category (e.g. no competing
+            // trials nearby, no overdue results) — distinct from a "Low"
+            // rating that still came from an actual observed signal. Shown
+            // as "No Risk" with the same green treatment as Low.
+            const isNoRisk =
+              !isNoData && r.likelihood === "Low" && r.impact === "Low";
             return (
               <tr key={r.riskId}>
                 <td>{r.riskId}</td>
@@ -48,8 +55,14 @@ export default function RiskRegisterTable({
                   </span>
                 </td>
                 <td>
-                  <span className={`badge ${isNoData ? "no-data" : r.overallRisk.toLowerCase()}`}>
-                    {isNoData ? "Unassessed" : `${r.overallRisk} Risk`}
+                  <span
+                    className={`badge ${isNoData ? "no-data" : isNoRisk ? "no-risk" : r.overallRisk.toLowerCase()}`}
+                  >
+                    {isNoData
+                      ? "Unassessed"
+                      : isNoRisk
+                        ? "No Risk"
+                        : `${r.overallRisk} Risk`}
                   </span>
                 </td>
                 <td className="col-wide">{r.mitigationPlan}</td>

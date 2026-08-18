@@ -81,6 +81,7 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
     durationMonths: "",
     budgetTier: "",
     regions: [],
+    ageGroups: [],
   });
   const [stages, setStages] = useState<StagesMap>(emptyStages());
   const [running, setRunning] = useState(false);

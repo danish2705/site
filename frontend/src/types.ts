@@ -5,6 +5,8 @@ export interface TrialForm {
   durationMonths: number | "";
   budgetTier: string;
   regions: string[];
+  /** Eligible patient age group(s) for this trial (e.g. "Adult (18-64)"). Optional — empty means all ages. */
+  ageGroups: string[];
 }
 
 export interface RegionOption {

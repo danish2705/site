@@ -910,6 +910,10 @@ tbody tr:hover {
   color: var(--low);
   background: var(--low-bg);
 }
+.badge.no-risk {
+  color: var(--low);
+  background: var(--low-bg);
+}
 .badge.medium {
   color: var(--med);
   background: var(--med-bg);

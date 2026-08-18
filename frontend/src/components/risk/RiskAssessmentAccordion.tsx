@@ -2,6 +2,20 @@ import { useEffect, useMemo, useState } from "react";
 import type { RiskAssessmentRow } from "../../types";
 import RiskRegisterTable from "./RiskRegisterTable";
 
+/** True when every risk category assessed for this site came back Low
+ * likelihood and Low impact — i.e. no real signal was found in any
+ * category, as opposed to a "Low" rating that still reflects an observed
+ * (if minor) signal. */
+function isAllNoRisk(r: RiskAssessmentRow): boolean {
+  return (
+    !r.riskDataUnavailable &&
+    r.riskRecords.length > 0 &&
+    r.riskRecords.every(
+      (rec) => rec.likelihood === "Low" && rec.impact === "Low",
+    )
+  );
+}
+
 function overallRiskTooltip(r: RiskAssessmentRow): string {
   const total = r.riskRecords.length;
   if (r.riskDataUnavailable) {
@@ -9,6 +23,12 @@ function overallRiskTooltip(r: RiskAssessmentRow): string {
       "No risk data available for this site — no terminated/withdrawn trial history, no " +
       "competing-trials signal, no overdue-results signal, and no AI estimate could be produced. " +
       "This is NOT a confirmed low-risk assessment; treat it as unassessed."
+    );
+  }
+  if (isAllNoRisk(r)) {
+    return (
+      `Overall: No Risk — all ${total} risk categor${total === 1 ? "y" : "ies"} assessed for this site ` +
+      `came back Low likelihood and Low impact (no real signal found in any category).`
     );
   }
   if (r.overallRisk === "High") {
@@ -80,6 +100,10 @@ export default function RiskAssessmentAccordion({
                 {r.riskDataUnavailable ? (
                   <span className="badge no-data" title={overallRiskTooltip(r)}>
                     Unassessed
+                  </span>
+                ) : isAllNoRisk(r) ? (
+                  <span className="badge no-risk" title={overallRiskTooltip(r)}>
+                    No Risk
                   </span>
                 ) : (
                   <span

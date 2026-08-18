@@ -27,6 +27,8 @@ export interface BuildLiveTrialRequirementParams {
   phase?: string;
   sampleSize?: number;
   durationMonths?: number;
+  /** Caller-provided eligible age group(s) (e.g. ["Adult (18-64)"]) — no live/LLM source, applied as given. */
+  ageGroups?: string[];
 }
 
 export type LiveTrialRequirementRow = TrialRequirementRow & {
@@ -42,6 +44,19 @@ const FALLBACK_SAMPLE_SIZE = 300;
 const FALLBACK_DURATION_MONTHS = 18;
 const FALLBACK_PHASE = "Phase III";
 
+// A blank number input on the frontend (e.g. "Target Enrollment" left
+// empty) arrives here as "" at runtime, even though the TS type says
+// `number | undefined` — `params.sampleSize ?? fallback` would NOT catch
+// that, because `??` only falls through on null/undefined, not on "". An
+// empty string sailing through was landing in an integer DB column at save
+// time ("invalid input syntax for type integer: ''"). This normalizes any
+// non-positive-finite-number value (including "", NaN, 0, negative) to
+// undefined so the `??` fallback chains below actually engage.
+function toPositiveNumberOrUndefined(value: unknown): number | undefined {
+  const n = typeof value === "number" ? value : Number(value);
+  return Number.isFinite(n) && n > 0 ? n : undefined;
+}
+
 export async function buildLiveTrialRequirement(
   params: BuildLiveTrialRequirementParams,
 ): Promise<LiveTrialRequirementRow> {
@@ -51,9 +66,11 @@ export async function buildLiveTrialRequirement(
   ]);
 
   const targetSampleSize =
-    params.sampleSize ?? benchmark.medianSampleSize ?? FALLBACK_SAMPLE_SIZE;
+    toPositiveNumberOrUndefined(params.sampleSize) ??
+    benchmark.medianSampleSize ??
+    FALLBACK_SAMPLE_SIZE;
   const durationMonths =
-    params.durationMonths ??
+    toPositiveNumberOrUndefined(params.durationMonths) ??
     benchmark.medianDurationMonths ??
     FALLBACK_DURATION_MONTHS;
   const phase = params.phase || FALLBACK_PHASE;
@@ -102,6 +119,11 @@ export async function buildLiveTrialRequirement(
   const requirementSource: LiveTrialRequirementRow["requirementSource"] =
     thresholdSource === "llm-estimated" ? "mixed" : "live";
 
+  const ageGroup =
+    params.ageGroups && params.ageGroups.length > 0
+      ? params.ageGroups.join(", ")
+      : "All ages (not specified)";
+
   return {
     "Trial ID": "LIVE-REQ", // no live/LLM source for a trial identifier — this app no longer tracks a specific protocol record, just live-derived thresholds
     Indication: params.indication,
@@ -109,6 +131,7 @@ export async function buildLiveTrialRequirement(
     "Trial Type": "Live", // replaces the old Excel "Headline"/etc. taxonomy, which has no live equivalent
     "Cohort / Subgroup Tag": "All-comers", // no live/LLM source for subgroup tagging; "All-comers" is the least-assumption default
     Phase: phase,
+    "Age Group": ageGroup, // no live/LLM source for eligible age group; caller-provided ageGroups (if any) applied as given
     "Target Sample Size": targetSampleSize,
     "Duration (months)": durationMonths,
     "Budget Tier": "Mid", // no live/LLM source for budget tier; caller-provided budgetTier (if any) is applied separately in runPipeline.ts

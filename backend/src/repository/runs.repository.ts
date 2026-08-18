@@ -1,6 +1,19 @@
 import { requirePool } from "../db.js";
 import type { SaveRunInput, SavedRunSummary } from "../types.js";
 
+// Last line of defense before an integer/numeric DB column: /api/runs takes
+// a raw JSON body, so a caller (or a form field left blank upstream, e.g.
+// "" for an unset Target Enrollment) could still hand this a non-numeric
+// value even though SaveRunInput's TS types say `number`. Postgres rejects
+// "" for an integer column with "invalid input syntax for type integer:
+// ''" — coercing anything non-finite to null here means every numeric bind
+// below is guaranteed to be a real number or null, never a stray string.
+function toNullableNumber(value: unknown): number | null {
+  if (value === null || value === undefined) return null;
+  const n = typeof value === "number" ? value : Number(value);
+  return Number.isFinite(n) ? n : null;
+}
+
 export async function saveRun(input: SaveRunInput): Promise<{ id: string }> {
   const db = requirePool();
 
@@ -33,18 +46,18 @@ export async function saveRun(input: SaveRunInput): Promise<{ id: string }> {
         input.label?.trim() || null,
         input.indication,
         input.phase ?? null,
-        input.sampleSize ?? null,
-        input.durationMonths ?? null,
+        toNullableNumber(input.sampleSize),
+        toNullableNumber(input.durationMonths),
         input.budgetTier ?? null,
         input.region ?? null,
         input.country ?? null,
-        input.estimatedPatients ?? null,
+        toNullableNumber(input.estimatedPatients),
         f.siteId ?? null,
         f.recommendedSite ?? null,
-        f.score ?? null,
+        toNullableNumber(f.score),
         f.confidence ?? null,
         f.riskLevel ?? null,
-        f.highRiskCount ?? null,
+        toNullableNumber(f.highRiskCount),
         f.meetsRequirements ?? null,
         f.text ?? null,
         f.scoreExplanation ?? null,
@@ -69,23 +82,23 @@ export async function saveRun(input: SaveRunInput): Promise<{ id: string }> {
          )`,
         [
           runId,
-          s.rank,
+          toNullableNumber(s.rank),
           s.siteId,
           s.siteName ?? null,
           s.region ?? null,
-          s.score ?? null,
-          s.components?.recruitment ?? null,
-          s.components?.quality ?? null,
-          s.components?.retention ?? null,
-          s.components?.diversity ?? null,
-          s.components?.cost ?? null,
+          toNullableNumber(s.score),
+          toNullableNumber(s.components?.recruitment),
+          toNullableNumber(s.components?.quality),
+          toNullableNumber(s.components?.retention),
+          toNullableNumber(s.components?.diversity),
+          toNullableNumber(s.components?.cost),
           s.confidence ?? null,
           s.caveats ?? [],
           s.meetsRequirements ?? null,
           s.failedCriteria ?? [],
-          s.suitabilityScore ?? null,
+          toNullableNumber(s.suitabilityScore),
           s.riskLevel ?? null,
-          s.highRiskCount ?? null,
+          toNullableNumber(s.highRiskCount),
         ],
       );
     }

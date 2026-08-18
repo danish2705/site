@@ -36,9 +36,15 @@
  * Staff Turnover was dropped earlier for the same reason: no real source
  * exists for it and there was no way to ground even a plausible estimate.
  *
- * If nothing produces anything (no history at all), an explicit single
- * placeholder row is returned rather than an empty list, so "no risk data"
- * is visibly different from "assessed and found low-risk."
+ * Every one of the 5 code-computed categories above (Competitive, Data
+ * Integrity, Enrollment Shortfall, Protocol Complexity, Reporting
+ * Diligence) is ALWAYS included in a site's risk register, even when no
+ * real signal was found — a clean category comes back as a Likelihood
+ * Low / Impact Low row (rendered "No Risk", green, on the frontend)
+ * instead of being silently skipped, so no risk category is ever missing
+ * from a site's output. The single "Data Availability" placeholder below
+ * is now only a defensive fallback (in practice unreachable, since the 5
+ * categories always produce a row).
  */
 import type { RiskRow } from "../types.js";
 import type { FacilityHistory, FacilityTrialRecord } from "../services/ctgov.client.js";
@@ -209,8 +215,31 @@ function bandCompetingTrials(count: number): "Low" | "Medium" | "High" {
 function competitiveRiskRecordFrom(
   siteId: string,
   nearbyCompetingTrials: number,
-): RiskRow | null {
-  if (nearbyCompetingTrials <= 0) return null;
+): RiskRow {
+  // No nearby competing trials is a real, checked signal (zero found), not
+  // an absence of data — always return a row for this category so it's
+  // never silently missing from a site's risk register; the frontend shows
+  // Likelihood/Impact Low + Low as "No Risk" (green).
+  if (nearbyCompetingTrials <= 0) {
+    return {
+      "Risk ID": `R-COMPETE-${siteId}`,
+      "Site ID": siteId,
+      "Risk Category": "Competitive",
+      Description:
+        "No other actively recruiting or soon-to-recruit trial locations for this indication were " +
+        "found on ClinicalTrials.gov in the same city — no competitive signal at this facility.",
+      Likelihood: "Low",
+      Impact: "Low",
+      "Overall Risk Rating": "Low",
+      "Date Identified": today(),
+      Status: "Open",
+      "Mitigation Plan":
+        "No action needed now — recheck if new competing trials register in the same city as enrollment proceeds.",
+      Owner: "Clinical Ops Manager",
+      "Risk Score (Numeric)": riskScoreFor("Low"),
+      dataSource: "live",
+    };
+  }
   const band = bandCompetingTrials(nearbyCompetingTrials);
   const overall = RISK_MATRIX[band][band];
   return {
@@ -251,7 +280,27 @@ function dataIntegrityRiskRecordFrom(
   siteId: string,
   history: FacilityHistory | undefined,
   facilityWideHistory?: FacilityHistory | null,
-): RiskRow | null {
+): RiskRow {
+  // No-signal row for this category — always returned instead of a skipped
+  // category, so Data Integrity never silently disappears from a site's
+  // risk register. Likelihood/Impact Low + Low renders as "No Risk" (green)
+  // on the frontend.
+  const noSignalRow = (reason: string): RiskRow => ({
+    "Risk ID": `R-DATAINTEG-${siteId}`,
+    "Site ID": siteId,
+    "Risk Category": "Data Integrity",
+    Description: reason,
+    Likelihood: "Low",
+    Impact: "Low",
+    "Overall Risk Rating": "Low",
+    "Date Identified": today(),
+    Status: "Open",
+    "Mitigation Plan": "No action needed — no overdue results-reporting signal found for this facility.",
+    Owner: "Data Management Lead",
+    "Risk Score (Numeric)": riskScoreFor("Low"),
+    dataSource: "live",
+  });
+
   // "Not reporting results on time" is a facility/sponsor behavior pattern,
   // not something specific to one indication, so this prefers the broader
   // facility-wide sample when available — same reasoning as the termination
@@ -259,7 +308,11 @@ function dataIntegrityRiskRecordFrom(
   const usingFacilityWide =
     !!facilityWideHistory && facilityWideHistory.trials.length > 0;
   const source = usingFacilityWide ? facilityWideHistory! : history;
-  if (!source || source.trials.length === 0) return null;
+  if (!source || source.trials.length === 0) {
+    return noSignalRow(
+      "No trial history found at this facility to assess results-reporting timeliness.",
+    );
+  }
   const scopeText = usingFacilityWide
     ? "across all indications on file at this facility"
     : "at this facility";
@@ -273,13 +326,24 @@ function dataIntegrityRiskRecordFrom(
     const months = monthsSince(t.primaryCompletionDate);
     return months !== null && months >= 0;
   });
+  if (eligible.length === 0) {
+    return noSignalRow(
+      `None of this facility's trials ${scopeText} have reached their primary completion date yet, ` +
+        `so results-reporting timeliness cannot be assessed.`,
+    );
+  }
 
   const overdue = eligible.filter((t) => {
     if (t.hasResults !== false) return false; // null (unknown) or true (posted) — not flaggable
     const months = monthsSince(t.primaryCompletionDate as string);
     return months !== null && months >= RESULTS_OVERDUE_MONTHS;
   });
-  if (overdue.length === 0) return null;
+  if (overdue.length === 0) {
+    return noSignalRow(
+      `All ${eligible.length} eligible completed trial(s) ${scopeText} have results posted on ` +
+        `ClinicalTrials.gov within ${RESULTS_OVERDUE_MONTHS} months of primary completion — no overdue signal.`,
+    );
+  }
 
   // Real, facility-level rate — same treatment as the termination rate
   // above — instead of a fixed "Medium" constant: what fraction of this
@@ -350,21 +414,53 @@ function enrollmentShortfallRiskRecordFrom(
   siteId: string,
   history: FacilityHistory | undefined,
   benchmarkMedianSampleSize: number | null,
-): RiskRow | null {
+): RiskRow {
+  // No-signal row for this category — always returned instead of a skipped
+  // category, so Enrollment (shortfall) never silently disappears from a
+  // site's risk register. Likelihood/Impact Low + Low renders as "No Risk"
+  // (green) on the frontend.
+  const noSignalRow = (reason: string): RiskRow => ({
+    "Risk ID": `R-ENROLLSHORT-${siteId}`,
+    "Site ID": siteId,
+    "Risk Category": "Enrollment",
+    Description: reason,
+    Likelihood: "Low",
+    Impact: "Low",
+    "Overall Risk Rating": "Low",
+    "Date Identified": today(),
+    Status: "Open",
+    "Mitigation Plan": "No action needed — no enrollment-shortfall signal found for this facility.",
+    Owner: "Clinical Ops Manager",
+    "Risk Score (Numeric)": riskScoreFor("Low"),
+    dataSource: "live",
+  });
+
   if (!history || !benchmarkMedianSampleSize || benchmarkMedianSampleSize <= 0) {
-    return null;
+    return noSignalRow(
+      "No completed-trial enrollment benchmark is available for this indication, so enrollment shortfall cannot be assessed.",
+    );
   }
   const actualTrials = history.trials.filter(
     (t) => t.enrollmentType === "ACTUAL" && typeof t.enrollmentCount === "number",
   );
-  if (actualTrials.length === 0) return null;
+  if (actualTrials.length === 0) {
+    return noSignalRow(
+      "No trials with reported ACTUAL enrollment counts were found at this facility, so enrollment shortfall cannot be assessed.",
+    );
+  }
 
   const avgActual =
     actualTrials.reduce((sum, t) => sum + (t.enrollmentCount as number), 0) /
     actualTrials.length;
   const ratio = avgActual / benchmarkMedianSampleSize;
   const band = bandEnrollmentRatio(ratio);
-  if (!band) return null;
+  if (!band) {
+    return noSignalRow(
+      `Across ${actualTrials.length} trial(s) at this facility with reported ACTUAL enrollment, average ` +
+        `enrollment was ${Math.round(ratio * 100)}% of the ${Math.round(benchmarkMedianSampleSize)}-patient ` +
+        `median for completed trials in this indication — at or above the benchmark, no shortfall signal.`,
+    );
+  }
   const overall = RISK_MATRIX[band][band];
 
   return {
@@ -420,12 +516,40 @@ function complexityScoreFor(t: FacilityTrialRecord): number {
 function protocolComplexityRiskRecordFrom(
   siteId: string,
   history: FacilityHistory | undefined,
-): RiskRow | null {
-  if (!history || history.trials.length === 0) return null;
+): RiskRow {
+  // No-signal row for this category — always returned instead of a skipped
+  // category, so Protocol Complexity never silently disappears from a
+  // site's risk register. Likelihood/Impact Low + Low renders as "No Risk"
+  // (green) on the frontend.
+  const noSignalRow = (reason: string): RiskRow => ({
+    "Risk ID": `R-COMPLEXITY-${siteId}`,
+    "Site ID": siteId,
+    "Risk Category": "Protocol Complexity",
+    Description: reason,
+    Likelihood: "Low",
+    Impact: "Low",
+    "Overall Risk Rating": "Low",
+    "Date Identified": today(),
+    Status: "Open",
+    "Mitigation Plan": "No action needed — no elevated protocol-complexity signal found for this facility.",
+    Owner: "Clinical Ops Manager",
+    "Risk Score (Numeric)": riskScoreFor("Low"),
+    dataSource: "live",
+  });
+
+  if (!history || history.trials.length === 0) {
+    return noSignalRow(
+      "No trial history on file at this facility to assess protocol complexity.",
+    );
+  }
   const withDesignData = history.trials.filter(
     (t) => t.designMasking || t.designAllocation || t.designInterventionModel,
   );
-  if (withDesignData.length === 0) return null;
+  if (withDesignData.length === 0) {
+    return noSignalRow(
+      "No disclosed design-attribute data (masking, allocation, intervention model) found for this facility's trials.",
+    );
+  }
 
   let worst: FacilityTrialRecord | null = null;
   let worstScore = -1;
@@ -436,7 +560,13 @@ function protocolComplexityRiskRecordFrom(
       worst = t;
     }
   }
-  if (!worst || worstScore < 2) return null;
+  if (!worst || worstScore < 2) {
+    return noSignalRow(
+      `This facility's most complex trial design for this indication scores ${Math.max(worstScore, 0)}/3 ` +
+        `by the fixed complexity convention (blinding, randomization, crossover/factorial design) — below ` +
+        `the threshold that flags elevated protocol-complexity risk.`,
+    );
+  }
 
   const band: "Medium" | "High" = worstScore >= 3 ? "High" : "Medium";
   const overall = RISK_MATRIX[band][band];
@@ -491,11 +621,35 @@ function reportingDiligenceRiskRecordFrom(
   siteId: string,
   history: FacilityHistory | undefined,
   facilityWideHistory?: FacilityHistory | null,
-): RiskRow | null {
+): RiskRow {
+  // No-signal row for this category — always returned instead of a skipped
+  // category, so Reporting Diligence never silently disappears from a
+  // site's risk register. Likelihood/Impact Low + Low renders as "No Risk"
+  // (green) on the frontend.
+  const noSignalRow = (reason: string): RiskRow => ({
+    "Risk ID": `R-REPORTDILIGENCE-${siteId}`,
+    "Site ID": siteId,
+    "Risk Category": "Reporting Diligence",
+    Description: reason,
+    Likelihood: "Low",
+    Impact: "Low",
+    "Overall Risk Rating": "Low",
+    "Date Identified": today(),
+    Status: "Open",
+    "Mitigation Plan": "No action needed — no reporting-diligence concern found for this facility.",
+    Owner: "Regulatory Affairs Lead",
+    "Risk Score (Numeric)": riskScoreFor("Low"),
+    dataSource: "live",
+  });
+
   const usingFacilityWide =
     !!facilityWideHistory && facilityWideHistory.trials.length > 0;
   const source = usingFacilityWide ? facilityWideHistory! : history;
-  if (!source || source.trials.length === 0) return null;
+  if (!source || source.trials.length === 0) {
+    return noSignalRow(
+      "No trial history on file at this facility to assess reporting diligence.",
+    );
+  }
   const scopeText = usingFacilityWide
     ? "across all indications on file at this facility"
     : "at this facility";
@@ -513,10 +667,20 @@ function reportingDiligenceRiskRecordFrom(
     const days = daysSince(dateStr);
     if (days !== null && days >= 0) staleness.push(days);
   }
-  if (staleness.length === 0) return null;
+  if (staleness.length === 0) {
+    return noSignalRow(
+      "No verification/update-date data disclosed for this facility's trial records.",
+    );
+  }
 
   const avgDays = staleness.reduce((a, b) => a + b, 0) / staleness.length;
-  if (avgDays < REPORTING_DILIGENCE_STALE_DAYS) return null;
+  if (avgDays < REPORTING_DILIGENCE_STALE_DAYS) {
+    return noSignalRow(
+      `Across ${staleness.length} trial record(s) ${scopeText}, the sponsor last verified or updated ` +
+        `records an average of ${Math.round(avgDays)} days ago — within the expected reporting window, ` +
+        `no diligence concern.`,
+    );
+  }
   const band: "Medium" | "High" =
     avgDays >= REPORTING_DILIGENCE_SEVERELY_STALE_DAYS ? "High" : "Medium";
   const overall = RISK_MATRIX[band][band];
@@ -593,13 +757,17 @@ export async function buildLiveRiskRecords(
     params.history,
     params.facilityWideHistory,
   );
-  const codeComputedRisks = [
+  // Every one of these 5 categories is now always present for every
+  // site — a category with no real signal comes back as a Low/Low "No
+  // Risk" row (see each function's noSignalRow) rather than being skipped,
+  // so the risk register never silently omits a category.
+  const codeComputedRisks: RiskRow[] = [
     competitiveRisk,
     dataIntegrityRisk,
     enrollmentShortfallRisk,
     protocolComplexityRisk,
     reportingDiligenceRisk,
-  ].filter((r): r is RiskRow => r !== null);
+  ];
 
   const risks = [...realRisks, ...codeComputedRisks];
   let warning: string | null = null;

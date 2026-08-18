@@ -51,6 +51,7 @@ export interface TrialRequirementRow {
   "Trial Type": string;
   "Cohort / Subgroup Tag": string;
   Phase: string;
+  "Age Group": string;
   "Target Sample Size": number;
   "Duration (months)": number;
   "Budget Tier": string;
@@ -182,6 +183,8 @@ export interface PipelineInput {
   durationMonths?: number;
   budgetTier?: string;
   regions?: RegionSelection[];
+  /** Eligible patient age group(s) for this trial (e.g. "Adult (18-64)"). Optional — empty/absent means all ages. */
+  ageGroups?: string[];
 }
 
 export interface RegionCandidate {

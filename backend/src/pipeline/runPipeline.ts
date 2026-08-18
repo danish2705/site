@@ -28,6 +28,21 @@ import type {
 const sleep = (ms: number): Promise<void> =>
   new Promise((resolve) => setTimeout(resolve, ms));
 
+// A blank "Target Enrollment" / "Duration (months)" input on the frontend
+// arrives here as "" at runtime (even though PipelineInput types them as
+// `number | undefined`) — left unsanitized, that "" was flowing straight
+// through into buildLiveTrialRequirement, coming back out as an empty-string
+// "Target Sample Size"/"Duration (months)", and eventually hitting a
+// Postgres integer column on Save Run ("invalid input syntax for type
+// integer: ''"). Normalizing right at the pipeline entry means every
+// downstream consumer (the requirement builder, the Stage 1 detail/data
+// payload, and the values a saved run is built from) only ever sees a real
+// positive number or undefined.
+function toPositiveNumberOrUndefined(value: unknown): number | undefined {
+  const n = typeof value === "number" ? value : Number(value);
+  return Number.isFinite(n) && n > 0 ? n : undefined;
+}
+
 // Standard 3x3 Likelihood x Impact risk matrix (industry-common convention),
 // used only to show the "derivation" text on a risk driver. This replaces
 // the Excel Risk_Matrix sheet — it is a fixed convention, not something any
@@ -265,7 +280,12 @@ export async function runPipeline(
   input: PipelineInput,
   send: SendFn,
 ): Promise<void> {
-  const { indication, phase, sampleSize } = input;
+  const { indication, phase, ageGroups } = input;
+  // Sanitize once at the entry — see toPositiveNumberOrUndefined above —
+  // so a blank form field ("") never reaches the requirement builder or the
+  // saved-run values as a literal empty string.
+  const sampleSize = toPositiveNumberOrUndefined(input.sampleSize);
+  const durationMonths = toPositiveNumberOrUndefined(input.durationMonths);
 
   if (!indication) {
     throw new Error(`Missing indication. Pick an indication before running the analysis.`);
@@ -277,7 +297,8 @@ export async function runPipeline(
     specialty,
     phase,
     sampleSize,
-    durationMonths: input.durationMonths,
+    durationMonths,
+    ageGroups,
   });
   const requirementIsEstimated = requirement.requirementSource === "mixed";
   send("stage", {
@@ -285,7 +306,7 @@ export async function runPipeline(
     name: STAGE_NAMES[1],
     status: "complete",
     detail:
-      `${indication} · ${phase || requirement.Phase} · target n=${sampleSize || requirement["Target Sample Size"]} · ${specialty} site required` +
+      `${indication} · ${phase || requirement.Phase} · target n=${sampleSize || requirement["Target Sample Size"]} · ${specialty} site required · Age group: ${requirement["Age Group"]}` +
       (requirementIsEstimated
         ? " · data-quality/screen-failure thresholds (AI-estimated)"
         : "") +
@@ -296,9 +317,10 @@ export async function runPipeline(
       requiredSpecialty: specialty,
       requiredInfrastructure: requirement["Required Infrastructure"],
       phase: phase || requirement.Phase,
+      ageGroups: ageGroups && ageGroups.length > 0 ? ageGroups : [],
+      ageGroup: requirement["Age Group"],
       targetSampleSize: sampleSize || requirement["Target Sample Size"],
-      durationMonths:
-        input.durationMonths || requirement["Duration (months)"],
+      durationMonths: durationMonths || requirement["Duration (months)"],
       budgetTier: input.budgetTier || requirement["Budget Tier"],
       thresholds: {
         minEnrollmentRate: requirement["Min Enrollment Rate (pts/month)"],

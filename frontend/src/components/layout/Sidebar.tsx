@@ -3,6 +3,7 @@ import RegionMultiSelect from "../prediction/RegionMultiSelect";
 
 const PHASES = ["Phase I", "Phase II", "Phase III", "Phase IV"];
 const BUDGETS = ["Low", "Mid", "High"];
+const AGE_GROUPS = ["Child (0–17)", "Adult (18–64)", "Older Adult (65+)"];
 
 export default function Sidebar() {
   const { meta, form, setForm, regionOptions, running, handleSubmit } =
@@ -69,6 +70,37 @@ export default function Sidebar() {
             </div>
             <span className="field-hint">
               Optional — uses the indication's standard phase if left unset.
+            </span>
+          </label>
+
+          <label className="field-block">
+            <span className="field-label">Age Group</span>
+            <div className="phase-pills">
+              {AGE_GROUPS.map((a) => {
+                const active = form.ageGroups.includes(a);
+                return (
+                  <button
+                    key={a}
+                    type="button"
+                    className={`phase-pill ${active ? "active" : ""}`}
+                    onClick={() =>
+                      setForm({
+                        ...form,
+                        ageGroups: active
+                          ? form.ageGroups.filter((g) => g !== a)
+                          : [...form.ageGroups, a],
+                      })
+                    }
+                  >
+                    {active && <span className="phase-pill-check">✓</span>}
+                    {a}
+                  </button>
+                );
+              })}
+            </div>
+            <span className="field-hint">
+              Optional — select every age group eligible for this trial; leave
+              unset to include all ages.
             </span>
           </label>
 
