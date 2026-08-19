@@ -70,6 +70,40 @@ export interface MapSiteRow {
   riskLevel: "Low" | "Medium" | "High" | "Unknown";
   riskRationale: string;
   riskSource: "llm-estimated" | "unavailable";
+  /**
+   * Illustrative split of `netAvailablePatients` into treatment-stage
+   * buckets — see config.map.patientSegmentSplit. NOT derived from real
+   * claims/EHR data (no live source distinguishes these groups per site at
+   * this granularity); null only if netAvailablePatients is 0.
+   */
+  patientSegments: PatientSegments | null;
+  patientSegmentSource: "heuristic-illustrative";
+  /**
+   * Which distance tier actually decided this site's catchment radius (see
+   * services/geo.service.ts's getDistancesMilesBatch): "live-google"/
+   * "live-osrm" if every catchment point counted was checked with a real
+   * driving-distance lookup, "approximate-haversine" if every one fell back
+   * to straight-line distance, "mixed" if some of each, "none" if the site
+   * had zero candidate points to check in the first place. Distinct from
+   * `coordsSource`, which is about the site's own pin location, not the
+   * distance used to decide what's inside its radius.
+   */
+  catchmentDistanceSource:
+    | "live-google"
+    | "live-osrm"
+    | "approximate-haversine"
+    | "mixed"
+    | "none";
+}
+
+/** See MapSiteRow.patientSegments. */
+export interface PatientSegments {
+  /** Treatment-naive patients recently diagnosed — the strongest recruits. */
+  newlyDiagnosed: number;
+  /** On an existing treatment with an inadequate response — realistic switch/add-on candidates. */
+  nonResponder: number;
+  /** Stable/responding on their current treatment — unlikely to enroll. */
+  stableOnTreatment: number;
 }
 
 export interface LiveMapResponse {
@@ -80,6 +114,60 @@ export interface LiveMapResponse {
   sites: MapSiteRow[];
   warnings: string[];
   fetchedAt: string;
+}
+
+export interface CombinedCatchmentRequestSite {
+  siteId: string;
+  lat: number;
+  lng: number;
+}
+
+export interface CombinedCatchmentResponse {
+  indication: string;
+  country: string;
+  radiusMiles: number;
+  siteCount: number;
+  /** Sum of every selected site's own netAvailablePatients — what you'd get (incorrectly) by adding each site's number together. */
+  sumOfIndividualNetAvailablePatients: number;
+  /** The de-duplicated figure — each synthetic catchment point counted once even if multiple selected sites' radii cover it. */
+  combinedNetAvailablePatients: number;
+  /** How many patients the naive sum double-counted (sumOfIndividual - combined), i.e. the overlap between the selected sites' catchments. */
+  overlapPatients: number;
+  prevalencePer100k: number;
+  warnings: string[];
+}
+
+export interface SiteCombinationRequestSite {
+  siteId: string;
+  siteName: string;
+  netAvailablePatients: number;
+  riskScore: number | null;
+}
+
+export interface SiteCombinationSelectedSite {
+  siteId: string;
+  siteName: string;
+  netAvailablePatients: number;
+  riskScore: number | null;
+}
+
+export interface SiteCombinationStrategyResult {
+  strategy: "lowest-risk-first" | "lowest-cost-first";
+  label: string;
+  sites: SiteCombinationSelectedSite[];
+  totalPatients: number;
+  totalEstimatedCostUsd: number | null;
+  averageRiskScore: number | null;
+  meetsTarget: boolean;
+}
+
+export interface SiteCombinationResponse {
+  targetEnrollment: number;
+  avgCostPerPatientUsd: number | null;
+  strategies: SiteCombinationStrategyResult[];
+  recommendedStrategy: SiteCombinationStrategyResult["strategy"] | null;
+  method: string;
+  warnings: string[];
 }
 
 export interface TrialRequirementRow {

@@ -10,6 +10,7 @@ import { metaRoutes } from "./routes/meta.routes.js";
 import { regionRoutes } from "./routes/region.routes.js";
 import { runRoutes } from "./routes/run.routes.js";
 import { runsRoutes } from "./routes/runs.routes.js";
+import { siteCombinationRoutes } from "./routes/siteCombination.routes.js";
 
 export function createApp() {
   const app = express();
@@ -30,6 +31,7 @@ export function createApp() {
   app.use("/api", runsRoutes);
   app.use("/api", liveTrialsRoutes);
   app.use("/api", liveMapRoutes);
+  app.use("/api", siteCombinationRoutes);
 
   app.use(notFound);
   app.use(errorHandler);

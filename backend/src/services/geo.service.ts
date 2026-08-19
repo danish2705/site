@@ -130,6 +130,140 @@ export async function getDistanceMiles(
   });
 }
 
+// Google's Distance Matrix accepts many destinations per origin in one call
+// (billed per element, i.e. per origin x destination pair) — well under its
+// per-request cap, this keeps a whole site's catchment check to a handful of
+// requests instead of one request per candidate point.
+const GOOGLE_BATCH_DESTINATIONS = 25;
+
+/**
+ * Real driving distance from one origin to MANY destinations, batched to
+ * stay cheap even when checking dozens of candidate catchment points per
+ * site. Same fallback chain as getDistanceMiles (Google Distance Matrix ->
+ * OSRM -> haversine approximation), but OSRM's free /table endpoint (a
+ * proper many-to-one matrix, not one /route call per destination) is used
+ * for the free tier instead of looping getDistanceMiles per destination —
+ * looping would multiply this function's whole reason for existing (keeping
+ * request counts low) right back out again.
+ *
+ * Callers should still pre-filter `destinations` down to a plausible
+ * candidate set (e.g. via a widened haversine radius) before calling this —
+ * see config.map.catchmentPrefilterFactor — rather than passing every point
+ * in a country and relying on this function alone to keep costs down.
+ */
+export async function getDistancesMilesBatch(
+  origin: LatLng,
+  destinations: LatLng[],
+): Promise<DistanceResult[]> {
+  const results: (DistanceResult | undefined)[] = new Array(
+    destinations.length,
+  );
+
+  const pending: { index: number; dest: LatLng }[] = [];
+  destinations.forEach((dest, index) => {
+    const cached = distanceCache.get(distanceCacheKey(origin, dest));
+    if (cached && Date.now() < cached.expiresAt) {
+      results[index] = cached.value;
+    } else {
+      pending.push({ index, dest });
+    }
+  });
+
+  const remember = (dest: LatLng, value: DistanceResult) => {
+    distanceCache.set(distanceCacheKey(origin, dest), {
+      value,
+      expiresAt: Date.now() + CACHE_TTL_MS,
+    });
+  };
+
+  if (pending.length > 0 && config.google.mapsApiKey) {
+    for (let i = 0; i < pending.length; i += GOOGLE_BATCH_DESTINATIONS) {
+      const chunk = pending.slice(i, i + GOOGLE_BATCH_DESTINATIONS);
+      try {
+        const url = new URL(
+          "https://maps.googleapis.com/maps/api/distancematrix/json",
+        );
+        url.searchParams.set("origins", `${origin.lat},${origin.lng}`);
+        url.searchParams.set(
+          "destinations",
+          chunk.map((c) => `${c.dest.lat},${c.dest.lng}`).join("|"),
+        );
+        url.searchParams.set("units", "imperial");
+        url.searchParams.set("key", config.google.mapsApiKey);
+        const res = await fetch(url.toString());
+        const body = (await res.json()) as {
+          rows?: {
+            elements?: { status: string; distance?: { value: number } }[];
+          }[];
+        };
+        const elements = body.rows?.[0]?.elements ?? [];
+        chunk.forEach((c, j) => {
+          const el = elements[j];
+          if (el?.status === "OK" && typeof el.distance?.value === "number") {
+            const value: DistanceResult = {
+              miles: el.distance.value / 1609.34,
+              source: "live-google",
+            };
+            results[c.index] = value;
+            remember(c.dest, value);
+          }
+        });
+      } catch {
+        // This chunk's elements stay unresolved — the OSRM/haversine tiers
+        // below still get a chance at them individually.
+      }
+    }
+  }
+
+  const stillPending = pending.filter((p) => !results[p.index]);
+  if (stillPending.length > 0) {
+    try {
+      // OSRM's /table service: one origin (source index 0), many
+      // destinations, one HTTP call — a real many-to-one driving-distance
+      // matrix, not this function looping single /route calls.
+      const coordList = [origin, ...stillPending.map((p) => p.dest)]
+        .map((p) => `${p.lng},${p.lat}`)
+        .join(";");
+      const destIndexes = stillPending.map((_, j) => j + 1).join(";");
+      const url =
+        `https://router.project-osrm.org/table/v1/driving/${coordList}` +
+        `?sources=0&destinations=${destIndexes}&annotations=distance`;
+      const res = await fetch(url);
+      const body = (await res.json()) as {
+        code: string;
+        distances?: (number | null)[][];
+      };
+      if (body.code === "Ok" && body.distances?.[0]) {
+        const row = body.distances[0];
+        stillPending.forEach((p, j) => {
+          const meters = row[j];
+          if (typeof meters === "number") {
+            const value: DistanceResult = {
+              miles: meters / 1609.34,
+              source: "live-osrm",
+            };
+            results[p.index] = value;
+            remember(p.dest, value);
+          }
+        });
+      }
+    } catch {
+      // Fall through to the approximation below for anything still unresolved.
+    }
+  }
+
+  return destinations.map((dest, index) => {
+    const existing = results[index];
+    if (existing) return existing;
+    const value: DistanceResult = {
+      miles: haversineMiles(origin, dest) * 1.2,
+      source: "approximate-haversine",
+    };
+    remember(dest, value);
+    return value;
+  });
+}
+
 export interface GeocodeResult {
   point: LatLng;
   source: "live-google" | "live-nominatim" | "approximate";

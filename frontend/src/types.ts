@@ -314,6 +314,22 @@ export interface MapSiteRow {
   riskLevel: "Low" | "Medium" | "High" | "Unknown";
   riskRationale: string;
   riskSource: "llm-estimated" | "unavailable";
+  /** Illustrative split of netAvailablePatients into treatment-stage buckets — NOT real claims data, see backend config.map.patientSegmentSplit. Null only if netAvailablePatients is 0. */
+  patientSegments: PatientSegments | null;
+  patientSegmentSource: "heuristic-illustrative";
+  /** Which distance tier decided this site's catchment radius — "live-google"/"live-osrm" mean real driving distance was used for every point counted, "approximate-haversine" means straight-line distance was used throughout, "mixed" means some of each, "none" means there were no candidate points to check. */
+  catchmentDistanceSource:
+    | "live-google"
+    | "live-osrm"
+    | "approximate-haversine"
+    | "mixed"
+    | "none";
+}
+
+export interface PatientSegments {
+  newlyDiagnosed: number;
+  nonResponder: number;
+  stableOnTreatment: number;
 }
 
 export interface LiveMapResponse {
@@ -324,4 +340,42 @@ export interface LiveMapResponse {
   sites: MapSiteRow[];
   warnings: string[];
   fetchedAt: string;
+}
+
+export interface CombinedCatchmentResponse {
+  indication: string;
+  country: string;
+  radiusMiles: number;
+  siteCount: number;
+  sumOfIndividualNetAvailablePatients: number;
+  combinedNetAvailablePatients: number;
+  overlapPatients: number;
+  prevalencePer100k: number;
+  warnings: string[];
+}
+
+export interface SiteCombinationSelectedSite {
+  siteId: string;
+  siteName: string;
+  netAvailablePatients: number;
+  riskScore: number | null;
+}
+
+export interface SiteCombinationStrategyResult {
+  strategy: "lowest-risk-first" | "lowest-cost-first";
+  label: string;
+  sites: SiteCombinationSelectedSite[];
+  totalPatients: number;
+  totalEstimatedCostUsd: number | null;
+  averageRiskScore: number | null;
+  meetsTarget: boolean;
+}
+
+export interface SiteCombinationResponse {
+  targetEnrollment: number;
+  avgCostPerPatientUsd: number | null;
+  strategies: SiteCombinationStrategyResult[];
+  recommendedStrategy: SiteCombinationStrategyResult["strategy"] | null;
+  method: string;
+  warnings: string[];
 }

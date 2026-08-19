@@ -52,5 +52,31 @@ export const config = {
     baselineRecruitmentRate:
       Number(process.env.MAP_BASELINE_RECRUITMENT_RATE) || 0.225,
     addressableFraction: Number(process.env.MAP_ADDRESSABLE_FRACTION) || 0.02,
+
+    // Illustrative baseline split of a site's net-available patients into
+    // treatment-stage buckets (newly-diagnosed/treatment-naive, on-drug
+    // non-responders, and already-stable patients) — NOT derived from real
+    // claims/EHR data. No live source distinguishes these three groups per
+    // site at this granularity; this fixed split exists only so the app can
+    // show the shape of the breakdown Srikanth described (net-new and
+    // non-responders are the realistic recruits; stable patients are not).
+    // Replace with a real claims-data-driven segmentation once that source
+    // is integrated. Must sum to 1.
+    patientSegmentSplit: {
+      newlyDiagnosed: Number(process.env.MAP_SEGMENT_NEWLY_DIAGNOSED) || 0.15,
+      nonResponder: Number(process.env.MAP_SEGMENT_NON_RESPONDER) || 0.25,
+      stableOnTreatment:
+        Number(process.env.MAP_SEGMENT_STABLE_ON_TREATMENT) || 0.6,
+    },
+
+    // Straight-line (haversine) distance is always <= real driving distance,
+    // so it's used as a cheap pre-filter before spending a real distance-API
+    // call on a synthetic catchment point: only points within
+    // radiusMiles * this factor are checked for real driving distance.
+    // 1.4 is a stated, generous margin — real-world driving-to-straight-line
+    // ratios are rarely above ~1.3x outside of extreme geography (rivers,
+    // mountains with few crossings) — not a measured constant.
+    catchmentPrefilterFactor:
+      Number(process.env.MAP_CATCHMENT_PREFILTER_FACTOR) || 1.4,
   },
 } as const;

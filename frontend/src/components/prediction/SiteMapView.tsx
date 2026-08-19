@@ -4,8 +4,13 @@ import "leaflet.markercluster";
 import "leaflet/dist/leaflet.css";
 import "leaflet.markercluster/dist/MarkerCluster.css";
 import "leaflet.markercluster/dist/MarkerCluster.Default.css";
-import type { LiveMapResponse, MapSiteRow } from "../../types";
-import { fetchLiveSiteMap } from "../../services/map.service";
+import type {
+  CombinedCatchmentResponse,
+  LiveMapResponse,
+  MapSiteRow,
+} from "../../types";
+import { fetchCombinedCatchment, fetchLiveSiteMap } from "../../services/map.service";
+import SiteCombinationPlanner from "./SiteCombinationPlanner";
 
 const WORLD_CENTER: [number, number] = [20, 0];
 const WORLD_ZOOM = 2;
@@ -34,6 +39,31 @@ function coordsSourceLabel(source: MapSiteRow["coordsSource"]): string {
   return "geocoded (Google)";
 }
 
+function catchmentDistanceLabel(source: MapSiteRow["catchmentDistanceSource"]): string {
+  switch (source) {
+    case "live-google":
+      return "real driving distance (Google)";
+    case "live-osrm":
+      return "real driving distance (OSRM)";
+    case "mixed":
+      return "mix of real driving distance and straight-line";
+    case "approximate-haversine":
+      return "straight-line distance (no driving-distance data)";
+    default:
+      return "n/a";
+  }
+}
+
+function segmentsLine(s: MapSiteRow): string {
+  if (!s.patientSegments) return "";
+  const seg = s.patientSegments;
+  return (
+    `Newly diagnosed: ${seg.newlyDiagnosed.toLocaleString()} · ` +
+    `Non-responder: ${seg.nonResponder.toLocaleString()} · ` +
+    `Stable: ${seg.stableOnTreatment.toLocaleString()} (illustrative split)`
+  );
+}
+
 // Popup content for a site's map pin — built as an HTML string for
 // Leaflet's imperative popup API. All external/LLM-sourced text
 // (site name, rationale, city/state/country) is escaped before insertion.
@@ -55,7 +85,8 @@ function buildPopupHtml(s: MapSiteRow, metric: "gross" | "net"): string {
       <div>${secondary}</div>
       <div>Risk score: ${riskLine}</div>
       <div class="site-popup-rationale">${escapeHtml(s.riskRationale)}</div>
-      <div class="site-popup-caveat">Coordinates: ${coordsSourceLabel(s.coordsSource)} · Population: synthetic</div>
+      ${s.patientSegments ? `<div class="site-popup-caveat">${escapeHtml(segmentsLine(s))}</div>` : ""}
+      <div class="site-popup-caveat">Coordinates: ${coordsSourceLabel(s.coordsSource)} · Radius distance: ${catchmentDistanceLabel(s.catchmentDistanceSource)} · Population: synthetic</div>
     </div>
   `;
 }
@@ -162,9 +193,13 @@ function sitesToCsv(sites: MapSiteRow[]): string {
     "Country",
     "Gross Eligible Patients",
     "Net Available Patients",
+    "Newly Diagnosed (illustrative)",
+    "Non-Responder (illustrative)",
+    "Stable On Treatment (illustrative)",
     "Risk Level",
     "Risk Score",
     "Coordinates Source",
+    "Catchment Distance Source",
   ];
   const rows = sites.map((s) => [
     s.siteName,
@@ -173,9 +208,13 @@ function sitesToCsv(sites: MapSiteRow[]): string {
     s.country ?? "",
     s.grossEligiblePatients,
     s.netAvailablePatients,
+    s.patientSegments?.newlyDiagnosed ?? "",
+    s.patientSegments?.nonResponder ?? "",
+    s.patientSegments?.stableOnTreatment ?? "",
     s.riskLevel,
     s.riskScore ?? "",
     s.coordsSource,
+    s.catchmentDistanceSource,
   ]);
   return [header, ...rows]
     .map((row) => row.map(escapeCsvValue).join(","))
@@ -236,6 +275,53 @@ export default function SiteMapView({
   const [search, setSearch] = useState("");
   const [sortKey, setSortKey] = useState<SortKey>("net");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
+
+  // Checked rows for the "combined catchment" comparison below the table —
+  // separate from selectedSiteId (which just focuses one site on the map).
+  // See fetchCombinedCatchment: this answers "if I picked these sites
+  // together, how many UNIQUE patients could I actually reach" instead of
+  // wrongly summing each site's own (independently-computed) number.
+  const [combineIds, setCombineIds] = useState<Set<string>>(new Set());
+  const [combineResult, setCombineResult] = useState<CombinedCatchmentResponse | null>(null);
+  const [combineLoading, setCombineLoading] = useState(false);
+  const [combineError, setCombineError] = useState<string | null>(null);
+
+  function toggleCombine(siteId: string) {
+    setCombineResult(null);
+    setCombineError(null);
+    setCombineIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(siteId)) next.delete(siteId);
+      else next.add(siteId);
+      return next;
+    });
+  }
+
+  async function computeCombined() {
+    const chosen = allSites.filter((s) => combineIds.has(s.siteId));
+    if (chosen.length < 2 || !data) return;
+    setCombineLoading(true);
+    setCombineError(null);
+    try {
+      const res = await fetchCombinedCatchment({
+        indication,
+        country: chosen[0].country,
+        radiusMiles,
+        sites: chosen.map((s) => ({
+          siteId: s.siteId,
+          lat: s.lat,
+          lng: s.lng,
+          netAvailablePatients: s.netAvailablePatients,
+        })),
+      });
+      setCombineResult(res);
+    } catch (err) {
+      setCombineError((err as Error).message);
+      setCombineResult(null);
+    } finally {
+      setCombineLoading(false);
+    }
+  }
 
   const mapContainerRef = useRef<HTMLDivElement | null>(null);
   const mapInstanceRef = useRef<L.Map | null>(null);
@@ -691,10 +777,33 @@ export default function SiteMapView({
               </button>
             </div>
 
+            <p className="section-hint">
+              Check 2 or more sites below to see how many patients they
+              actually reach TOGETHER — nearby sites often share the same
+              catchment, so simply adding up each site's own number can
+              overstate the real total.
+            </p>
+
             <div className="table-scroll">
-              <table className="site-map-table">
+              <table
+                className="site-map-table"
+                style={{ tableLayout: "fixed", width: "100%" }}
+              >
+                <colgroup>
+                  <col style={{ width: "4%" }} />
+                  <col style={{ width: "26%" }} />
+                  <col style={{ width: "16%" }} />
+                  <col style={{ width: "13%" }} />
+                  <col style={{ width: "13%" }} />
+                  <col style={{ width: "16%" }} />
+                  <col style={{ width: "12%" }} />
+                </colgroup>
                 <thead>
                   <tr>
+                    <th
+                      title="Check to compare combined catchment across sites"
+                      style={{ padding: "8px 4px" }}
+                    ></th>
                     <th className="sortable" onClick={() => toggleSort("site")}>
                       Site{sortArrow("site")}
                     </th>
@@ -713,13 +822,20 @@ export default function SiteMapView({
                     <th className="sortable" onClick={() => toggleSort("net")}>
                       Net Available{sortArrow("net")}
                     </th>
+                    <th title="Illustrative split of Net Available — not real claims data">
+                      Segments (illustrative)
+                    </th>
                     <th className="sortable" onClick={() => toggleSort("risk")}>
                       Risk{sortArrow("risk")}
                     </th>
                   </tr>
                 </thead>
                 <tbody>
-                  {sortedSites.map((s) => (
+                  {sortedSites.map((s) => {
+                    const location = [s.city, s.state, s.country]
+                      .filter(Boolean)
+                      .join(", ");
+                    return (
                     <tr
                       key={s.siteId}
                       className={
@@ -727,14 +843,51 @@ export default function SiteMapView({
                       }
                       onClick={() => focusSite(s)}
                     >
-                      <td>{s.siteName}</td>
-                      <td>
-                        {[s.city, s.state, s.country]
-                          .filter(Boolean)
-                          .join(", ")}
+                      <td
+                        onClick={(e) => e.stopPropagation()}
+                        style={{ padding: "8px 4px", textAlign: "center" }}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={combineIds.has(s.siteId)}
+                          onChange={() => toggleCombine(s.siteId)}
+                          title="Include in combined-catchment comparison"
+                        />
+                      </td>
+                      <td
+                        title={s.siteName}
+                        style={{
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                          whiteSpace: "nowrap",
+                        }}
+                      >
+                        {s.siteName}
+                      </td>
+                      <td
+                        title={location}
+                        style={{
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                          whiteSpace: "nowrap",
+                        }}
+                      >
+                        {location}
                       </td>
                       <td>{s.grossEligiblePatients.toLocaleString()}</td>
                       <td>{s.netAvailablePatients.toLocaleString()}</td>
+                      <td
+                        title={s.patientSegments ? segmentsLine(s) : "n/a"}
+                        style={{
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                          whiteSpace: "nowrap",
+                        }}
+                      >
+                        {s.patientSegments
+                          ? `${(s.patientSegments.newlyDiagnosed + s.patientSegments.nonResponder).toLocaleString()} recruitable`
+                          : "n/a"}
+                      </td>
                       <td>
                         <span
                           className={`badge ${riskBand(s.riskScore)}`}
@@ -744,10 +897,11 @@ export default function SiteMapView({
                         </span>
                       </td>
                     </tr>
-                  ))}
+                    );
+                  })}
                   {sortedSites.length === 0 && (
                     <tr>
-                      <td colSpan={5} className="predict-placeholder">
+                      <td colSpan={7} className="predict-placeholder">
                         No sites match "{search}".
                       </td>
                     </tr>
@@ -755,6 +909,85 @@ export default function SiteMapView({
                 </tbody>
               </table>
             </div>
+
+            {combineIds.size > 0 && (
+              <div className="card" style={{ marginTop: 12, padding: 12 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                  <strong>{combineIds.size} site(s) selected</strong>
+                  <button
+                    type="button"
+                    className="predict-btn"
+                    onClick={computeCombined}
+                    disabled={combineIds.size < 2 || combineLoading}
+                  >
+                    {combineLoading ? (
+                      <>
+                        <span className="spinner" /> Computing…
+                      </>
+                    ) : (
+                      "Calculate combined catchment"
+                    )}
+                  </button>
+                  <button
+                    type="button"
+                    className="link-btn"
+                    onClick={() => {
+                      setCombineIds(new Set());
+                      setCombineResult(null);
+                      setCombineError(null);
+                    }}
+                  >
+                    Clear
+                  </button>
+                </div>
+                {combineIds.size < 2 && (
+                  <p className="section-hint">
+                    Select at least one more site to compare.
+                  </p>
+                )}
+                {combineError && <p className="error-text">{combineError}</p>}
+                {combineResult && (
+                  <div className="final-grid" style={{ marginTop: 10 }}>
+                    <div className="item">
+                      <div className="k">Sum of each site's own number</div>
+                      <div className="v">
+                        {combineResult.sumOfIndividualNetAvailablePatients.toLocaleString()}
+                      </div>
+                    </div>
+                    <div className="item">
+                      <div className="k">Actual combined (de-duplicated)</div>
+                      <div className="v">
+                        {combineResult.combinedNetAvailablePatients.toLocaleString()}
+                      </div>
+                    </div>
+                    <div className="item">
+                      <div className="k">Overlap (double-counted if summed)</div>
+                      <div className="v">
+                        {combineResult.overlapPatients.toLocaleString()}
+                        {combineResult.overlapPatients > 0 && (
+                          <span className="badge medium" style={{ marginLeft: 6 }}>
+                            overlap found
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                )}
+                {combineResult && combineResult.warnings.map((w, i) => (
+                  <p key={i} className="warning-text">
+                    {w}
+                  </p>
+                ))}
+              </div>
+            )}
+
+            {country && (
+              <SiteCombinationPlanner
+                indication={indication}
+                country={country}
+                sites={allSites}
+              />
+            )}
 
             <p className="map-caveats">
               Methodology: the map background and place names above are a real
@@ -764,14 +997,25 @@ export default function SiteMapView({
               to an approximation near the facility's city/country when neither
               live lookup succeeds (
               {allSites.filter((s) => s.coordsSource === "approximate").length}{" "}
-              of {allSites.length} site(s) here). Patient population within the
-              radius comes from a synthetic dataset — no live public source
-              publishes real population by postal area for arbitrary countries —
-              combined with an AI-estimated disease prevalence rate. "Net
-              Available" subtracts an estimated already-enrolled share (from
-              real completed-trial benchmarks when available, else a fixed
-              baseline). Risk scores are AI-estimated — no public per-site
-              clinical-trial risk database was found.
+              of {allSites.length} site(s) here). Each site's {radiusMiles}-mile
+              catchment is now checked using real driving distance (Google
+              Distance Matrix, or the free OSRM router) wherever available —
+              only falling back to straight-line distance when neither
+              succeeds (
+              {allSites.filter((s) => s.catchmentDistanceSource === "approximate-haversine" || s.catchmentDistanceSource === "mixed").length}{" "}
+              of {allSites.length} site(s) had some or all points fall back
+              this way). Patient population within the radius comes from a
+              synthetic dataset — no live public source publishes real
+              population by postal area for arbitrary countries — combined
+              with an AI-estimated disease prevalence rate. "Net Available"
+              subtracts an estimated already-enrolled share (from real
+              completed-trial benchmarks when available, else a fixed
+              baseline). The Segments column further splits Net Available into
+              illustrative treatment-stage buckets (newly-diagnosed /
+              non-responder / stable) using a fixed assumption, not real
+              claims data — see each site's popup for the full breakdown. Risk
+              scores are AI-estimated — no public per-site clinical-trial risk
+              database was found.
             </p>
           </>
         )}

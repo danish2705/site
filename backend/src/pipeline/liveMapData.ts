@@ -1,11 +1,24 @@
-import type { LiveMapResponse, MapSiteRow } from "../types.js";
+import type {
+  CombinedCatchmentResponse,
+  LiveMapResponse,
+  MapSiteRow,
+  PatientSegments,
+} from "../types.js";
 import {
   getFacilitiesForCondition,
   getCompletedTrialBenchmarks,
   type LiveFacility,
 } from "../services/ctgov.client.js";
-import { geocodeApprox, haversineMiles } from "../services/geo.service.js";
-import { getSyntheticPostalRegionsForCountry } from "../data/syntheticPopulation.js";
+import {
+  geocodeApprox,
+  getDistancesMilesBatch,
+  haversineMiles,
+  type LatLng,
+} from "../services/geo.service.js";
+import {
+  getSyntheticPostalRegionsForCountry,
+  type SyntheticPostalRegion,
+} from "../data/syntheticPopulation.js";
 import { buildLiveRegionRow } from "./liveRegionMetrics.js";
 import { estimateSiteGeoRisk, llmStatus } from "../llm/client.js";
 import { REGION_DEFINITIONS } from "../data/regionMap.js";
@@ -33,6 +46,80 @@ function dedupeFacilities(facilities: LiveFacility[]): LiveFacility[] {
 
 function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
+}
+
+export type CatchmentDistanceSource = MapSiteRow["catchmentDistanceSource"];
+
+interface CatchmentResult {
+  populationInRadius: number;
+  distanceSource: CatchmentDistanceSource;
+  /** Postal-region ids actually counted inside the radius — used by buildCombinedCatchment to de-duplicate overlap across multiple sites. */
+  coveredRegions: SyntheticPostalRegion[];
+}
+
+async function computeCatchment(
+  origin: LatLng,
+  postalRegions: SyntheticPostalRegion[],
+  radiusMiles: number,
+): Promise<CatchmentResult> {
+  const candidates = postalRegions.filter(
+    (region) =>
+      haversineMiles(origin, region) <=
+      radiusMiles * config.map.catchmentPrefilterFactor,
+  );
+  if (candidates.length === 0) {
+    return { populationInRadius: 0, distanceSource: "none", coveredRegions: [] };
+  }
+
+  const distances = await getDistancesMilesBatch(origin, candidates);
+
+  let populationInRadius = 0;
+  const coveredRegions: SyntheticPostalRegion[] = [];
+  let sawLive = false;
+  let sawApprox = false;
+  candidates.forEach((region, i) => {
+    const d = distances[i];
+    if (d.miles <= radiusMiles) {
+      populationInRadius += region.population;
+      coveredRegions.push(region);
+      if (d.source === "approximate-haversine") sawApprox = true;
+      else sawLive = true;
+    }
+  });
+
+  const distanceSource: CatchmentDistanceSource =
+    coveredRegions.length === 0
+      ? "none"
+      : sawLive && sawApprox
+        ? "mixed"
+        : sawLive
+          ? // Prefer reporting whichever live tier was actually used; both
+            // tiers are grouped as "live" here since a mixed google/osrm
+            // split isn't distinguished per-point by this function — good
+            // enough for an honesty signal, not meant as a precise audit.
+            (distances.find((d) => d.source !== "approximate-haversine")
+              ?.source ?? "live-google")
+          : "approximate-haversine";
+
+  return { populationInRadius, distanceSource, coveredRegions };
+}
+
+/**
+ * Illustrative split of a site's net-available patients into treatment-stage
+ * buckets (see config.map.patientSegmentSplit's doc comment for why this is
+ * a fixed heuristic, not real claims data). Returns null for a
+ * netAvailablePatients of 0 — there's nothing to split.
+ */
+function splitPatientSegments(netAvailablePatients: number): PatientSegments | null {
+  if (netAvailablePatients <= 0) return null;
+  const split = config.map.patientSegmentSplit;
+  return {
+    newlyDiagnosed: Math.round(netAvailablePatients * split.newlyDiagnosed),
+    nonResponder: Math.round(netAvailablePatients * split.nonResponder),
+    stableOnTreatment: Math.round(
+      netAvailablePatients * split.stableOnTreatment,
+    ),
+  };
 }
 
 function siteIdFor(
@@ -136,12 +223,12 @@ export async function buildLiveSiteMapData(
       const country = f.country ?? params.country ?? "Unknown";
       const geocode = await geocodeApprox(f.city, f.state, country);
       const postalRegions = getSyntheticPostalRegionsForCountry(country);
-      let populationInRadius = 0;
-      for (const region of postalRegions) {
-        if (haversineMiles(geocode.point, region) <= radiusMiles) {
-          populationInRadius += region.population;
-        }
-      }
+      const catchment = await computeCatchment(
+        geocode.point,
+        postalRegions,
+        radiusMiles,
+      );
+      const populationInRadius = catchment.populationInRadius;
 
       const regionRow = regionRowByCountry.get(country);
       const prevalencePer100k = regionRow?.["Prevalence (per 100k)"] ?? 0;
@@ -205,9 +292,27 @@ export async function buildLiveSiteMapData(
         riskLevel,
         riskRationale,
         riskSource: llmConfigured ? "llm-estimated" : "unavailable",
+        patientSegments: splitPatientSegments(netAvailablePatients),
+        patientSegmentSource: "heuristic-illustrative",
+        catchmentDistanceSource: catchment.distanceSource,
       };
     }),
   );
+
+  warnings.push(
+    "Patient-segment breakdown (newly-diagnosed / non-responder / stable-on-treatment) is an illustrative fixed split, not derived from real claims/EHR data — no live source distinguishes these groups per site at this granularity.",
+  );
+
+  const approxDistanceCount = sites.filter(
+    (s) =>
+      s.catchmentDistanceSource === "approximate-haversine" ||
+      s.catchmentDistanceSource === "mixed",
+  ).length;
+  if (approxDistanceCount > 0) {
+    warnings.push(
+      `${approxDistanceCount} of ${sites.length} site(s) had some or all of their catchment radius decided by straight-line distance rather than real driving distance (Google Distance Matrix / OSRM lookup unavailable for those points) — their patient counts are a rougher approximation than the others.`,
+    );
+  }
 
   // Coordinates are only "approximate" (not real geocoding) if BOTH the
   // Google tier (no key configured, or the call failed) and the free
@@ -231,5 +336,111 @@ export async function buildLiveSiteMapData(
     sites,
     warnings,
     fetchedAt: new Date().toISOString(),
+  };
+}
+
+export interface CombinedCatchmentSiteInput {
+  siteId: string;
+  lat: number;
+  lng: number;
+  /** This site's own netAvailablePatients, as already returned by buildLiveSiteMapData — reused as-is here (rather than recomputed) so the "naive sum" side of the comparison always matches exactly what the caller is already showing the user. */
+  netAvailablePatients: number;
+}
+
+export interface BuildCombinedCatchmentParams {
+  indication: string;
+  specialty: string;
+  /** All input sites are assumed to be in this single country — the synthetic catchment dataset and prevalence estimate are both country-scoped (see data/syntheticPopulation.ts), so mixing countries in one combined-catchment call isn't supported. */
+  country: string;
+  radiusMiles?: number;
+  sites: CombinedCatchmentSiteInput[];
+}
+
+export async function buildCombinedCatchment(
+  params: BuildCombinedCatchmentParams,
+): Promise<CombinedCatchmentResponse> {
+  const radiusMiles =
+    params.radiusMiles && params.radiusMiles > 0
+      ? params.radiusMiles
+      : config.map.defaultRadiusMiles;
+  const warnings: string[] = [];
+
+  const sumOfIndividualNetAvailablePatients = params.sites.reduce(
+    (sum, s) => sum + s.netAvailablePatients,
+    0,
+  );
+
+  if (params.sites.length < 2) {
+    warnings.push(
+      "Select at least 2 sites to see how much their catchments overlap — with fewer than 2 selected, the combined figure is the same as the individual one by definition.",
+    );
+  }
+
+  const postalRegions = getSyntheticPostalRegionsForCountry(params.country);
+  const coveredPopulationById = new Map<string, number>();
+  for (const site of params.sites) {
+    const catchment = await computeCatchment(
+      { lat: site.lat, lng: site.lng },
+      postalRegions,
+      radiusMiles,
+    );
+    for (const region of catchment.coveredRegions) {
+      coveredPopulationById.set(region.id, region.population);
+    }
+  }
+  const combinedPopulationInRadius = [
+    ...coveredPopulationById.values(),
+  ].reduce((sum, population) => sum + population, 0);
+
+  let prevalencePer100k = 0;
+  try {
+    const regionRow = await buildLiveRegionRow({
+      region: regionLabelForCountry(params.country),
+      country: params.country,
+      indication: params.indication,
+      specialty: params.specialty,
+    });
+    prevalencePer100k = regionRow["Prevalence (per 100k)"];
+  } catch (err) {
+    warnings.push(
+      `Could not estimate prevalence for ${params.country} (${(err as Error).message}) — combined patient count shown as 0.`,
+    );
+  }
+
+  const combinedGrossEligiblePatients = Math.round(
+    ((combinedPopulationInRadius * prevalencePer100k) / 100000) *
+      config.map.addressableFraction,
+  );
+  const benchmark = await getCompletedTrialBenchmarks(params.indication).catch(
+    () => null,
+  );
+  const recruitmentRate =
+    benchmark?.medianSampleSize && combinedGrossEligiblePatients > 0
+      ? clamp(
+          benchmark.medianSampleSize / combinedGrossEligiblePatients,
+          0.05,
+          0.6,
+        )
+      : config.map.baselineRecruitmentRate;
+  const combinedNetAvailablePatients = Math.max(
+    0,
+    Math.round(combinedGrossEligiblePatients * (1 - recruitmentRate)),
+  );
+
+  const overlapPatients = Math.max(
+    0,
+    sumOfIndividualNetAvailablePatients - combinedNetAvailablePatients,
+  );
+
+  return {
+    indication: params.indication,
+    country: params.country,
+    radiusMiles,
+    siteCount: params.sites.length,
+    sumOfIndividualNetAvailablePatients,
+    combinedNetAvailablePatients,
+    overlapPatients,
+    prevalencePer100k,
+    warnings,
   };
 }
