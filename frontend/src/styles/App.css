@@ -918,6 +918,14 @@ tbody tr:hover {
   font-size: 11.5px;
   color: var(--sub);
 }
+/* Other Ongoing Trials table (CompetingTrialsPanel): table-layout: fixed +
+   equal <colgroup> widths so all 5 columns share the row evenly instead of
+   the browser's default auto-layout collapsing short columns (Status, Last
+   Updated) down to their content width and leaving a large blank gap on one
+   side. */
+.competing-trials-table {
+  table-layout: fixed;
+}
 .badge {
   display: inline-block;
   padding: 3px 11px;
@@ -1519,6 +1527,12 @@ tr.row-pick td {
   margin-top: 3px;
   font-variant-numeric: tabular-nums;
 }
+.driver-standard {
+  font-size: 11px;
+  color: var(--sub);
+  margin-top: 2px;
+  font-style: italic;
+}
 .why-risk-cats {
   display: flex;
   flex-wrap: wrap;
@@ -1552,7 +1566,8 @@ tr.row-pick td {
 }
 .why-risk.on-dark .why-risk-mix,
 .why-risk.on-dark .driver-cat,
-.why-risk.on-dark .driver-derivation {
+.why-risk.on-dark .driver-derivation,
+.why-risk.on-dark .driver-standard {
   color: rgba(255, 255, 255, 0.78);
 }
 .why-risk.on-dark .why-risk-stat strong,

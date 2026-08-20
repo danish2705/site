@@ -9,10 +9,16 @@ export const STAGE_LIST: { n: number; label: string }[] = [
   { n: 8, label: "Final Recommendation" },
 ];
 
-export type WizardStep = "predict" | "risk" | "ranking" | "recommendation";
+export type WizardStep =
+  | "predict"
+  | "competing"
+  | "risk"
+  | "ranking"
+  | "recommendation";
 
 export const WIZARD_STEPS: { key: WizardStep; label: string }[] = [
   { key: "predict", label: "AI Prediction" },
+  { key: "competing", label: "Other Ongoing Trials" },
   { key: "risk", label: "Risk Assessment" },
   { key: "ranking", label: "Site Ranking" },
   { key: "recommendation", label: "Recommendation" },

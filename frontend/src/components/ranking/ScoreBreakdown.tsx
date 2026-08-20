@@ -12,10 +12,16 @@ const SCORE_COMPONENTS: {
   { key: "cost", label: "Cost", weight: 10 },
 ];
 
-const LIVE_FIELD_FOR_COMPONENT: Partial<Record<keyof ComponentScores, string>> = {
-  recruitment: "Historical Enrollment Rate (pts/month)",
-  retention: "Dropout Rate (%)",
-  diversity: "Diversity Index (0-100)",
+// A component can now be backed by more than one real (non-LLM-estimated)
+// field — e.g. Recruitment is real if EITHER Historical Enrollment Rate OR
+// the real facility-workload count (Competing Trials at Site — see
+// pipeline/liveCandidateSites.ts's applyLiveKpiOverrides) was used, so the
+// "live" highlight below reflects either real signal, not just the first
+// one this file happened to know about.
+const LIVE_FIELDS_FOR_COMPONENT: Partial<Record<keyof ComponentScores, string[]>> = {
+  recruitment: ["Historical Enrollment Rate (pts/month)", "Competing Trials at Site"],
+  retention: ["Dropout Rate (%)"],
+  diversity: ["Diversity Index (0-100)"],
 };
 
 export default function ScoreBreakdown({
@@ -32,8 +38,8 @@ export default function ScoreBreakdown({
         const raw = components[key];
         const value = raw === null || raw === undefined ? null : Number(raw);
         const isValid = value !== null && !Number.isNaN(value);
-        const liveField = LIVE_FIELD_FOR_COMPONENT[key];
-        const isPartlyLive = !!liveField && !!liveKpiFields?.includes(liveField);
+        const liveFields = LIVE_FIELDS_FOR_COMPONENT[key];
+        const isPartlyLive = !!liveFields?.some((f) => liveKpiFields?.includes(f));
         return (
           <div
             key={key}

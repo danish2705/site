@@ -19,7 +19,6 @@ export default function RiskRegisterTable({
             <th>Likelihood</th>
             <th>Impact</th>
             <th>Overall</th>
-            <th>Mitigation Plan</th>
             <th>Owner</th>
           </tr>
         </thead>
@@ -65,7 +64,6 @@ export default function RiskRegisterTable({
                         : `${r.overallRisk} Risk`}
                   </span>
                 </td>
-                <td className="col-wide">{r.mitigationPlan}</td>
                 <td>{r.owner}</td>
               </tr>
             );

@@ -1,7 +1,32 @@
 import type { RiskRow } from "../types.js";
-import type { FacilityHistory, FacilityTrialRecord } from "../services/ctgov.client.js";
+import type {
+  FacilityHistory,
+  FacilityTrialRecord,
+  FacilityResultsSignal,
+} from "../services/ctgov.client.js";
+import { config } from "../config.js";
 
 const TERMINAL_STATUSES = new Set(["TERMINATED", "WITHDRAWN", "SUSPENDED"]);
+
+// Which registration/reporting standard backs the real, disclosed field(s)
+// each risk category is derived from — shown in the UI so a reviewer can see
+// this isn't an arbitrary judgment call. Attribution only, not a claim that
+// the facility/trial is or isn't compliant with the standard.
+const STANDARD_REFERENCE = {
+  TrialHistory: "FDAAA 801 (OverallStatus, WhyStopped)",
+  Competitive: "42 CFR Part 11 (LocationStatus)",
+  DataIntegrity: "FDAAA 801 (HasResults, PrimaryCompletionDate)",
+  Enrollment:
+    "42 CFR Part 11 / WHO ICTRP-ICMJE (EnrollmentCount, EnrollmentType)",
+  ProtocolComplexity:
+    "WHO ICTRP 20-item Data Set / ICMJE (DesignAllocation, DesignMasking, DesignInterventionModel)",
+  ReportingDiligence:
+    "42 CFR Part 11 (StatusVerifiedDate, LastUpdatePostDate)",
+  AdverseEvents:
+    "FDAAA 801 (posted resultsSection.adverseEventsModule serious-event data)",
+  SiteCapacity:
+    "Internal heuristic, not a formal external standard — derived from real LocationStatus counts across a facility's disclosed trial history",
+} as const;
 
 const RISK_MATRIX: Record<"Low" | "Medium" | "High", Record<"Low" | "Medium" | "High", "Low" | "Medium" | "High">> = {
   Low: { Low: "Low", Medium: "Low", High: "Medium" },
@@ -76,19 +101,32 @@ function realRiskRecordsFrom(
     : "on file at this facility";
 
   const risks: RiskRow[] = terminal.map((t) => {
-    const category = categorizeWhyStopped(t.whyStopped);
+    // categorizeWhyStopped buckets the disclosed stoppage reason (Enrollment,
+    // Safety, Operational, Regulatory, Clinical) for two purposes: deciding
+    // Impact just below, and appearing in the Description as a "type of
+    // stoppage" detail. It is deliberately NOT used as this record's "Risk
+    // Category" — that field is fixed to "Trial History" for every row this
+    // function produces, because several of those bucket names (Enrollment,
+    // in particular) collide with the name of a different, always-present
+    // risk category elsewhere in this file (Enrollment Shortfall) that means
+    // something entirely different. Keeping "Risk Category" to a small fixed
+    // set of 6 non-overlapping values (Trial History plus the 5 categories
+    // below) means it's safe to read/filter/sort by category alone; the
+    // finer-grained stoppage reason is still fully visible in Description.
+    const stoppageReasonCategory = categorizeWhyStopped(t.whyStopped);
     const impact: "High" | "Medium" =
-      category === "Safety" || t.overallStatus === "TERMINATED"
+      stoppageReasonCategory === "Safety" || t.overallStatus === "TERMINATED"
         ? "High"
         : "Medium";
     const overall = RISK_MATRIX[likelihood][impact];
     return {
       "Risk ID": `R-LIVE-${t.nctId || siteId}`,
       "Site ID": siteId,
-      "Risk Category": category,
+      "Risk Category": "Trial History",
       Description:
         `Trial ${t.nctId}${t.briefTitle ? ` (${t.briefTitle})` : ""} at this facility was ` +
-        `${t.overallStatus}${t.whyStopped ? `: ${t.whyStopped}` : " — no reason disclosed"}. ` +
+        `${t.overallStatus}${t.whyStopped ? `: ${t.whyStopped}` : " — no reason disclosed"} ` +
+        `(categorized as a${/^[aeiou]/i.test(stoppageReasonCategory) ? "n" : ""} ${stoppageReasonCategory}-related stoppage). ` +
         `${rateTerminal.length} of ${rateSource.trials.length} prior trial(s) ${rateScopeText} ` +
         `were terminated/withdrawn/suspended (${Math.round(terminationRate * 100)}%), which sets ` +
         `this facility's Likelihood to ${likelihood}.`,
@@ -103,6 +141,7 @@ function realRiskRecordsFrom(
       Owner: "Clinical Ops Manager",
       "Risk Score (Numeric)": riskScoreFor(overall),
       dataSource: "live",
+      "Standard Reference": STANDARD_REFERENCE.TrialHistory,
     };
   });
 
@@ -164,6 +203,7 @@ function competitiveRiskRecordFrom(
       Owner: "Clinical Ops Manager",
       "Risk Score (Numeric)": riskScoreFor("Low"),
       dataSource: "live",
+      "Standard Reference": STANDARD_REFERENCE.Competitive,
     };
   }
   const band = bandCompetingTrials(nearbyCompetingTrials);
@@ -187,6 +227,7 @@ function competitiveRiskRecordFrom(
     Owner: "Clinical Ops Manager",
     "Risk Score (Numeric)": riskScoreFor(overall),
     dataSource: "live",
+    "Standard Reference": STANDARD_REFERENCE.Competitive,
   };
 }
 
@@ -225,6 +266,7 @@ function dataIntegrityRiskRecordFrom(
     Owner: "Data Management Lead",
     "Risk Score (Numeric)": riskScoreFor("Low"),
     dataSource: "live",
+    "Standard Reference": STANDARD_REFERENCE.DataIntegrity,
   });
 
   // "Not reporting results on time" is a facility/sponsor behavior pattern,
@@ -312,6 +354,7 @@ function dataIntegrityRiskRecordFrom(
     Owner: "Data Management Lead",
     "Risk Score (Numeric)": riskScoreFor(overall),
     dataSource: "live",
+    "Standard Reference": STANDARD_REFERENCE.DataIntegrity,
   };
 }
 
@@ -348,7 +391,7 @@ function enrollmentShortfallRiskRecordFrom(
   const noSignalRow = (reason: string): RiskRow => ({
     "Risk ID": `R-ENROLLSHORT-${siteId}`,
     "Site ID": siteId,
-    "Risk Category": "Enrollment",
+    "Risk Category": "Enrollment Performance",
     Description: reason,
     Likelihood: "Low",
     Impact: "Low",
@@ -359,6 +402,7 @@ function enrollmentShortfallRiskRecordFrom(
     Owner: "Clinical Ops Manager",
     "Risk Score (Numeric)": riskScoreFor("Low"),
     dataSource: "live",
+    "Standard Reference": STANDARD_REFERENCE.Enrollment,
   });
 
   if (!history || !benchmarkMedianSampleSize || benchmarkMedianSampleSize <= 0) {
@@ -392,7 +436,7 @@ function enrollmentShortfallRiskRecordFrom(
   return {
     "Risk ID": `R-ENROLLSHORT-${siteId}`,
     "Site ID": siteId,
-    "Risk Category": "Enrollment",
+    "Risk Category": "Enrollment Performance",
     Description:
       `Across ${actualTrials.length} trial(s) at this facility for this indication with reported ` +
       `ACTUAL enrollment (${actualTrials.map((t) => t.nctId).join(", ")}), average enrollment was ` +
@@ -410,6 +454,7 @@ function enrollmentShortfallRiskRecordFrom(
     Owner: "Clinical Ops Manager",
     "Risk Score (Numeric)": riskScoreFor(overall),
     dataSource: "live",
+    "Standard Reference": STANDARD_REFERENCE.Enrollment,
   };
 }
 
@@ -461,6 +506,7 @@ function protocolComplexityRiskRecordFrom(
     Owner: "Clinical Ops Manager",
     "Risk Score (Numeric)": riskScoreFor("Low"),
     dataSource: "live",
+    "Standard Reference": STANDARD_REFERENCE.ProtocolComplexity,
   });
 
   if (!history || history.trials.length === 0) {
@@ -528,6 +574,7 @@ function protocolComplexityRiskRecordFrom(
     Owner: "Clinical Ops Manager",
     "Risk Score (Numeric)": riskScoreFor(overall),
     dataSource: "live",
+    "Standard Reference": STANDARD_REFERENCE.ProtocolComplexity,
   };
 }
 
@@ -566,6 +613,7 @@ function reportingDiligenceRiskRecordFrom(
     Owner: "Regulatory Affairs Lead",
     "Risk Score (Numeric)": riskScoreFor("Low"),
     dataSource: "live",
+    "Standard Reference": STANDARD_REFERENCE.ReportingDiligence,
   });
 
   const usingFacilityWide =
@@ -631,6 +679,210 @@ function reportingDiligenceRiskRecordFrom(
     Owner: "Regulatory Affairs Lead",
     "Risk Score (Numeric)": riskScoreFor(overall),
     dataSource: "live",
+    "Standard Reference": STANDARD_REFERENCE.ReportingDiligence,
+  };
+}
+
+const ACTIVE_WORKLOAD_STATUSES = new Set([
+  "RECRUITING",
+  "ACTIVE_NOT_RECRUITING",
+  "NOT_YET_RECRUITING",
+  "ENROLLING_BY_INVITATION",
+]);
+
+function bandWorkloadCount(count: number): "Low" | "Medium" | "High" {
+  if (count >= config.siteWorkload.highThreshold) return "High";
+  if (count >= config.siteWorkload.mediumThreshold) return "Medium";
+  return "Low";
+}
+
+/**
+ * Real count of trials (ANY indication) this facility is CURRENTLY running —
+ * same definition (RECRUITING/ACTIVE_NOT_RECRUITING/NOT_YET_RECRUITING/
+ * ENROLLING_BY_INVITATION, from facilityWideHistory) as the Site Workload
+ * risk-register category below. Exported so pipeline/liveCandidateSites.ts
+ * can override the LLM-GUESSED "Competing Trials at Site" scoring field with
+ * this same real number instead — Srikanth's requirement #5 benchmark found
+ * that the ranking score's "Competing Trials at Site" field was previously
+ * always an LLM guess even on live-sourced facilities, while this real count
+ * already existed but was siloed inside the Risk Register only. Returns null
+ * if there's no facility-wide history to count from (caller should then
+ * leave whatever value — LLM guess or nothing — already on the row).
+ */
+export function countActiveFacilityWorkload(
+  facilityWideHistory: FacilityHistory | null | undefined,
+): number | null {
+  if (!facilityWideHistory || facilityWideHistory.trials.length === 0) {
+    return null;
+  }
+  return facilityWideHistory.trials.filter(
+    (t) => t.overallStatus && ACTIVE_WORKLOAD_STATUSES.has(t.overallStatus),
+  ).length;
+}
+
+/**
+ * Real Site-Workload record (labeled "Site Workload," matching requirement
+ * #6's benchmark parameter list — previously labeled "Site Capacity"):
+ * Srikanth's "there's an upper limit on how many trials a site can
+ * support... you don't want to hit the true limit because their quality
+ * will go down" point. Counts how many trials — across ALL
+ * indications on file (facilityWideHistory, the same broader sample used for
+ * Data Integrity/Reporting Diligence above) — this facility is CURRENTLY
+ * running (RECRUITING/ACTIVE_NOT_RECRUITING/NOT_YET_RECRUITING/
+ * ENROLLING_BY_INVITATION), a real, disclosed OverallStatus count, not an
+ * estimate. The threshold that turns a count into Low/Medium/High is a
+ * stated heuristic (config.siteWorkload), not a published standard — there
+ * is no public source for a facility's true capacity limit.
+ */
+function siteCapacityRiskRecordFrom(
+  siteId: string,
+  facilityWideHistory: FacilityHistory | null | undefined,
+): RiskRow {
+  const noSignalRow = (reason: string): RiskRow => ({
+    "Risk ID": `R-CAPACITY-${siteId}`,
+    "Site ID": siteId,
+    "Risk Category": "Site Workload",
+    Description: reason,
+    Likelihood: "Low",
+    Impact: "Low",
+    "Overall Risk Rating": "Low",
+    "Date Identified": today(),
+    Status: "Open",
+    "Mitigation Plan": "No action needed — no elevated concurrent-trial-load signal found for this facility.",
+    Owner: "Clinical Ops Manager",
+    "Risk Score (Numeric)": riskScoreFor("Low"),
+    dataSource: "live",
+    "Standard Reference": STANDARD_REFERENCE.SiteCapacity,
+  });
+
+  if (!facilityWideHistory || facilityWideHistory.trials.length === 0) {
+    return noSignalRow(
+      "No facility-wide trial history on file to assess how many other trials this facility is currently running.",
+    );
+  }
+
+  const activeCount = countActiveFacilityWorkload(facilityWideHistory) ?? 0;
+
+  if (activeCount < config.siteWorkload.mediumThreshold) {
+    return noSignalRow(
+      `This facility is currently running ${activeCount} other active/recruiting trial(s) (any indication) — ` +
+        `below the ${config.siteWorkload.mediumThreshold}-trial threshold that flags a concurrent-load concern.`,
+    );
+  }
+
+  const band = bandWorkloadCount(activeCount);
+  const overall = RISK_MATRIX[band][band];
+
+  return {
+    "Risk ID": `R-CAPACITY-${siteId}`,
+    "Site ID": siteId,
+    "Risk Category": "Site Workload",
+    Description:
+      `This facility is currently running ${activeCount} active/recruiting trial(s) across all indications ` +
+      `on file — at or above the ${band === "High" ? config.siteWorkload.highThreshold : config.siteWorkload.mediumThreshold}-trial ` +
+      `threshold for a ${band} concurrent-load concern. A facility juggling many simultaneous trials may have ` +
+      `less staff/investigator attention available per trial, which can affect data quality and enrollment pace.`,
+    Likelihood: band,
+    Impact: band,
+    "Overall Risk Rating": overall,
+    "Date Identified": today(),
+    Status: "Open",
+    "Mitigation Plan":
+      "Confirm dedicated staffing/capacity for this trial specifically during site selection calls; " +
+      "ask how many active protocols the site coordinator team is currently managing.",
+    Owner: "Clinical Ops Manager",
+    "Risk Score (Numeric)": riskScoreFor(overall),
+    dataSource: "live",
+    "Standard Reference": STANDARD_REFERENCE.SiteCapacity,
+  };
+}
+
+function bandAdverseEventRate(ratePercent: number): "Low" | "Medium" | "High" {
+  if (ratePercent >= 20) return "High";
+  if (ratePercent >= 8) return "Medium";
+  return "Low";
+}
+
+/**
+ * Real Serious-Adverse-Events record: Srikanth's "adverse events, serious
+ * adverse events" ask. Labeled "Serious Adverse Events" (not the broader
+ * "Adverse Events") because that's exactly what the underlying field
+ * measures — `resultsSignal.seriousAdverseEventRatePercent` (already
+ * fetched, alongside dropout rate/diversity index, from ONE representative
+ * posted-results trial at this facility — see getFacilityResultsSignal in
+ * ctgov.client.ts) is a real, disclosed SERIOUS-event rate, not an estimate.
+ * General/non-serious adverse-event frequency has no live source anywhere
+ * in this data, so it deliberately isn't offered as a separate parameter —
+ * doing so would mean either fabricating it or silently mislabeling this
+ * same serious-event number as something broader than it is. Trial-wide,
+ * not facility-specific (this API has no per-site adverse-event breakdown),
+ * same scope caveat as dropout rate/diversity index reuse elsewhere in this
+ * file.
+ */
+function adverseEventsRiskRecordFrom(
+  siteId: string,
+  resultsSignal: FacilityResultsSignal | null | undefined,
+): RiskRow {
+  const noSignalRow = (reason: string): RiskRow => ({
+    "Risk ID": `R-ADVERSEEVENTS-${siteId}`,
+    "Site ID": siteId,
+    "Risk Category": "Serious Adverse Events",
+    Description: reason,
+    Likelihood: "Low",
+    Impact: "Low",
+    "Overall Risk Rating": "Low",
+    "Date Identified": today(),
+    Status: "Open",
+    "Mitigation Plan": "No action needed — no posted serious-adverse-event data found for this facility.",
+    Owner: "Regulatory Affairs Lead",
+    "Risk Score (Numeric)": riskScoreFor("Low"),
+    dataSource: "live",
+    "Standard Reference": STANDARD_REFERENCE.AdverseEvents,
+  });
+
+  if (
+    !resultsSignal ||
+    resultsSignal.seriousAdverseEventRatePercent === null
+  ) {
+    return noSignalRow(
+      "No posted adverse-events data (resultsSection.adverseEventsModule) was found for a completed " +
+        "trial on file at this facility — most facilities will show this until one of their trials " +
+        "posts final results, which is normal, not a red flag.",
+    );
+  }
+
+  const rate = resultsSignal.seriousAdverseEventRatePercent;
+  const band = bandAdverseEventRate(rate);
+  if (band === "Low") {
+    return noSignalRow(
+      `Trial ${resultsSignal.sourceNctId} at this facility posted a ${rate}% serious-adverse-event rate ` +
+        `(affected/at-risk, across all arms) — below the threshold that flags a safety-signal concern.`,
+    );
+  }
+  const overall = RISK_MATRIX[band][band];
+
+  return {
+    "Risk ID": `R-ADVERSEEVENTS-${siteId}`,
+    "Site ID": siteId,
+    "Risk Category": "Serious Adverse Events",
+    Description:
+      `Trial ${resultsSignal.sourceNctId} at this facility posted a ${rate}% serious-adverse-event rate ` +
+      `(affected/at-risk, summed across all arms) on its ClinicalTrials.gov results record. This is a ` +
+      `real, disclosed rate from the trial's own posted results, not an estimate — but it is trial-wide, ` +
+      `not this facility's own individual patients, since no per-site adverse-event breakdown is disclosed ` +
+      `anywhere in this data.`,
+    Likelihood: band,
+    Impact: band,
+    "Overall Risk Rating": overall,
+    "Date Identified": today(),
+    Status: "Open",
+    "Mitigation Plan":
+      "Review the full posted adverse-events module for this trial directly on ClinicalTrials.gov before " +
+      "relying on this rate alone; confirm with the sponsor whether the profile is specific to this facility.",
+    Owner: "Regulatory Affairs Lead",
+    "Risk Score (Numeric)": riskScoreFor(overall),
+    dataSource: "live",
+    "Standard Reference": STANDARD_REFERENCE.AdverseEvents,
   };
 }
 
@@ -649,6 +901,8 @@ export interface BuildLiveRiskRecordsParams {
   facilityWideHistory?: FacilityHistory | null;
   /** Real completed-trial benchmark median sample size for this indication, reused from the LLM KPI estimate's benchmark fetch — feeds the Enrollment-shortfall signal. null if unavailable. */
   benchmarkMedianSampleSize?: number | null;
+  /** Real posted-results signal (dropout rate, diversity index, serious-adverse-event rate) from one representative completed trial at this facility — already fetched for the live KPI overrides in liveCandidateSites.ts, reused here for the Serious Adverse Events category. null/undefined if no facility trial has posted results. */
+  resultsSignal?: FacilityResultsSignal | null;
 }
 
 export async function buildLiveRiskRecords(
@@ -683,7 +937,15 @@ export async function buildLiveRiskRecords(
     params.history,
     params.facilityWideHistory,
   );
-  // Every one of these 5 categories is now always present for every
+  const siteCapacityRisk = siteCapacityRiskRecordFrom(
+    params.siteId,
+    params.facilityWideHistory,
+  );
+  const adverseEventsRisk = adverseEventsRiskRecordFrom(
+    params.siteId,
+    params.resultsSignal,
+  );
+  // Every one of these 7 categories is now always present for every
   // site — a category with no real signal comes back as a Low/Low "No
   // Risk" row (see each function's noSignalRow) rather than being skipped,
   // so the risk register never silently omits a category.
@@ -693,6 +955,8 @@ export async function buildLiveRiskRecords(
     enrollmentShortfallRisk,
     protocolComplexityRisk,
     reportingDiligenceRisk,
+    siteCapacityRisk,
+    adverseEventsRisk,
   ];
 
   const risks = [...realRisks, ...codeComputedRisks];
@@ -717,6 +981,7 @@ export async function buildLiveRiskRecords(
       Owner: "Clinical Ops Manager",
       "Risk Score (Numeric)": 1,
       dataSource: "live",
+      "Standard Reference": "Not applicable — no data available to assess against any standard.",
     });
     warning = `${params.facilityName}: no risk data available for this facility.`;
   }

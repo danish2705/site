@@ -6,11 +6,13 @@ import TopBar from "./components/layout/TopBar";
 import Sidebar from "./components/layout/Sidebar";
 import Stepper, { StepperStatus } from "./components/layout/Stepper";
 import AIRegionPrediction from "./components/prediction/AIRegionPrediction";
+import CompetingTrialsPanel from "./components/prediction/CompetingTrialsPanel";
 import RiskAssessmentPanel from "./components/risk/RiskAssessmentPanel";
 import SiteRankingPanel from "./components/ranking/SiteRankingPanel";
 import RecommendationPanel from "./components/recommendation/RecommendationPanel";
 import HistoryModal from "./components/runs/HistoryModal";
 import ErrorBoundary from "./components/ui/ErrorBoundary";
+import { countriesFromRegionKeys } from "./utils/region";
 
 function Dashboard() {
   const [historyOpen, setHistoryOpen] = useState(false);
@@ -63,6 +65,12 @@ function Dashboard() {
                     regions: [`${region}||${country}`],
                   }))
                 }
+              />
+            )}
+            {wizardStep === "competing" && (
+              <CompetingTrialsPanel
+                indication={form.indication}
+                selectedCountries={countriesFromRegionKeys(form.regions)}
               />
             )}
             {wizardStep === "risk" && <RiskAssessmentPanel />}

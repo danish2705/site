@@ -2,6 +2,7 @@ import type { TrialRequirementRow } from "../types.js";
 import {
   getCompletedTrialBenchmarks,
   getDropoutRateBenchmark,
+  getEligibilityCriteriaSample,
 } from "../services/ctgov.client.js";
 import { estimateRequirementThresholds, llmStatus } from "../llm/client.js";
 
@@ -44,9 +45,10 @@ function toPositiveNumberOrUndefined(value: unknown): number | undefined {
 export async function buildLiveTrialRequirement(
   params: BuildLiveTrialRequirementParams,
 ): Promise<LiveTrialRequirementRow> {
-  const [benchmark, dropoutBenchmark] = await Promise.all([
+  const [benchmark, dropoutBenchmark, eligibilitySample] = await Promise.all([
     getCompletedTrialBenchmarks(params.indication),
     getDropoutRateBenchmark(params.indication),
+    getEligibilityCriteriaSample(params.indication),
   ]);
 
   const targetSampleSize =
@@ -125,6 +127,12 @@ export async function buildLiveTrialRequirement(
     "Max Acceptable Screen Failure (%)": maxAcceptableScreenFailurePercent,
     "Accreditation Required": "Preferred", // no live/LLM source for accreditation policy; "Preferred" (not "Yes") avoids silently hard-failing every live site, which all show Accreditation: "Unknown"
     "Required Infrastructure": "", // no live/LLM source for infrastructure requirements
+    eligibilityCriteriaText: eligibilitySample?.eligibilityCriteriaText ?? null,
+    eligibilitySex: eligibilitySample?.sex ?? null,
+    eligibilityMinimumAge: eligibilitySample?.minimumAge ?? null,
+    eligibilityMaximumAge: eligibilitySample?.maximumAge ?? null,
+    eligibilityHealthyVolunteers: eligibilitySample?.healthyVolunteers ?? null,
+    eligibilitySourceNctId: eligibilitySample?.sourceNctId ?? null,
     requirementSource,
     requirementWarning,
   };

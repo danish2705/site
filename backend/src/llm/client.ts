@@ -639,6 +639,159 @@ export function llmStatus(): { configured: boolean; model: string } {
 }
 
 /* ---------------------------------------------------------------------- */
+/* Eligibility-criteria filter impact estimation (Site Map feature)       */
+/* ---------------------------------------------------------------------- */
+
+export interface EligibilityFilterEstimateItem {
+  /** URL/DOM-safe slug derived from label, e.g. "pregnancy" or "prior-therapy". */
+  id: string;
+  /** Short human-readable label for a checkbox, e.g. "Pregnant or breastfeeding". */
+  label: string;
+  type: "inclusion" | "exclusion";
+  /**
+   * The analyst's best-informed estimate of what percentage of the general
+   * population of people WITH this indication would be screened out by this
+   * specific criterion alone (not cumulative with the others) — there is no
+   * public source for this figure; it is reasoned from general epidemiology
+   * and typical trial-eligibility patterns for this condition.
+   */
+  estimatedExcludedPercent: number;
+}
+
+export interface EligibilityFilterEstimate {
+  filters: EligibilityFilterEstimateItem[];
+  rationale: string;
+}
+
+/**
+ * Parses a trial's real, disclosed ClinicalTrials.gov EligibilityCriteria
+ * free text into a short list of distinct, checkbox-able inclusion/exclusion
+ * criteria, each with an estimated "% of the general <indication> patient
+ * population this criterion alone would exclude." No public source
+ * quantifies this — it is the LLM's best-informed estimate from general
+ * epidemiology, grounded in the real criteria text (not invented criteria).
+ *
+ * Throws if the LLM is unconfigured or the call fails/returns nothing
+ * usable, so callers can fall back to showing the raw criteria text with an
+ * explicit "no impact estimate available" warning instead of a fabricated
+ * percentage.
+ */
+export async function estimateEligibilityFilterImpact(input: {
+  indication: string;
+  criteriaText: string;
+}): Promise<EligibilityFilterEstimate> {
+  if (!client) {
+    throw new Error(
+      "LLM not configured (no OPENAI_API_KEY or AZURE_OPENAI_ENDPOINT/AZURE_OPENAI_API_KEY in backend/.env) — cannot estimate eligibility-filter impact.",
+    );
+  }
+
+  const prompt = `You are a clinical trial feasibility analyst. Below is the REAL, disclosed
+eligibility criteria text for a trial in this indication, taken verbatim from ClinicalTrials.gov.
+Extract up to 8 of the most clinically significant, distinct inclusion or exclusion criteria from
+it — do not invent criteria that aren't in the text. For each one, give your best-informed estimate
+of what percentage of the GENERAL population of people who have this indication would be excluded
+by that single criterion alone (not cumulative with the others). No public source publishes this
+percentage — reason from general epidemiology and typical comorbidity/demographic rates for this
+condition.
+
+INDICATION: ${input.indication}
+
+REAL ELIGIBILITY CRITERIA TEXT (verbatim from ClinicalTrials.gov):
+"""
+${input.criteriaText}
+"""
+
+INSTRUCTIONS
+1. Do NOT extract a pure age-range criterion (e.g. "Age 18-65", "Age outside 18-55"). Eligible age
+   is already a separate, dedicated selection elsewhere in this app, so repeating it here would be
+   redundant — skip it even if the text states one.
+2. When the text lumps several organ systems/conditions into one criterion (e.g. "clinically
+   significant renal, hepatic, or cardiovascular disease", "significant comorbidities"), DO NOT
+   return that as a single vague line. Split it into up to 4 separate, specific, named-disease
+   checkboxes instead (e.g. "Chronic kidney disease", "Liver disease", "Heart disease", "Type 1 or
+   type 2 diabetes" — whichever specific conditions the lumped phrase actually implies for this
+   indication). Each split-out disease still needs its own estimatedExcludedPercent — don't just
+   copy the same number to every split item if their real-world prevalence would differ.
+3. Otherwise prefer criteria that would meaningfully change a recruitment estimate (pregnancy,
+   specific comorbidities, prior treatment/trial history, lab-value ranges) over administrative
+   ones (e.g. "informed consent").
+4. If the text is too vague to extract any meaningful criterion, return an empty filters array
+   rather than inventing one.
+
+Reply with ONLY a JSON object, no prose or markdown fences, in exactly this shape:
+{
+  "filters": [
+    {
+      "label": "<short, specific label naming one disease/condition, e.g. 'Chronic kidney disease'>",
+      "type": "inclusion" | "exclusion",
+      "estimatedExcludedPercent": <number 0-100>
+    }
+  ],
+  "rationale": "<1-2 sentences on how you estimated these percentages>"
+}`;
+
+  const completion = await client.chat.completions.create({
+    model: MODEL,
+    messages: [{ role: "user", content: prompt }],
+    temperature: 0.3,
+    response_format: { type: "json_object" },
+  });
+
+  const raw = completion.choices[0].message.content ?? "";
+  const parsed = parseJsonResponse<{
+    filters?: Array<{
+      label?: string;
+      type?: string;
+      estimatedExcludedPercent?: number;
+    }>;
+    rationale?: string;
+  }>(raw);
+
+  const seenIds = new Set<string>();
+  const filters: EligibilityFilterEstimateItem[] = (
+    Array.isArray(parsed.filters) ? parsed.filters : []
+  )
+    .filter(
+      (f) =>
+        f &&
+        typeof f.label === "string" &&
+        f.label.trim() &&
+        typeof f.estimatedExcludedPercent === "number" &&
+        Number.isFinite(f.estimatedExcludedPercent),
+    )
+    .slice(0, 8)
+    .map((f) => {
+      let id = f.label!
+        .trim()
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, "-")
+        .replace(/(^-|-$)/g, "");
+      if (!id) id = "criterion";
+      while (seenIds.has(id)) id = `${id}-2`;
+      seenIds.add(id);
+      return {
+        id,
+        label: f.label!.trim(),
+        type: f.type === "inclusion" ? "inclusion" : "exclusion",
+        estimatedExcludedPercent: Math.max(
+          0,
+          Math.min(100, Math.round(f.estimatedExcludedPercent!)),
+        ),
+      };
+    });
+
+  return {
+    filters,
+    rationale:
+      "(AI-estimated) " +
+      (typeof parsed.rationale === "string" && parsed.rationale.trim()
+        ? parsed.rationale.trim()
+        : "No rationale returned by the model."),
+  };
+}
+
+/* ---------------------------------------------------------------------- */
 /* Live-site geographic risk estimation (Site Map feature)                */
 /* ---------------------------------------------------------------------- */
 

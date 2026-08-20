@@ -64,6 +64,7 @@ function toRiskRecord(r: RiskRow): RiskRecord {
     owner: r.Owner,
     riskScore: r["Risk Score (Numeric)"],
     dataSource: r.dataSource ?? "excel",
+    standardReference: r["Standard Reference"] ?? null,
   };
 }
 
@@ -106,10 +107,13 @@ function explainRisk(risks: RiskRow[], matrix: RiskMatrix): RiskExplanation {
         rating: r["Overall Risk Rating"],
         status: r.Status,
         active: isActive(r),
+        standardReference: r["Standard Reference"] ?? null,
         derivation:
           `Likelihood ${r.Likelihood} × Impact ${r.Impact} → ` +
           `${derived ?? r["Overall Risk Rating"]}` +
-          (derived ? " (per the Risk Matrix)" : ""),
+          (derived
+            ? " (per the ICH Q9 / ISO 31000 Likelihood × Impact risk matrix)"
+            : ""),
       };
     });
 
@@ -315,6 +319,19 @@ export async function runPipeline(
         accreditationRequired: requirement["Accreditation Required"],
       },
       requirementSource: requirement.requirementSource ?? "live",
+      // Real, disclosed eligibility criteria from one representative trial
+      // for this indication (Srikanth's inclusion/exclusion-criteria ask) —
+      // informational only, NOT applied to filter any eligible-patient
+      // count elsewhere (see the field's doc comment on TrialRequirementRow
+      // in types.ts for why).
+      eligibility: {
+        criteriaText: requirement.eligibilityCriteriaText ?? null,
+        sex: requirement.eligibilitySex ?? null,
+        minimumAge: requirement.eligibilityMinimumAge ?? null,
+        maximumAge: requirement.eligibilityMaximumAge ?? null,
+        healthyVolunteers: requirement.eligibilityHealthyVolunteers ?? null,
+        sourceNctId: requirement.eligibilitySourceNctId ?? null,
+      },
     },
   });
   await sleep(STEP_DELAY_MS);
@@ -561,6 +578,7 @@ export async function runPipeline(
         history: live.history,
         facilityWideHistory: live.facilityWideHistory,
         benchmarkMedianSampleSize: live.benchmarkMedianSampleSize,
+        resultsSignal: live.resultsSignal,
       });
       const risks = result.risks;
       if (result.warning) riskWarnings.push(result.warning);

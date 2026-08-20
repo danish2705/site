@@ -17,7 +17,12 @@ import {
   llmStatus,
   type SiteKpiEstimateFields,
 } from "../llm/client.js";
+import { countActiveFacilityWorkload } from "./liveRiskAssessment.js";
 import { config } from "../config.js";
+import {
+  syntheticSiteCostFor,
+  type SyntheticSiteCost,
+} from "../data/syntheticSiteCost.js";
 
 function median(values: number[]): number | null {
   if (values.length === 0) return null;
@@ -98,6 +103,16 @@ function applyLiveKpiOverrides(
   real: {
     realEnrollmentRate: number | null;
     resultsSignal: FacilityResultsSignal | null;
+    /**
+     * Real count of trials (any indication) this facility is currently
+     * running — same number already used for the Risk Register's Site
+     * Capacity category (see liveRiskAssessment.ts's
+     * countActiveFacilityWorkload). Requirement #5 benchmark finding: this
+     * real signal previously never reached the ranking score at all — the
+     * "Competing Trials at Site" field scoring.ts reads was always an LLM
+     * guess, even for a live-sourced facility with real data available.
+     */
+    realActiveWorkload: number | null;
   },
 ): ExtendedEvaluationRow {
   const liveKpiFields: string[] = [];
@@ -115,6 +130,10 @@ function applyLiveKpiOverrides(
   if (real.resultsSignal?.diversityIndex != null) {
     out["Diversity Index (0-100)"] = real.resultsSignal.diversityIndex;
     liveKpiFields.push("Diversity Index (0-100)");
+  }
+  if (real.realActiveWorkload !== null) {
+    out["Competing Trials at Site"] = real.realActiveWorkload;
+    liveKpiFields.push("Competing Trials at Site");
   }
 
   if (liveKpiFields.length > 0) {
@@ -164,6 +183,18 @@ export interface LiveCandidateSite {
    * benchmark. null if the LLM benchmark call wasn't made/failed.
    */
   benchmarkMedianSampleSize: number | null;
+  /**
+   * Real posted-results signal (dropout rate, diversity index, serious
+   * adverse-event rate) from one representative completed trial at this
+   * facility — already fetched for the live KPI overrides below, exposed
+   * here as-is so runPipeline.ts can pass it into buildLiveRiskRecords for
+   * the Adverse Events risk category, instead of re-fetching. null if no
+   * facility trial has posted results, or if LLM isn't configured (in which
+   * case this field is never fetched at all — see the early-return below).
+   */
+  resultsSignal: FacilityResultsSignal | null;
+  /** Deterministic SYNTHETIC per-site cost figure — see data/syntheticSiteCost.ts for why no live/LLM source exists for this. */
+  siteCost: SyntheticSiteCost;
 }
 
 const RECRUITING_LOCATION_STATUSES = new Set([
@@ -294,6 +325,7 @@ export async function buildLiveCandidateSites(
       const historyKey = `${f.facility}|${f.city ?? ""}|${f.country ?? ""}`.toLowerCase();
       const history = histories.get(historyKey);
       const nearbyCompetingTrials = countNearbyCompetingTrials(f, competingPool);
+      const siteCost = syntheticSiteCostFor(siteId, f.country ?? params.country);
       // Best-effort, non-blocking: a failed/empty facility-wide lookup just
       // resolves to null (see getFacilityWideHistory's own try/catch) — never
       // throws, so it can't take down this facility's whole candidate build.
@@ -302,6 +334,7 @@ export async function buildLiveCandidateSites(
         f.city,
         f.country,
       );
+      const realActiveWorkload = countActiveFacilityWorkload(facilityWideHistory);
       const site: SiteRow = {
         "Site ID": siteId,
         "Site Name": displayNameFor(f),
@@ -323,6 +356,12 @@ export async function buildLiveCandidateSites(
           facilityWideHistory,
           nearbyCompetingTrials,
           benchmarkMedianSampleSize,
+          // Not fetched in this branch (see the comment below on why
+          // getFacilityResultsSignal is skipped when the site won't be
+          // scored anyway) — the Adverse Events risk category will show as
+          // no-signal for this site rather than fetching just for it.
+          resultsSignal: null,
+          siteCost,
         };
       }
 
@@ -337,7 +376,7 @@ export async function buildLiveCandidateSites(
       const resultsSignal = resultsNctId
         ? await getFacilityResultsSignal(resultsNctId).catch(() => null)
         : null;
-      const realKpiSignal = { realEnrollmentRate, resultsSignal };
+      const realKpiSignal = { realEnrollmentRate, resultsSignal, realActiveWorkload };
 
       const cacheKey = `${siteId}|${params.indication}`;
       const cached = estimateCache.get(cacheKey);
@@ -359,6 +398,8 @@ export async function buildLiveCandidateSites(
           facilityWideHistory,
           nearbyCompetingTrials,
           benchmarkMedianSampleSize,
+          resultsSignal,
+          siteCost,
         };
       }
 
@@ -398,6 +439,8 @@ export async function buildLiveCandidateSites(
           facilityWideHistory,
           nearbyCompetingTrials,
           benchmarkMedianSampleSize,
+          resultsSignal,
+          siteCost,
         };
       } catch (err) {
         return {
@@ -408,6 +451,8 @@ export async function buildLiveCandidateSites(
           facilityWideHistory,
           nearbyCompetingTrials,
           benchmarkMedianSampleSize,
+          resultsSignal,
+          siteCost,
         };
       }
     }),
@@ -436,6 +481,11 @@ export async function buildLiveCandidateSites(
           ),
           facilityWideHistory: null,
           benchmarkMedianSampleSize,
+          resultsSignal: null,
+          siteCost: syntheticSiteCostFor(
+            siteIdFor(facilities[i].facility ?? "unknown", null, null),
+            params.country,
+          ),
         },
   );
 }

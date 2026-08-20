@@ -107,6 +107,9 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
 
   function wizardStepAvailable(step: WizardStep): boolean {
     if (step === "predict") return true;
+    // Live ClinicalTrials.gov lookup keyed only off the indication — doesn't
+    // depend on the pipeline having run, same as "predict".
+    if (step === "competing") return !!form.indication;
     if (step === "risk") return !!riskAssessment;
     if (step === "ranking") return !!ranking;
     return !!finalResult;

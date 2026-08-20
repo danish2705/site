@@ -6,10 +6,12 @@ import "leaflet.markercluster/dist/MarkerCluster.css";
 import "leaflet.markercluster/dist/MarkerCluster.Default.css";
 import type {
   CombinedCatchmentResponse,
+  EligibilityFilterSetResponse,
   LiveMapResponse,
   MapSiteRow,
 } from "../../types";
 import { fetchCombinedCatchment, fetchLiveSiteMap } from "../../services/map.service";
+import { fetchEligibilityFilters } from "../../services/eligibilityFilters.service";
 import SiteCombinationPlanner from "./SiteCombinationPlanner";
 
 const WORLD_CENTER: [number, number] = [20, 0];
@@ -74,6 +76,10 @@ function buildPopupHtml(s: MapSiteRow, metric: "gross" | "net"): string {
     .join(", ");
   const grossLine = `Gross eligible: ${s.grossEligiblePatients.toLocaleString()}`;
   const netLine = `Net available: ${s.netAvailablePatients.toLocaleString()}`;
+  const enrolledLine = `Already enrolled elsewhere: ${s.alreadyEnrolledPatients.toLocaleString()}`;
+  const expectedRecruitmentLine =
+    `Expected recruitment: ${Math.round(s.netAvailablePatients * s.assumedConsentRate).toLocaleString()} ` +
+    `(${(Math.round(s.assumedConsentRate * 1000) / 10).toFixed(1)}% assumed consent rate)`;
   const primary = metric === "net" ? netLine : grossLine;
   const secondary = metric === "net" ? grossLine : netLine;
   const riskLine = s.riskScore !== null ? `${s.riskScore}/100` : "N/A";
@@ -83,6 +89,8 @@ function buildPopupHtml(s: MapSiteRow, metric: "gross" | "net"): string {
       <div>${location}</div>
       <div><strong>${primary}</strong></div>
       <div>${secondary}</div>
+      <div>${enrolledLine}</div>
+      <div>${expectedRecruitmentLine}</div>
       <div>Risk score: ${riskLine}</div>
       <div class="site-popup-rationale">${escapeHtml(s.riskRationale)}</div>
       ${s.patientSegments ? `<div class="site-popup-caveat">${escapeHtml(segmentsLine(s))}</div>` : ""}
@@ -192,7 +200,10 @@ function sitesToCsv(sites: MapSiteRow[]): string {
     "State",
     "Country",
     "Gross Eligible Patients",
+    "Already Enrolled Patients",
     "Net Available Patients",
+    "Assumed Consent/Conversion Rate (%)",
+    "Expected Recruitment",
     "Newly Diagnosed (illustrative)",
     "Non-Responder (illustrative)",
     "Stable On Treatment (illustrative)",
@@ -207,7 +218,10 @@ function sitesToCsv(sites: MapSiteRow[]): string {
     s.state ?? "",
     s.country ?? "",
     s.grossEligiblePatients,
+    s.alreadyEnrolledPatients,
     s.netAvailablePatients,
+    Math.round(s.assumedConsentRate * 1000) / 10,
+    Math.round(s.netAvailablePatients * s.assumedConsentRate),
     s.patientSegments?.newlyDiagnosed ?? "",
     s.patientSegments?.nonResponder ?? "",
     s.patientSegments?.stableOnTreatment ?? "",
@@ -285,6 +299,111 @@ export default function SiteMapView({
   const [combineResult, setCombineResult] = useState<CombinedCatchmentResponse | null>(null);
   const [combineLoading, setCombineLoading] = useState(false);
   const [combineError, setCombineError] = useState<string | null>(null);
+
+  // Inclusion/exclusion-criteria filter dropdown on the "Net Available"
+  // column — Srikanth's ask, made interactive: real disclosed eligibility
+  // criteria, each with an LLM-estimated "% of the general indication
+  // population this criterion alone would exclude" (see backend
+  // pipeline/eligibilityFilters.ts). Toggling checkboxes recomputes an
+  // illustrative adjusted Net Available figure client-side — this is a
+  // simplification (criteria are assumed independent, which real ones
+  // rarely are) layered on top of an already-synthetic base population, so
+  // it is always labeled illustrative, never shown as the "real" number.
+  const [eligFilters, setEligFilters] = useState<EligibilityFilterSetResponse | null>(null);
+  const [eligFiltersLoading, setEligFiltersLoading] = useState(false);
+  const [eligFiltersError, setEligFiltersError] = useState<string | null>(null);
+  const [selectedFilterIds, setSelectedFilterIds] = useState<Set<string>>(new Set());
+  const [filterPanelOpen, setFilterPanelOpen] = useState(false);
+
+  // Requirement #1 ("Eliminate Patients Already Enrolled in Another Trial"):
+  // checked (default) = Net Available column shows netAvailablePatients,
+  // i.e. eligible patients MINUS an estimated already-enrolled-elsewhere
+  // share. Unchecked = shows grossEligiblePatients instead, i.e. eligible
+  // patients INCLUDING those already enrolled elsewhere — lets a stakeholder
+  // compare the strict recruitment scenario against the total eligible pool.
+  const [excludeEnrolled, setExcludeEnrolled] = useState(true);
+
+  useEffect(() => {
+    if (!indication) {
+      setEligFilters(null);
+      return;
+    }
+    setEligFiltersLoading(true);
+    setEligFiltersError(null);
+    setSelectedFilterIds(new Set());
+    fetchEligibilityFilters(indication)
+      .then(setEligFilters)
+      .catch((err) => {
+        setEligFiltersError((err as Error).message);
+        setEligFilters(null);
+      })
+      .finally(() => setEligFiltersLoading(false));
+  }, [indication]);
+
+  function toggleEligFilter(id: string) {
+    setSelectedFilterIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  const allFilterIds = eligFilters?.filters.map((f) => f.id) ?? [];
+  const allFiltersSelected =
+    allFilterIds.length > 0 && allFilterIds.every((id) => selectedFilterIds.has(id));
+
+  function toggleSelectAllFilters() {
+    setSelectedFilterIds(allFiltersSelected ? new Set() : new Set(allFilterIds));
+  }
+
+  const activeEligFilters = useMemo(
+    () => (eligFilters?.filters ?? []).filter((f) => selectedFilterIds.has(f.id)),
+    [eligFilters, selectedFilterIds],
+  );
+
+  // Compounds each selected filter's estimated retained fraction
+  // (1 - excluded%) together — an illustrative simplification that treats
+  // criteria as independent; real eligibility criteria overlap (e.g. a
+  // patient excluded for age is often also excluded for a related lab
+  // value), so this is a reasonable upper bound on the true adjusted count,
+  // not a precise joint estimate.
+  const combinedRetainFraction = useMemo(
+    () =>
+      activeEligFilters.reduce(
+        (acc, f) => acc * (1 - f.estimatedExcludedPercent / 100),
+        1,
+      ),
+    [activeEligFilters],
+  );
+
+  /** netAvailablePatients when excludeEnrolled is checked (the strict, "available now" scenario), or grossEligiblePatients (available + already enrolled) when unchecked. */
+  function baseAvailable(site: MapSiteRow): number {
+    return excludeEnrolled ? site.netAvailablePatients : site.grossEligiblePatients;
+  }
+
+  function adjustedNetAvailable(site: MapSiteRow): number {
+    const base = baseAvailable(site);
+    if (activeEligFilters.length === 0) return base;
+    return Math.max(0, Math.round(base * combinedRetainFraction));
+  }
+
+  /**
+   * "Eligible patients ≠ enrolled patients" (100 eligible ≠ 100 enrolled):
+   * applies this site's own assumed consent/conversion rate to whatever's
+   * currently shown in the Available column (already reflecting the
+   * excludeEnrolled toggle and any active eligibility filters above), rather
+   * than treating the whole available population as recruitable. The rate
+   * itself is a per-site SYNTHETIC figure (data/syntheticSiteCost.ts's
+   * syntheticConsentRateFor on the backend) — no live or LLM source
+   * discloses a real per-site screening-to-enrollment conversion rate.
+   */
+  function expectedRecruitment(site: MapSiteRow): number {
+    return Math.max(
+      0,
+      Math.round(adjustedNetAvailable(site) * site.assumedConsentRate),
+    );
+  }
 
   function toggleCombine(siteId: string) {
     setCombineResult(null);
@@ -777,6 +896,46 @@ export default function SiteMapView({
               </button>
             </div>
 
+            <label
+              title="Uncheck to compare against the total eligible population, including patients already enrolled in another trial for this indication"
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 8,
+                fontSize: 13,
+                margin: "8px 0",
+              }}
+            >
+              <input
+                type="checkbox"
+                checked={excludeEnrolled}
+                onChange={(e) => setExcludeEnrolled(e.target.checked)}
+              />
+              Exclude patients already enrolled in another trial
+              {(() => {
+                const totalAvailable = sortedSites.reduce(
+                  (sum, s) => sum + adjustedNetAvailable(s),
+                  0,
+                );
+                const totalEnrolled = sortedSites.reduce(
+                  (sum, s) => sum + s.alreadyEnrolledPatients,
+                  0,
+                );
+                return (
+                  <>
+                    <span style={{ color: "#666", fontWeight: 600 }}>
+                      {excludeEnrolled
+                        ? `Available patients: ${totalAvailable.toLocaleString()}`
+                        : `Available + enrolled: ${totalAvailable.toLocaleString()}`}
+                    </span>
+                    <span style={{ color: "#888" }}>
+                      (already enrolled elsewhere: {totalEnrolled.toLocaleString()})
+                    </span>
+                  </>
+                );
+              })()}
+            </label>
+
             <p className="section-hint">
               Check 2 or more sites below to see how many patients they
               actually reach TOGETHER — nearby sites often share the same
@@ -791,12 +950,13 @@ export default function SiteMapView({
               >
                 <colgroup>
                   <col style={{ width: "4%" }} />
-                  <col style={{ width: "26%" }} />
-                  <col style={{ width: "16%" }} />
-                  <col style={{ width: "13%" }} />
-                  <col style={{ width: "13%" }} />
-                  <col style={{ width: "16%" }} />
+                  <col style={{ width: "22%" }} />
+                  <col style={{ width: "14%" }} />
                   <col style={{ width: "12%" }} />
+                  <col style={{ width: "12%" }} />
+                  <col style={{ width: "12%" }} />
+                  <col style={{ width: "13%" }} />
+                  <col style={{ width: "11%" }} />
                 </colgroup>
                 <thead>
                   <tr>
@@ -819,8 +979,176 @@ export default function SiteMapView({
                     >
                       Gross Eligible{sortArrow("gross")}
                     </th>
-                    <th className="sortable" onClick={() => toggleSort("net")}>
-                      Net Available{sortArrow("net")}
+                    <th
+                      style={{ position: "relative", overflow: "visible" }}
+                      title={
+                        excludeEnrolled
+                          ? "Eligible patients minus an estimated already-enrolled-elsewhere share"
+                          : "Eligible patients including those already enrolled in another trial elsewhere"
+                      }
+                    >
+                      {excludeEnrolled ? "Available" : "Available + Enrolled"}{" "}
+                      <button
+                        type="button"
+                        className="net-available-filter-btn"
+                        title="Filter by inclusion/exclusion criteria"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setFilterPanelOpen((v) => !v);
+                        }}
+                        style={{
+                          border: "none",
+                          background: activeEligFilters.length > 0 ? "#2f7d4f" : "#e3e7f0",
+                          color: activeEligFilters.length > 0 ? "#fff" : "#333",
+                          borderRadius: 4,
+                          padding: "1px 6px",
+                          fontSize: 11,
+                          cursor: "pointer",
+                        }}
+                      >
+                        ▾{activeEligFilters.length > 0 ? ` ${activeEligFilters.length}` : ""}
+                      </button>
+
+                      {filterPanelOpen && (
+                        <div
+                          onClick={(e) => e.stopPropagation()}
+                          style={{
+                            position: "absolute",
+                            top: "100%",
+                            left: 0,
+                            zIndex: 1000,
+                            width: 320,
+                            maxHeight: 320,
+                            overflowY: "auto",
+                            background: "#fff",
+                            border: "1px solid #d7dbe6",
+                            borderRadius: 6,
+                            boxShadow: "0 6px 20px rgba(0,0,0,0.15)",
+                            padding: 8,
+                            textAlign: "left",
+                            fontWeight: 400,
+                            textTransform: "none",
+                          }}
+                        >
+                          {eligFiltersLoading && (
+                            <div style={{ fontSize: 12, padding: 4 }}>Loading…</div>
+                          )}
+                          {eligFiltersError && (
+                            <div style={{ fontSize: 12, padding: 4, color: "#b3261e" }}>
+                              {eligFiltersError}
+                            </div>
+                          )}
+                          {eligFilters?.warning && (
+                            <div style={{ fontSize: 11.5, padding: 4, color: "#8a6d00" }}>
+                              {eligFilters.warning}
+                            </div>
+                          )}
+
+                          {eligFilters && eligFilters.filters.length > 0 && (
+                            <>
+                              <label
+                                style={{
+                                  display: "flex",
+                                  alignItems: "center",
+                                  gap: 8,
+                                  fontSize: 12.5,
+                                  padding: "4px 4px",
+                                  borderBottom: "1px solid #eee",
+                                  marginBottom: 4,
+                                }}
+                              >
+                                <input
+                                  type="checkbox"
+                                  checked={allFiltersSelected}
+                                  onChange={toggleSelectAllFilters}
+                                />
+                                <strong>(Select All)</strong>
+                              </label>
+
+                              {eligFilters.filters.map((f) => (
+                                <label
+                                  key={f.id}
+                                  title={`${f.type} — ~${f.estimatedExcludedPercent}% of the general population excluded (AI-estimated)`}
+                                  style={{
+                                    display: "flex",
+                                    alignItems: "center",
+                                    gap: 8,
+                                    fontSize: 12.5,
+                                    padding: "3px 4px",
+                                  }}
+                                >
+                                  <input
+                                    type="checkbox"
+                                    checked={selectedFilterIds.has(f.id)}
+                                    onChange={() => toggleEligFilter(f.id)}
+                                  />
+                                  <span style={{ flex: 1 }}>{f.label}</span>
+                                  <span style={{ color: "#888", fontSize: 11 }}>
+                                    ~{f.estimatedExcludedPercent}%
+                                  </span>
+                                </label>
+                              ))}
+
+                              <div
+                                style={{
+                                  display: "flex",
+                                  justifyContent: "space-between",
+                                  marginTop: 8,
+                                  paddingTop: 6,
+                                  borderTop: "1px solid #eee",
+                                }}
+                              >
+                                <button
+                                  type="button"
+                                  className="map-csv-btn"
+                                  onClick={() => setSelectedFilterIds(new Set())}
+                                  disabled={activeEligFilters.length === 0}
+                                >
+                                  Clear
+                                </button>
+                                <button
+                                  type="button"
+                                  className="predict-btn"
+                                  onClick={() => setFilterPanelOpen(false)}
+                                >
+                                  Done
+                                </button>
+                              </div>
+
+                              {eligFilters.criteriaText && (
+                                <details style={{ marginTop: 6 }}>
+                                  <summary style={{ cursor: "pointer", fontSize: 11, color: "#666" }}>
+                                    View full raw criteria text
+                                  </summary>
+                                  <pre
+                                    style={{
+                                      whiteSpace: "pre-wrap",
+                                      marginTop: 6,
+                                      fontFamily: "inherit",
+                                      fontSize: 11.5,
+                                      maxHeight: 160,
+                                      overflowY: "auto",
+                                    }}
+                                  >
+                                    {eligFilters.criteriaText}
+                                  </pre>
+                                </details>
+                              )}
+                            </>
+                          )}
+
+                          {eligFilters && eligFilters.filters.length === 0 && !eligFiltersLoading && (
+                            <div style={{ fontSize: 12, padding: 4, color: "#888" }}>
+                              No filterable criteria available for this indication.
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </th>
+                    <th
+                      title="Available x this site's own synthetic consent/conversion rate — 100 eligible patients doesn't mean 100 enrolled"
+                    >
+                      Expected Recruitment
                     </th>
                     <th title="Illustrative split of Net Available — not real claims data">
                       Segments (illustrative)
@@ -875,7 +1203,37 @@ export default function SiteMapView({
                         {location}
                       </td>
                       <td>{s.grossEligiblePatients.toLocaleString()}</td>
-                      <td>{s.netAvailablePatients.toLocaleString()}</td>
+                      <td
+                        title={
+                          activeEligFilters.length > 0
+                            ? `${baseAvailable(s).toLocaleString()} before filters — adjusted using ${activeEligFilters.length} selected criterion/criteria (illustrative estimate, not exact)`
+                            : `Already enrolled elsewhere: ${s.alreadyEnrolledPatients.toLocaleString()}`
+                        }
+                      >
+                        {adjustedNetAvailable(s).toLocaleString()}
+                        {activeEligFilters.length > 0 && (
+                          <span
+                            style={{
+                              display: "block",
+                              fontSize: 11,
+                              color: "#888",
+                              textDecoration: "line-through",
+                            }}
+                          >
+                            {baseAvailable(s).toLocaleString()}
+                          </span>
+                        )}
+                      </td>
+                      <td
+                        title={`${(Math.round(s.assumedConsentRate * 1000) / 10).toFixed(1)}% assumed consent/conversion rate (synthetic, varies per site) applied to the Available figure above`}
+                      >
+                        {expectedRecruitment(s).toLocaleString()}
+                        <span
+                          style={{ display: "block", fontSize: 11, color: "#888" }}
+                        >
+                          {(Math.round(s.assumedConsentRate * 1000) / 10).toFixed(1)}% consent rate
+                        </span>
+                      </td>
                       <td
                         title={s.patientSegments ? segmentsLine(s) : "n/a"}
                         style={{
@@ -901,7 +1259,7 @@ export default function SiteMapView({
                   })}
                   {sortedSites.length === 0 && (
                     <tr>
-                      <td colSpan={7} className="predict-placeholder">
+                      <td colSpan={8} className="predict-placeholder">
                         No sites match "{search}".
                       </td>
                     </tr>
@@ -909,6 +1267,71 @@ export default function SiteMapView({
                 </tbody>
               </table>
             </div>
+
+            {(() => {
+              const sampleSite = allSites.find((s) => s.siteId === selectedSiteId);
+              return (
+                <details className="card" style={{ marginTop: 12, padding: 12 }}>
+                  <summary style={{ cursor: "pointer", fontWeight: 600, fontSize: 13 }}>
+                    View sample patients{sampleSite ? ` — ${sampleSite.siteName}` : ""}
+                  </summary>
+                  {!sampleSite && (
+                    <p className="section-hint" style={{ marginTop: 8 }}>
+                      Click a site row above to view a sample of its
+                      synthetic, patient-level records.
+                    </p>
+                  )}
+                  {sampleSite && (
+                    <>
+                      <p className="section-hint" style={{ marginTop: 8 }}>
+                        Requirement #4 demonstration: {sampleSite.patientSample.length}{" "}
+                        illustrative synthetic patient records for {sampleSite.siteName}
+                        . "Trial Status" is fabricated in the same Available/
+                        Enrolled ratio as this site's real Already
+                        Enrolled/Available counts above — not real patient
+                        data.
+                      </p>
+                      <div className="table-scroll">
+                        <table>
+                          <thead>
+                            <tr>
+                              <th>Patient ID</th>
+                              <th>Disease</th>
+                              <th>Age</th>
+                              <th>Kidney Disease</th>
+                              <th>Liver Disease</th>
+                              <th>Heart Disease</th>
+                              <th>Diabetes</th>
+                              <th>Trial Status</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {sampleSite.patientSample.map((p) => (
+                              <tr key={p.patientId}>
+                                <td>{p.patientId}</td>
+                                <td>{p.disease}</td>
+                                <td>{p.age}</td>
+                                <td>{p.kidneyDisease ? "Yes" : "No"}</td>
+                                <td>{p.liverDisease ? "Yes" : "No"}</td>
+                                <td>{p.heartDisease ? "Yes" : "No"}</td>
+                                <td>{p.diabetes ? "Yes" : "No"}</td>
+                                <td>
+                                  <span
+                                    className={`badge ${p.trialStatus === "Available" ? "low" : "medium"}`}
+                                  >
+                                    {p.trialStatus}
+                                  </span>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </>
+                  )}
+                </details>
+              );
+            })()}
 
             {combineIds.size > 0 && (
               <div className="card" style={{ marginTop: 12, padding: 12 }}>
@@ -1007,15 +1430,30 @@ export default function SiteMapView({
               this way). Patient population within the radius comes from a
               synthetic dataset — no live public source publishes real
               population by postal area for arbitrary countries — combined
-              with an AI-estimated disease prevalence rate. "Net Available"
-              subtracts an estimated already-enrolled share (from real
+              with an AI-estimated disease prevalence rate. The "Exclude
+              patients already enrolled in another trial" checkbox above the
+              table toggles between "Available" (eligible patients minus an
+              estimated already-enrolled-elsewhere share, from real
               completed-trial benchmarks when available, else a fixed
-              baseline). The Segments column further splits Net Available into
-              illustrative treatment-stage buckets (newly-diagnosed /
-              non-responder / stable) using a fixed assumption, not real
-              claims data — see each site's popup for the full breakdown. Risk
-              scores are AI-estimated — no public per-site clinical-trial risk
-              database was found.
+              baseline) and "Available + Enrolled" (the full eligible
+              population). A small illustrative sample of synthetic
+              patient-level records per site (Patient ID, age, named
+              comorbidity flags, Available/Enrolled status) is available via
+              "View sample patients" below the table — fabricated data
+              standing in for real per-patient EHR/claims/CTMS records, which
+              have no live public source. "Expected Recruitment" applies each
+              site's own synthetic consent/conversion rate (shown under the
+              number) to the Available figure — eligible patients don't all
+              convert to enrolled patients, so this is Available × rate, not
+              the full Available population. No live or LLM source discloses
+              a real per-site conversion rate, so this rate is a fabricated,
+              per-site variation around the app's configured default, not a
+              measured figure. The Segments column further splits
+              Available into illustrative treatment-stage buckets
+              (newly-diagnosed / non-responder / stable) using a fixed
+              assumption, not real claims data — see each site's popup for
+              the full breakdown. Risk scores are AI-estimated — no public
+              per-site clinical-trial risk database was found.
             </p>
           </>
         )}

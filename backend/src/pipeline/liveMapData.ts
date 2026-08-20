@@ -23,6 +23,11 @@ import { buildLiveRegionRow } from "./liveRegionMetrics.js";
 import { estimateSiteGeoRisk, llmStatus } from "../llm/client.js";
 import { REGION_DEFINITIONS } from "../data/regionMap.js";
 import { config } from "../config.js";
+import {
+  syntheticSiteCostFor,
+  syntheticConsentRateFor,
+} from "../data/syntheticSiteCost.js";
+import { buildSyntheticPatientSample } from "../data/syntheticPatients.js";
 
 function regionLabelForCountry(country: string): string {
   const match = REGION_DEFINITIONS.find(
@@ -250,6 +255,49 @@ export async function buildLiveSiteMapData(
         Math.round(grossEligiblePatients * (1 - recruitmentRate)),
       );
 
+      const siteId = siteIdFor(f.facility ?? "unknown", f.city, country);
+      const siteCost = syntheticSiteCostFor(siteId, country);
+
+      // Second, distinct haircut from recruitmentRate above: netAvailablePatients
+      // already estimates "how many eligible patients aren't already absorbed
+      // by other trials" — this answers "of those, how many will actually
+      // consent to enroll in THIS trial once approached," which no live or
+      // LLM source discloses (see config.siteCombination.assumedConsentRate's
+      // doc comment). Previously this was one flat rate applied identically
+      // to every site, which looked suspiciously uniform across a whole
+      // results table. This now generates a deterministic per-site VARIATION
+      // around that same configured center — still fabricated (no live/LLM
+      // source exists for a real per-site consent rate either), but no
+      // longer an obviously-repeated constant. See
+      // data/syntheticSiteCost.ts's syntheticConsentRateFor for the range.
+      const assumedConsentRate = syntheticConsentRateFor(
+        siteId,
+        country,
+        config.siteCombination.assumedConsentRate,
+      );
+      const recruitablePatients = Math.max(
+        0,
+        Math.round(netAvailablePatients * assumedConsentRate),
+      );
+
+      // Requirement #1: "eligible − already enrolled = available," made
+      // explicit rather than left implicit inside netAvailablePatients.
+      // Derived arithmetically (not re-estimated) so the three numbers
+      // always reconcile exactly: gross = alreadyEnrolled + netAvailable.
+      const alreadyEnrolledPatients = Math.max(
+        0,
+        grossEligiblePatients - netAvailablePatients,
+      );
+      // Requirement #4: small illustrative per-site patient-record sample,
+      // whose Available/Enrolled mix matches this exact recruitmentRate —
+      // see data/syntheticPatients.ts for why this is a sample, not the
+      // full population.
+      const patientSample = buildSyntheticPatientSample(
+        siteId,
+        params.indication,
+        recruitmentRate,
+      );
+
       let riskScore: number | null = null;
       let riskLevel: MapSiteRow["riskLevel"] = "Unknown";
       let riskRationale =
@@ -272,7 +320,7 @@ export async function buildLiveSiteMapData(
       }
 
       return {
-        siteId: siteIdFor(f.facility ?? "unknown", f.city, country),
+        siteId,
         siteName: f.facility ?? "Unknown facility",
         city: f.city,
         state: f.state,
@@ -288,6 +336,11 @@ export async function buildLiveSiteMapData(
         grossEligiblePatients,
         netAvailablePatients,
         recruitmentRateAssumed: Math.round(recruitmentRate * 1000) / 1000,
+        recruitablePatients,
+        assumedConsentRate,
+        siteCost,
+        alreadyEnrolledPatients,
+        patientSample,
         riskScore,
         riskLevel,
         riskRationale,
@@ -301,6 +354,9 @@ export async function buildLiveSiteMapData(
 
   warnings.push(
     "Patient-segment breakdown (newly-diagnosed / non-responder / stable-on-treatment) is an illustrative fixed split, not derived from real claims/EHR data — no live source distinguishes these groups per site at this granularity.",
+  );
+  warnings.push(
+    "\"Already Enrolled\" and the per-site patient-record sample are synthetic — no live source discloses real per-patient trial-enrollment status. The sample's Available/Enrolled mix matches each site's already-enrolled-elsewhere rate, but it is an illustrative 25-record sample, not a census of real patients.",
   );
 
   const approxDistanceCount = sites.filter(

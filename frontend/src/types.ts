@@ -89,6 +89,7 @@ export interface RiskDriver {
   status: string;
   active: boolean;
   derivation: string;
+  standardReference?: string | null;
 }
 
 export interface RiskExplanation {
@@ -134,6 +135,7 @@ export interface RiskRecord {
   owner: string;
   riskScore: number;
   dataSource?: "excel" | "live" | "llm-estimated";
+  standardReference?: string | null;
 }
 
 export interface RiskAssessmentRow {
@@ -272,6 +274,8 @@ export interface LiveFacilityRow {
   state: string | null;
   country: string | null;
   status: string | null;
+  /** When the sponsor last updated this trial's record on ClinicalTrials.gov. */
+  lastUpdatePostDate: string | null;
 }
 
 export interface LiveTrialBenchmark {
@@ -286,6 +290,8 @@ export interface LiveTrialLandscapeResponse {
   country: string | null;
   activeCompetingTrials: number | null;
   facilities: LiveFacilityRow[];
+  /** Which OverallStatus values currently count toward activeCompetingTrials — see backend config.ts's competingTrials.statuses. Use this to badge each facility row as counted/not-counted rather than hardcoding the list here. */
+  competingStatuses: string[];
   benchmark: LiveTrialBenchmark;
   fetchedAt: string;
   warnings: string[];
@@ -324,6 +330,52 @@ export interface MapSiteRow {
     | "approximate-haversine"
     | "mixed"
     | "none";
+  /**
+   * netAvailablePatients further reduced by this site's own assumedConsentRate
+   * below — a second, distinct haircut from recruitmentRateAssumed above.
+   * This is the number the Site Combination Planner accumulates toward a
+   * target enrollment, not netAvailablePatients directly (100 eligible ≠
+   * 100 enrolled).
+   */
+  recruitablePatients: number;
+  /** Per-site SYNTHETIC consent/conversion rate — a deterministic variation around the app's configured center (backend config.siteCombination.assumedConsentRate), not one flat rate applied identically to every site. See backend data/syntheticSiteCost.ts's syntheticConsentRateFor. */
+  assumedConsentRate: number;
+  /** Deterministic SYNTHETIC per-site cost figure — see backend data/syntheticSiteCost.ts for why no live/LLM source exists for this. */
+  siteCost: SyntheticSiteCost;
+  /**
+   * grossEligiblePatients minus netAvailablePatients — the "already enrolled
+   * in another trial for this indication" figure from requirement #1, made
+   * explicit as its own number (it was always folded silently into
+   * netAvailablePatients before). Always reconciles exactly:
+   * grossEligiblePatients = alreadyEnrolledPatients + netAvailablePatients.
+   */
+  alreadyEnrolledPatients: number;
+  /**
+   * Requirement #4: a small (25-row), deterministic, illustrative SAMPLE of
+   * individual synthetic patient records for this site — every value
+   * fabricated, standing in for real per-patient EHR/claims/CTMS data that
+   * has no live public source. See backend data/syntheticPatients.ts.
+   */
+  patientSample: SyntheticPatientRecord[];
+}
+
+/** See MapSiteRow.siteCost. */
+export interface SyntheticSiteCost {
+  baseCostUsd: number;
+  perPatientCostUsd: number;
+  costSource: "synthetic";
+}
+
+/** See MapSiteRow.patientSample. */
+export interface SyntheticPatientRecord {
+  patientId: string;
+  disease: string;
+  age: number;
+  kidneyDisease: boolean;
+  liverDisease: boolean;
+  heartDisease: boolean;
+  diabetes: boolean;
+  trialStatus: "Available" | "Enrolled";
 }
 
 export interface PatientSegments {
@@ -357,25 +409,74 @@ export interface CombinedCatchmentResponse {
 export interface SiteCombinationSelectedSite {
   siteId: string;
   siteName: string;
-  netAvailablePatients: number;
+  /** How many of this site's recruitable patients this strategy actually uses — may be less than recruitablePatientsAvailable when only a partial allocation is needed to reach the target. */
+  patientsTaken: number;
+  recruitablePatientsAvailable: number;
   riskScore: number | null;
+  estimatedCostUsd: number | null;
 }
 
 export interface SiteCombinationStrategyResult {
-  strategy: "lowest-risk-first" | "lowest-cost-first";
+  strategy:
+    | "lowest-risk-first"
+    | "lowest-cost-first"
+    | "balanced"
+    | "highest-capacity-first";
   label: string;
   sites: SiteCombinationSelectedSite[];
   totalPatients: number;
   totalEstimatedCostUsd: number | null;
   averageRiskScore: number | null;
+  /** Sum, across every selected site, of (patientsTaken * riskScore / 100) — an expected count of at-risk patient-equivalents for this whole combination, not just a plain average of each site's score. Null if any selected site has no riskScore. */
+  portfolioRiskScore: number | null;
   meetsTarget: boolean;
 }
 
 export interface SiteCombinationResponse {
   targetEnrollment: number;
   avgCostPerPatientUsd: number | null;
+  /** The app's configured CENTER consent-rate assumption — each site's own recruitablePatients actually used a per-site synthetic rate varying around this center (see MapSiteRow.assumedConsentRate), not this single flat number applied identically everywhere. */
+  assumedConsentRate: number;
   strategies: SiteCombinationStrategyResult[];
   recommendedStrategy: SiteCombinationStrategyResult["strategy"] | null;
   method: string;
   warnings: string[];
+}
+
+export interface OutreachDraft {
+  siteId: string;
+  siteName: string;
+  city: string | null;
+  country: string | null;
+  /** SYNTHETIC placeholder address — fabricated, not a real contact, and never actually sent to. */
+  contactEmail: string;
+  contactEmailSource: "synthetic";
+  subject: string;
+  body: string;
+}
+
+export interface OutreachDraftResponse {
+  drafts: OutreachDraft[];
+  warnings: string[];
+}
+
+export interface EligibilityFilterOption {
+  id: string;
+  label: string;
+  type: "inclusion" | "exclusion";
+  /** LLM-estimated % of the general indication population this single criterion alone would exclude — not cumulative with other filters, not a measured fact. */
+  estimatedExcludedPercent: number;
+}
+
+export interface EligibilityFilterSetResponse {
+  indication: string;
+  sourceNctId: string | null;
+  criteriaText: string | null;
+  sex: string | null;
+  minimumAge: string | null;
+  maximumAge: string | null;
+  healthyVolunteers: boolean | null;
+  filters: EligibilityFilterOption[];
+  filtersSource: "llm-estimated" | "unavailable";
+  warning?: string;
 }

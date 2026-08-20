@@ -1,4 +1,6 @@
 import type { ScoredSite, ExtendedEvaluationRow } from "./pipeline/scoring.js";
+import type { SyntheticSiteCost } from "./data/syntheticSiteCost.js";
+import type { SyntheticPatientRecord } from "./data/syntheticPatients.js";
 
 export interface RegionRow {
   Region: string;
@@ -24,6 +26,8 @@ export interface LiveFacilityRow {
   state: string | null;
   country: string | null;
   status: string | null;
+  /** When the sponsor last updated this trial's record on ClinicalTrials.gov (protocolSection.statusModule.lastUpdatePostDateStruct.date). */
+  lastUpdatePostDate: string | null;
 }
 
 export interface LiveTrialBenchmark {
@@ -39,6 +43,8 @@ export interface LiveTrialLandscapeResponse {
   country: string | null;
   activeCompetingTrials: number | null;
   facilities: LiveFacilityRow[];
+  /** Which OverallStatus values are currently configured to count toward activeCompetingTrials — see config.ts's competingTrials.statuses. Sent so the UI can badge each facility row as counted/not-counted without duplicating this business rule on the frontend. */
+  competingStatuses: string[];
   benchmark: LiveTrialBenchmark;
   fetchedAt: string;
   warnings: string[];
@@ -94,6 +100,53 @@ export interface MapSiteRow {
     | "approximate-haversine"
     | "mixed"
     | "none";
+  /**
+   * netAvailablePatients further reduced by this site's own assumedConsentRate
+   * — a second, distinct haircut from recruitmentRateAssumed above.
+   * netAvailablePatients already estimates "how many eligible patients
+   * aren't already absorbed by other trials"; this answers a different
+   * question — "of those, how many will actually consent to enroll in THIS
+   * trial once approached" — which no live or LLM source discloses. This is
+   * the number the Site Combination Planner accumulates toward a target
+   * enrollment, not netAvailablePatients directly (100 eligible ≠ 100
+   * enrolled).
+   */
+  recruitablePatients: number;
+  /**
+   * Per-site SYNTHETIC consent/conversion rate (see
+   * data/syntheticSiteCost.ts's syntheticConsentRateFor) — a deterministic
+   * variation around config.siteCombination.assumedConsentRate, the app's
+   * configured center value. Not one flat rate applied identically to every
+   * site: no live or LLM source discloses a real per-site
+   * screening-to-enrollment conversion rate, so rather than showing an
+   * obviously-uniform percentage on every row, this fabricates a
+   * plausible, stable-per-site spread around the configured center.
+   */
+  assumedConsentRate: number;
+  /** Deterministic SYNTHETIC per-site cost figure — see data/syntheticSiteCost.ts for why no live/LLM source exists for this. */
+  siteCost: SyntheticSiteCost;
+  /**
+   * Srikanth's requirement #1 ("Eliminate Patients Already Enrolled in
+   * Another Trial"), made explicit: grossEligiblePatients minus
+   * netAvailablePatients, i.e. the same already-enrolled-elsewhere haircut
+   * that was always folded into netAvailablePatients, now surfaced as its
+   * own labeled number so a UI toggle can show "Available" (netAvailablePatients)
+   * vs. "Available + Enrolled" (grossEligiblePatients) side by side. Derived
+   * arithmetically (gross - net), not independently estimated, so the three
+   * numbers always reconcile exactly: grossEligiblePatients =
+   * alreadyEnrolledPatients + netAvailablePatients.
+   */
+  alreadyEnrolledPatients: number;
+  /**
+   * Requirement #4 ("Update Synthetic Patient Data"): a small (25-row),
+   * deterministic, illustrative SAMPLE of individual synthetic patient
+   * records for this site — Patient ID, disease, age, named comorbidity
+   * flags, and a fabricated Trial Status ("Available" | "Enrolled"). See
+   * data/syntheticPatients.ts for why this is a sample rather than one row
+   * per real eligible patient, and why every value here is fabricated, not
+   * derived from any real EHR/claims/CTMS source.
+   */
+  patientSample: SyntheticPatientRecord[];
 }
 
 /** See MapSiteRow.patientSegments. */
@@ -140,33 +193,81 @@ export interface CombinedCatchmentResponse {
 export interface SiteCombinationRequestSite {
   siteId: string;
   siteName: string;
-  netAvailablePatients: number;
+  city?: string | null;
+  country?: string | null;
+  /**
+   * How many patients this site could realistically contribute toward the
+   * target — already netted for competing/already-enrolled patients AND for
+   * the assumed consent rate (MapSiteRow.recruitablePatients on the Site Map
+   * response). Older callers passing the pre-consent-rate
+   * `netAvailablePatients` figure still work (see the controller's fallback),
+   * but will overstate what a site can realistically deliver.
+   */
+  recruitablePatients: number;
   riskScore: number | null;
+  /** Per-site SYNTHETIC cost (see data/syntheticSiteCost.ts) — optional; when omitted the optimizer falls back to the single region-wide avgCostPerPatientUsd for that site. */
+  baseCostUsd?: number | null;
+  perPatientCostUsd?: number | null;
 }
 
 export interface SiteCombinationSelectedSite {
   siteId: string;
   siteName: string;
-  netAvailablePatients: number;
+  /** How many of this site's recruitable patients this strategy actually uses — may be less than recruitablePatientsAvailable when only a partial allocation is needed to reach the target (Srikanth: "some sites may not have enough population, so you have to pick maybe 5 from that site"). */
+  patientsTaken: number;
+  recruitablePatientsAvailable: number;
   riskScore: number | null;
+  estimatedCostUsd: number | null;
 }
 
 export interface SiteCombinationStrategyResult {
-  strategy: "lowest-risk-first" | "lowest-cost-first";
+  strategy:
+    | "lowest-risk-first"
+    | "lowest-cost-first"
+    | "balanced"
+    | "highest-capacity-first";
   label: string;
   sites: SiteCombinationSelectedSite[];
   totalPatients: number;
   totalEstimatedCostUsd: number | null;
   averageRiskScore: number | null;
+  /**
+   * Sum, across every selected site, of (patientsTaken * riskScore / 100) —
+   * Srikanth's "every patient comes with a risk... keep adding all that risk
+   * for all the 300 patients, your net risk should be the lowest" idea,
+   * expressed as an expected count of at-risk patient-equivalents rather
+   * than a plain average of each site's own score. null if any selected
+   * site has no riskScore.
+   */
+  portfolioRiskScore: number | null;
   meetsTarget: boolean;
 }
 
 export interface SiteCombinationResponse {
   targetEnrollment: number;
   avgCostPerPatientUsd: number | null;
+  /** The app's CONFIGURED CENTER consent-rate assumption (config.siteCombination.assumedConsentRate) — each site's own recruitablePatients actually used a per-site SYNTHETIC rate varying around this center (see MapSiteRow.assumedConsentRate / data/syntheticSiteCost.ts's syntheticConsentRateFor), not this single flat number applied identically to every site. Shown here as the reference center value, not the literal per-site rate. */
+  assumedConsentRate: number;
   strategies: SiteCombinationStrategyResult[];
   recommendedStrategy: SiteCombinationStrategyResult["strategy"] | null;
   method: string;
+  warnings: string[];
+}
+
+export interface OutreachDraft {
+  siteId: string;
+  siteName: string;
+  city: string | null;
+  country: string | null;
+  /** SYNTHETIC placeholder address — ClinicalTrials.gov only sometimes discloses a central sponsor contact and never a reliable per-facility email; this is fabricated, not a real address, and this app never actually sends anything to it. */
+  contactEmail: string;
+  contactEmailSource: "synthetic";
+  subject: string;
+  body: string;
+}
+
+export interface OutreachDraftResponse {
+  drafts: OutreachDraft[];
   warnings: string[];
 }
 
@@ -187,6 +288,22 @@ export interface TrialRequirementRow {
   "Max Acceptable Screen Failure (%)": number | null;
   "Accreditation Required": string;
   "Required Infrastructure": string;
+  /**
+   * Real, disclosed eligibilityModule fields from one representative trial
+   * for this indication (see getEligibilityCriteriaSample in
+   * ctgov.client.ts) — informational only. NOT applied as a filter on the
+   * synthetic eligible-patient counts shown elsewhere (Site Map, region
+   * prevalence): that dataset has no per-patient comorbidity/condition
+   * attributes to filter against, so pretending to apply these criteria to
+   * it would fabricate a number. All fields null/undefined if no trial for
+   * this indication discloses eligibility data.
+   */
+  eligibilityCriteriaText?: string | null;
+  eligibilitySex?: string | null;
+  eligibilityMinimumAge?: string | null;
+  eligibilityMaximumAge?: string | null;
+  eligibilityHealthyVolunteers?: boolean | null;
+  eligibilitySourceNctId?: string | null;
 }
 
 export interface RequirementCheck {
@@ -237,6 +354,7 @@ export interface RiskDriver {
   status: string;
   active: boolean;
   derivation: string;
+  standardReference?: string | null;
 }
 
 export interface RiskExplanation {
@@ -273,6 +391,8 @@ export interface RiskRow {
   "Risk Score (Numeric)": number;
   /** "live" = real, disclosed ClinicalTrials.gov trial-status fact; "llm-estimated" = AI-estimated for a category with no public source; absent/"excel" = from Risk_Register. */
   dataSource?: "excel" | "live" | "llm-estimated";
+  /** Which regulatory/registration standard the category's underlying field(s) come from (e.g. "FDAAA 801", "42 CFR Part 11") — for UI attribution only, not a compliance claim. Absent for the no-data placeholder row. */
+  "Standard Reference"?: string;
 }
 
 export interface RegionOptionRow {
@@ -372,6 +492,8 @@ export interface RiskRecord {
   owner: string;
   riskScore: number;
   dataSource?: "excel" | "live" | "llm-estimated";
+  /** Which regulatory/registration standard the category's underlying field(s) come from (e.g. "FDAAA 801", "42 CFR Part 11") — for UI attribution only, not a compliance claim. Null for the no-data placeholder row. */
+  standardReference?: string | null;
 }
 
 export interface RiskAssessmentRow {

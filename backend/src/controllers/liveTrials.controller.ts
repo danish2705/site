@@ -5,6 +5,7 @@ import {
   getFacilitiesForCondition,
 } from "../services/ctgov.client.js";
 import { badRequest } from "../utils/httpError.js";
+import { config } from "../config.js";
 import type { LiveTrialLandscapeResponse } from "../types.js";
 
 /**
@@ -34,7 +35,7 @@ export async function getLiveTrialLandscape(
 
   const [competingResult, facilitiesResult, benchmarkResult] =
     await Promise.allSettled([
-      getActiveCompetingTrialsCount(indication, country || "United States"),
+      getActiveCompetingTrialsCount(indication, country),
       getFacilitiesForCondition(indication, {
         country: country || undefined,
       }),
@@ -72,6 +73,7 @@ export async function getLiveTrialLandscape(
     country: country || null,
     activeCompetingTrials,
     facilities,
+    competingStatuses: config.competingTrials.statuses,
     benchmark,
     fetchedAt: new Date().toISOString(),
     warnings,

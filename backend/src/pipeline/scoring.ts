@@ -1,4 +1,5 @@
 import type { EvaluationRow } from "../types.js";
+import { config } from "../config.js";
 
 export interface ComponentWeights {
   recruitment: number;
@@ -124,16 +125,29 @@ export function capConfidenceForEstimate(
 }
 
 export const THRESHOLDS = {
-  enrollmentRateBest: 25, 
-  screenFailure: { floor: 10, ceiling: 70 }, 
-  timeToFpi: { floor: 14, ceiling: 200 }, 
-  startUp: { floor: 21, ceiling: 220 }, 
-  queryRate: { floor: 2, ceiling: 55 }, 
-  queryResolution: { floor: 1, ceiling: 40 }, 
-  dataEntryLag: { floor: 0.5, ceiling: 35 }, 
-  protocolDeviation: { floor: 0.3, ceiling: 20 }, 
-  dropout: { floor: 2, ceiling: 30 }, 
-  staffTurnover: { floor: 2, ceiling: 50 }, 
+  enrollmentRateBest: 25,
+  screenFailure: { floor: 10, ceiling: 70 },
+  timeToFpi: { floor: 14, ceiling: 200 },
+  startUp: { floor: 21, ceiling: 220 },
+  queryRate: { floor: 2, ceiling: 55 },
+  queryResolution: { floor: 1, ceiling: 40 },
+  dataEntryLag: { floor: 0.5, ceiling: 35 },
+  protocolDeviation: { floor: 0.3, ceiling: 20 },
+  dropout: { floor: 2, ceiling: 30 },
+  staffTurnover: { floor: 2, ceiling: 50 },
+  // Requirement #5 benchmark finding: a site running many concurrent trials
+  // (any indication) has less staff/investigator attention available for a
+  // NEW trial — this is the same real-world concern already flagged by the
+  // Risk Register's Site Capacity category (config.siteWorkload), now also
+  // scored here so it actually moves a site's ranking instead of only
+  // appearing as a separate risk-list item. floor=0 (no other active trials,
+  // best case); ceiling is a stated heuristic, not a published standard —
+  // set well above config.siteWorkload.highThreshold so the score degrades
+  // smoothly rather than bottoming out right at the risk-register's "High"
+  // cutoff.
+  competingTrialsAtSite: { floor: 0, ceiling: 20 },
+  investigatorExperienceBest: 10,
+  staffAvailabilityBest: 10,
 };
 
 function componentScores(
@@ -174,6 +188,41 @@ function componentScores(
       ),
       0.15,
     ],
+    // Requirement #5 benchmark finding: this field previously existed on
+    // every row (LLM-estimated, or REAL when liveKpiFields includes it —
+    // see liveCandidateSites.ts's applyLiveKpiOverrides) but was never read
+    // by this function, so a site's competing-trial workload never actually
+    // affected its rank. A facility juggling many concurrent trials has
+    // less staff/investigator bandwidth for a new one, so it's scored here
+    // as a recruitment-capacity factor, same real-world concern as the Risk
+    // Register's Site Capacity category.
+    [
+      lowerBetter(
+        num(row["Competing Trials at Site"]),
+        T.competingTrialsAtSite.floor,
+        T.competingTrialsAtSite.ceiling,
+      ),
+      0.25,
+    ],
+    // Same benchmark finding for these two — LLM-estimated only (no live
+    // source discloses investigator experience or staff availability), but
+    // previously collected and shown as "data available" while being
+    // mathematically inert. Weighted modestly since they're the least
+    // certain inputs in this blend.
+    [
+      higherBetter(
+        num(row["Investigator Experience Score (0-10)"]),
+        T.investigatorExperienceBest,
+      ),
+      0.15,
+    ],
+    [
+      higherBetter(
+        num(row["Staff Availability Score (0-10)"]),
+        T.staffAvailabilityBest,
+      ),
+      0.15,
+    ],
   ]);
 
   const quality = blend([
@@ -210,6 +259,12 @@ function componentScores(
       ),
       0.15,
     ],
+    // Requirement #5 benchmark finding: same as above — both LLM-estimated
+    // (no live source for either), previously collected but never scored.
+    // Infrastructure and current GCP certification status are quality/
+    // compliance signals, not recruitment-speed ones, so they land here.
+    [num(row["Infrastructure Readiness (%)"]), 0.2],
+    [num(row["GCP Certification Current (%)"]), 0.15],
   ]);
 
   const retention = blend([
@@ -353,11 +408,42 @@ export function scoreSites(
       caveats.push("No usable KPI data at all — this site cannot be scored.");
     }
     if (row.liveKpiFields && row.liveKpiFields.length > 0) {
+      // Show the actual value alongside each real field name, not just which
+      // fields are real — "Dropout Rate (%)" alone tells you nothing; "Dropout
+      // Rate (%): 12.5" does.
+      const fieldsWithValues = row.liveKpiFields
+        .map((field) => {
+          const value = (row as unknown as Record<string, unknown>)[field];
+          return typeof value === "number" ? `${field}: ${value}` : field;
+        })
+        .join(", ");
       caveats.push(
-        `Real ClinicalTrials.gov data used for: ${row.liveKpiFields.join(", ")}` +
+        `Real ClinicalTrials.gov data used for: ${fieldsWithValues}` +
           (row.liveKpiSourceNctId
             ? ` (Dropout Rate/Diversity Index, if listed, are from ${row.liveKpiSourceNctId}'s posted results — trial-wide, not this specific site).`
             : "."),
+      );
+    }
+    // Requirement #5 benchmark finding, surfaced explicitly: connects this
+    // score back to the Risk Register's Site Workload category (renamed
+    // from "Site Capacity" for requirement #6) so the two no longer
+    // silently disagree — a site real-flagged Medium/High for
+    // concurrent-trial workload there now also shows why its Recruitment
+    // component here was pulled down, instead of the two screens
+    // contradicting each other with no explanation.
+    if (
+      row.liveKpiFields?.includes("Competing Trials at Site") &&
+      typeof row["Competing Trials at Site"] === "number" &&
+      row["Competing Trials at Site"] >= config.siteWorkload.mediumThreshold
+    ) {
+      const band =
+        row["Competing Trials at Site"] >= config.siteWorkload.highThreshold
+          ? "High"
+          : "Medium";
+      caveats.push(
+        `This facility is currently running ${row["Competing Trials at Site"]} other active trial(s) ` +
+          `(any indication) — real data, also flagged ${band} concurrent-load risk under "Site Workload" ` +
+          `in the Risk Register. Factored into the Recruitment component above.`,
       );
     }
 

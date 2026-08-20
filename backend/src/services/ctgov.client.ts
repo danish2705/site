@@ -105,22 +105,32 @@ function warn(label: string, err: unknown): void {
 /**
  * Live replacement for RegionRow["Active Competing Trials"].
  * GET /studies?query.cond={condition}&query.locn={country}
- *     &filter.overallStatus=RECRUITING,NOT_YET_RECRUITING&countTotal=true&pageSize=1
+ *     &filter.overallStatus={config.competingTrials.statuses.join(",")}&countTotal=true&pageSize=1
+ *
+ * Which statuses count as "ongoing/competing" is a business definition, not
+ * a ClinicalTrials.gov constant — see config.ts's competingTrials.statuses
+ * doc comment. Defaults to RECRUITING, NOT_YET_RECRUITING,
+ * ACTIVE_NOT_RECRUITING, and ENROLLING_BY_INVITATION (i.e. anything still
+ * actively running), excluding terminal statuses like COMPLETED/TERMINATED/
+ * WITHDRAWN/SUSPENDED — adjustable via the COMPETING_TRIAL_STATUSES env var
+ * without touching this query-building code.
  */
 export async function getActiveCompetingTrialsCount(
   condition: string,
+  /** Empty string = global count across every country (matches getFacilitiesForCondition's own global default when no country is given) — do NOT substitute a default country here, or a caller showing both this count and a global facilities list side by side (see controllers/liveTrials.controller.ts) will show two numbers that don't reconcile. */
   country: string,
 ): Promise<number | null> {
   if (!config.ctgov.enabled) return null;
-  const cacheKey = `competing:${condition.toLowerCase()}|${country.toLowerCase()}`;
+  const statuses = config.competingTrials.statuses;
+  const cacheKey = `competing:${condition.toLowerCase()}|${country.toLowerCase()}|${statuses.join(",")}`;
   const cached = getCached<number>(cacheKey);
   if (cached !== undefined) return cached;
 
-  const url =
+  let url =
     `${BASE_URL}/studies?query.cond=${encodeURIComponent(condition)}` +
-    `&query.locn=${encodeURIComponent(country)}` +
-    `&filter.overallStatus=RECRUITING,NOT_YET_RECRUITING` +
+    `&filter.overallStatus=${encodeURIComponent(statuses.join(","))}` +
     `&countTotal=true&pageSize=1`;
+  if (country) url += `&query.locn=${encodeURIComponent(country)}`;
 
   try {
     const json = await fetchJson<{ totalCount?: number }>(
@@ -140,6 +150,113 @@ export async function getActiveCompetingTrialsCount(
 }
 
 /* ---------------------------------------------------------------------- */
+/* 1c. Eligibility criteria sample (real, disclosed trial text)           */
+/* ---------------------------------------------------------------------- */
+
+export interface EligibilityCriteriaSample {
+  sourceNctId: string;
+  sourceBriefTitle: string | null;
+  /** Raw disclosed eligibilityModule.eligibilityCriteria text — typically an "Inclusion Criteria:" / "Exclusion Criteria:" free-text block, not structured data. Shown to the user as-is; NOT used to filter the synthetic patient-population count, since that dataset has no comorbidity/condition attributes to filter against (see data/syntheticPopulation.ts). */
+  eligibilityCriteriaText: string | null;
+  sex: string | null;
+  minimumAge: string | null;
+  maximumAge: string | null;
+  healthyVolunteers: boolean | null;
+}
+
+interface EligibilityStudiesResponse {
+  studies?: Array<{
+    protocolSection?: {
+      identificationModule?: { nctId?: string; briefTitle?: string };
+      eligibilityModule?: {
+        eligibilityCriteria?: string;
+        sex?: string;
+        minimumAge?: string;
+        maximumAge?: string;
+        healthyVolunteers?: boolean;
+      };
+    };
+  }>;
+}
+
+/**
+ * Real, disclosed eligibility criteria for one representative trial matching
+ * this indication — surfaced to the user as informational context (Srikanth's
+ * "clinicaltrials.gov has inclusion/exclusion criteria, right? ... you have to
+ * include those" point), NOT applied as a filter that shrinks the synthetic
+ * eligible-patient count: the synthetic population dataset used for that
+ * count has no per-patient comorbidity/condition attributes to check the
+ * criteria against, so pretending to filter on it would fabricate a number.
+ * Prefers a currently-recruiting trial (freshest protocol) when one exists.
+ * GET /studies?query.cond={condition}&filter.overallStatus=RECRUITING
+ *     &fields=NCTId,BriefTitle,EligibilityCriteria,Sex,MinimumAge,MaximumAge,HealthyVolunteers&pageSize=1
+ */
+export async function getEligibilityCriteriaSample(
+  condition: string,
+): Promise<EligibilityCriteriaSample | null> {
+  if (!config.ctgov.enabled) return null;
+  const cacheKey = `eligibility-sample:${condition.toLowerCase()}`;
+  const cached = getCached<EligibilityCriteriaSample | null>(cacheKey);
+  if (cached !== undefined) return cached;
+
+  const fields = [
+    "NCTId",
+    "BriefTitle",
+    "EligibilityCriteria",
+    "Sex",
+    "MinimumAge",
+    "MaximumAge",
+    "HealthyVolunteers",
+  ].join(",");
+  const recruitingUrl =
+    `${BASE_URL}/studies?query.cond=${encodeURIComponent(condition)}` +
+    `&filter.overallStatus=RECRUITING&fields=${fields}&pageSize=1`;
+  const anyStatusUrl =
+    `${BASE_URL}/studies?query.cond=${encodeURIComponent(condition)}` +
+    `&fields=${fields}&pageSize=1`;
+
+  try {
+    let json = await fetchJson<EligibilityStudiesResponse>(
+      recruitingUrl,
+      config.ctgov.timeoutMs,
+    );
+    if (!json.studies || json.studies.length === 0) {
+      // No currently-recruiting trial found for this indication — fall back
+      // to any status rather than returning nothing, since the criteria
+      // text itself doesn't go stale the way a recruiting-status count would.
+      json = await fetchJson<EligibilityStudiesResponse>(
+        anyStatusUrl,
+        config.ctgov.timeoutMs,
+      );
+    }
+    const study = json.studies?.[0];
+    if (!study) {
+      setCached(cacheKey, null, config.ctgov.cacheTtlMs);
+      return null;
+    }
+    const elig = study.protocolSection?.eligibilityModule;
+    const result: EligibilityCriteriaSample = {
+      sourceNctId: study.protocolSection?.identificationModule?.nctId ?? "",
+      sourceBriefTitle:
+        study.protocolSection?.identificationModule?.briefTitle ?? null,
+      eligibilityCriteriaText: elig?.eligibilityCriteria ?? null,
+      sex: elig?.sex ?? null,
+      minimumAge: elig?.minimumAge ?? null,
+      maximumAge: elig?.maximumAge ?? null,
+      healthyVolunteers:
+        typeof elig?.healthyVolunteers === "boolean"
+          ? elig.healthyVolunteers
+          : null,
+    };
+    setCached(cacheKey, result, config.ctgov.cacheTtlMs);
+    return result;
+  } catch (err) {
+    warn(`eligibility-criteria lookup failed for "${condition}"`, err);
+    return null;
+  }
+}
+
+/* ---------------------------------------------------------------------- */
 /* 2. Real facilities running trials in a condition (cross-check list)    */
 /* ---------------------------------------------------------------------- */
 
@@ -150,13 +267,20 @@ export interface LiveFacility {
   city: string | null;
   state: string | null;
   country: string | null;
+  /** The location's own disclosed recruitment status, or the study's overall status when the location-level one isn't disclosed (common for older/completed trials) — see getFacilitiesForCondition's doc comment. */
   status: string | null;
+  /** protocolSection.statusModule.lastUpdatePostDateStruct.date — when the sponsor last updated this trial's record on ClinicalTrials.gov. */
+  lastUpdatePostDate: string | null;
 }
 
 interface StudiesResponse {
   studies?: Array<{
     protocolSection?: {
       identificationModule?: { nctId?: string; briefTitle?: string };
+      statusModule?: {
+        overallStatus?: string;
+        lastUpdatePostDateStruct?: { date?: string };
+      };
       contactsLocationsModule?: {
         locations?: Array<{
           facility?: string;
@@ -175,7 +299,15 @@ interface StudiesResponse {
  * Live cross-check for SiteRow — real facilities ClinicalTrials.gov has
  * on record as running (or having run) trials for this condition.
  * GET /studies?query.cond={condition}[&query.locn={country}]
- *     &fields=NCTId,BriefTitle,LocationFacility,LocationCity,LocationState,LocationCountry,LocationStatus
+ *     &fields=NCTId,BriefTitle,OverallStatus,LastUpdatePostDate,LocationFacility,LocationCity,LocationState,LocationCountry,LocationStatus
+ *
+ * Per-location recruitment status (LocationStatus) is only disclosed by
+ * ClinicalTrials.gov for a subset of trials (mainly ones that actively
+ * report site-level recruitment) — many trials, especially older/completed
+ * ones, leave it blank even though the study itself always has an overall
+ * status. Rather than show every such row as "Unknown," this falls back to
+ * the study's own OverallStatus when the location-specific one is missing,
+ * so a row still shows a real, disclosed status rather than nothing.
  */
 export async function getFacilitiesForCondition(
   condition: string,
@@ -190,6 +322,8 @@ export async function getFacilitiesForCondition(
   const fields = [
     "NCTId",
     "BriefTitle",
+    "OverallStatus",
+    "LastUpdatePostDate",
     "LocationFacility",
     "LocationCity",
     "LocationState",
@@ -209,6 +343,11 @@ export async function getFacilitiesForCondition(
       const nctId = study.protocolSection?.identificationModule?.nctId ?? "";
       const briefTitle =
         study.protocolSection?.identificationModule?.briefTitle ?? null;
+      const overallStatus =
+        study.protocolSection?.statusModule?.overallStatus ?? null;
+      const lastUpdatePostDate =
+        study.protocolSection?.statusModule?.lastUpdatePostDateStruct?.date ??
+        null;
       const locations =
         study.protocolSection?.contactsLocationsModule?.locations ?? [];
       for (const loc of locations) {
@@ -220,7 +359,8 @@ export async function getFacilitiesForCondition(
           city: loc.city ?? null,
           state: loc.state ?? null,
           country: loc.country ?? null,
-          status: loc.status ?? null,
+          status: loc.status ?? overallStatus ?? null,
+          lastUpdatePostDate,
         });
       }
     }
@@ -552,6 +692,17 @@ export interface FacilityResultsSignal {
   dropoutRatePercent: number | null;
   /** 0-100 (Gini-Simpson diversity index over Race/Ethnicity categories, scaled). null if no race/ethnicity breakdown was found. */
   diversityIndex: number | null;
+  /**
+   * 0-100 — real, disclosed serious-adverse-event rate: sum(seriousNumAffected)
+   * / sum(seriousNumAtRisk) across resultsSection.adverseEventsModule.eventGroups
+   * for this trial, i.e. the same trial-wide (not facility-specific) figure
+   * this whole signal is already scoped to. null if the trial has no posted
+   * adverseEventsModule or its at-risk denominator is 0. NOT spot-checked
+   * against a live response in this sandbox (no network access here) — the
+   * field path is per documented ClinicalTrials.gov v2 schema; verify once
+   * deployed, same caveat as the other newer fields in this file.
+   */
+  seriousAdverseEventRatePercent: number | null;
   /** The NCTId this signal was pulled from, so callers/UI can cite the source trial. */
   sourceNctId: string;
 }
@@ -583,10 +734,17 @@ interface BaselineMeasure {
   title?: string;
   classes?: BaselineClass[];
 }
+interface AdverseEventGroup {
+  id?: string;
+  title?: string;
+  seriousNumAffected?: number;
+  seriousNumAtRisk?: number;
+}
 interface StudyResultsResponse {
   resultsSection?: {
     participantFlowModule?: { periods?: FlowPeriod[] };
     baselineCharacteristicsModule?: { measures?: BaselineMeasure[] };
+    adverseEventsModule?: { eventGroups?: AdverseEventGroup[] };
   };
 }
 
@@ -645,6 +803,7 @@ export async function getFacilityResultsSignal(
   const fields = [
     "resultsSection.participantFlowModule",
     "resultsSection.baselineCharacteristicsModule",
+    "resultsSection.adverseEventsModule.eventGroups",
   ].join(",");
   const url = `${BASE_URL}/studies/${encodeURIComponent(nctId)}?fields=${fields}`;
 
@@ -664,13 +823,21 @@ export async function getFacilityResultsSignal(
     const diversityIndex = raceDiversityIndex(
       json.resultsSection?.baselineCharacteristicsModule?.measures,
     );
-    if (dropoutRatePercent === null && diversityIndex === null) {
+    const seriousAdverseEventRatePercent = seriousAdverseEventRateFrom(
+      json.resultsSection?.adverseEventsModule?.eventGroups,
+    );
+    if (
+      dropoutRatePercent === null &&
+      diversityIndex === null &&
+      seriousAdverseEventRatePercent === null
+    ) {
       setCached(cacheKey, null, config.ctgov.cacheTtlMs);
       return null;
     }
     const result: FacilityResultsSignal = {
       dropoutRatePercent,
       diversityIndex,
+      seriousAdverseEventRatePercent,
       sourceNctId: nctId,
     };
     setCached(cacheKey, result, config.ctgov.cacheTtlMs);
@@ -679,6 +846,34 @@ export async function getFacilityResultsSignal(
     warn(`results-signal lookup failed for "${nctId}"`, err);
     return null;
   }
+}
+
+/**
+ * Real, disclosed serious-adverse-event rate: sum(seriousNumAffected) /
+ * sum(seriousNumAtRisk) across every arm/group in the trial's posted
+ * adverseEventsModule.eventGroups — a trial-wide figure (this API has no
+ * facility-level breakdown of adverse events), same scope caveat as dropout
+ * rate/diversity index above. null if no eventGroups were posted or the
+ * at-risk denominator sums to 0.
+ */
+function seriousAdverseEventRateFrom(
+  eventGroups: AdverseEventGroup[] | undefined,
+): number | null {
+  if (!eventGroups || eventGroups.length === 0) return null;
+  let affected = 0;
+  let atRisk = 0;
+  let any = false;
+  for (const g of eventGroups) {
+    if (typeof g.seriousNumAffected === "number") {
+      affected += g.seriousNumAffected;
+      any = true;
+    }
+    if (typeof g.seriousNumAtRisk === "number") {
+      atRisk += g.seriousNumAtRisk;
+    }
+  }
+  if (!any || atRisk <= 0) return null;
+  return Math.round((affected / atRisk) * 1000) / 10;
 }
 
 /* ---------------------------------------------------------------------- */

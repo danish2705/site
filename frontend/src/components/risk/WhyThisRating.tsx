@@ -67,6 +67,11 @@ export default function WhyThisRating({
                   </div>
                   <div className="driver-desc">{d.description}</div>
                   <div className="driver-derivation">{d.derivation}</div>
+                  {d.standardReference && (
+                    <div className="driver-standard">
+                      Standard: {d.standardReference}
+                    </div>
+                  )}
                 </li>
               ))}
             </ul>
