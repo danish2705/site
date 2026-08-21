@@ -1,25 +1,27 @@
-import { WIZARD_STEPS, type WizardStep } from "../../constants/pipeline";
+import { WORKFLOW_STEPS, type WorkflowStep } from "../../constants/workflow";
+import { useRoute } from "../../context/RouteContext";
 import { usePipeline } from "../../hooks/usePipeline";
 
-function nextStep(current: WizardStep): WizardStep | null {
-  const idx = WIZARD_STEPS.findIndex((s) => s.key === current);
-  return WIZARD_STEPS[idx + 1]?.key ?? null;
+function nextStep(current: WorkflowStep): WorkflowStep | null {
+  const idx = WORKFLOW_STEPS.findIndex((s) => s.key === current);
+  return WORKFLOW_STEPS[idx + 1]?.key ?? null;
 }
 
-function previousStep(current: WizardStep): WizardStep | null {
-  const idx = WIZARD_STEPS.findIndex((s) => s.key === current);
-  return idx > 0 ? WIZARD_STEPS[idx - 1].key : null;
+function previousStep(current: WorkflowStep): WorkflowStep | null {
+  const idx = WORKFLOW_STEPS.findIndex((s) => s.key === current);
+  return idx > 0 ? WORKFLOW_STEPS[idx - 1].key : null;
 }
 
-function stepLabel(step: WizardStep): string {
-  return WIZARD_STEPS.find((s) => s.key === step)?.label ?? step;
+function stepLabel(step: WorkflowStep): string {
+  return WORKFLOW_STEPS.find((s) => s.key === step)?.label ?? step;
 }
 
 export default function WizardNextLink() {
-  const { wizardStep, setWizardStep, wizardStepAvailable } = usePipeline();
-  const prev = previousStep(wizardStep);
-  const next = nextStep(wizardStep);
-  const nextAvailable = !!next && wizardStepAvailable(next);
+  const { route, setRoute } = useRoute();
+  const { workflowStepAvailable } = usePipeline();
+  const prev = previousStep(route);
+  const next = nextStep(route);
+  const nextAvailable = !!next && workflowStepAvailable(next);
   if (!prev && !nextAvailable) return null;
 
   return (
@@ -28,7 +30,7 @@ export default function WizardNextLink() {
         <button
           type="button"
           className="btn-secondary wizard-back-btn"
-          onClick={() => setWizardStep(prev)}
+          onClick={() => setRoute(prev)}
         >
           ← {stepLabel(prev)}
         </button>
@@ -37,7 +39,7 @@ export default function WizardNextLink() {
         <button
           type="button"
           className="btn-primary wizard-next-btn"
-          onClick={() => setWizardStep(next)}
+          onClick={() => setRoute(next)}
         >
           {stepLabel(next)} →
         </button>

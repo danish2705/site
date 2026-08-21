@@ -2,8 +2,6 @@ import { useEffect, useState } from "react";
 import type { TrialForm, RegionPredictionResponse } from "../../types";
 import WizardNextLink from "../ui/WizardNextLink";
 import { predictRegion } from "../../services/region.service";
-import SiteMapView from "./SiteMapView";
-import { countriesFromRegionKeys } from "../../utils/region";
 
 export default function AIRegionPrediction({
   form,
@@ -14,7 +12,6 @@ export default function AIRegionPrediction({
   disabled: boolean;
   onApply: (region: string, country: string) => void;
 }) {
-  const [activeTab, setActiveTab] = useState<"predict" | "map">("predict");
   const [result, setResult] = useState<RegionPredictionResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -56,30 +53,6 @@ export default function AIRegionPrediction({
 
   return (
     <div className="card predict-card">
-      <div className="predict-tabs">
-        <button
-          type="button"
-          className={`predict-tab ${activeTab === "predict" ? "active" : ""}`}
-          onClick={() => setActiveTab("predict")}
-        >
-          Predicted Region / Country
-        </button>
-        <button
-          type="button"
-          className={`predict-tab ${activeTab === "map" ? "active" : ""}`}
-          onClick={() => setActiveTab("map")}
-        >
-          Site Map (Global)
-        </button>
-      </div>
-
-      {activeTab === "map" ? (
-        <SiteMapView
-          indication={form.indication}
-          selectedCountries={countriesFromRegionKeys(form.regions)}
-        />
-      ) : (
-        <>
       <div className="predict-head">
         <div className="predict-head-top">
           <div className="predict-head-text">
@@ -328,8 +301,6 @@ export default function AIRegionPrediction({
           </>
         )}
       </div>
-        </>
-      )}
       <WizardNextLink />
     </div>
   );

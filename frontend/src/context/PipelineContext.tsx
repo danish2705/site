@@ -17,10 +17,12 @@ import type {
   FinalResult,
   StageEventPayload,
 } from "../types";
-import { STAGE_LIST, type WizardStep } from "../constants/pipeline";
+import { STAGE_LIST } from "../constants/pipeline";
+import type { WorkflowStep } from "../constants/workflow";
 import { fetchMeta } from "../services/meta.service";
 import { streamRun } from "../services/pipeline.service";
 import { createRun, getRun, listRuns } from "../services/runs.service";
+import { useRoute } from "./RouteContext";
 
 function emptyStages(): StagesMap {
   const obj: StagesMap = {};
@@ -47,9 +49,8 @@ export interface PipelineState {
   progressPct: number;
   pipelineDone: boolean;
 
-  wizardStep: WizardStep;
-  setWizardStep: (step: WizardStep) => void;
-  wizardStepAvailable: (step: WizardStep) => boolean;
+  /** Availability guard for the 8-step guided workflow nav (WorkflowNav) and WizardNextLink — same rules the old 5-step wizardStepAvailable used, just extended to cover the 3 Site Map pages (always available, same as before when they were an always-reachable tab). */
+  workflowStepAvailable: (step: WorkflowStep) => boolean;
 
   handleSubmit: (e: FormEvent<HTMLFormElement>) => Promise<void>;
 
@@ -92,7 +93,7 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
     RiskAssessmentRow[] | null
   >(null);
   const [error, setError] = useState<string | null>(null);
-  const [wizardStep, setWizardStep] = useState<WizardStep>("predict");
+  const { setRoute } = useRoute();
 
   const [saveLabel, setSaveLabel] = useState("");
   const [saving, setSaving] = useState(false);
@@ -105,14 +106,28 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
 
   const canSave = !running && !!ranking && ranking.length > 0;
 
-  function wizardStepAvailable(step: WizardStep): boolean {
-    if (step === "predict") return true;
+  function workflowStepAvailable(step: WorkflowStep): boolean {
+    // The 3 Site Map pages have no hard prerequisite — same as before,
+    // when the map was an always-reachable tab (it degrades gracefully
+    // with no indication picked yet, same as the "predict" page).
+    if (
+      step === "predict" ||
+      step === "site-map-global" ||
+      step === "site-map-details" ||
+      step === "site-combination"
+    ) {
+      return true;
+    }
     // Live ClinicalTrials.gov lookup keyed only off the indication — doesn't
     // depend on the pipeline having run, same as "predict".
     if (step === "competing") return !!form.indication;
-    if (step === "risk") return !!riskAssessment;
-    if (step === "ranking") return !!ranking;
-    return !!finalResult;
+    // Reachable as soon as the pipeline is running (not only once its data
+    // has arrived) so the nav can be clicked mid-run — the page itself
+    // shows a loading state for whichever of these 3 stages hasn't
+    // completed yet, rather than being unreachable until it has.
+    if (step === "risk") return !!riskAssessment || running;
+    if (step === "ranking") return !!ranking || running;
+    return !!finalResult || running;
   }
 
   async function handleSave(): Promise<boolean> {
@@ -224,7 +239,10 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
     setLlmInfo(null);
     setError(null);
     setRunning(true);
-    setWizardStep("predict");
+    // Auto-navigate to the workflow pages as soon as Run Analysis is
+    // clicked — lands on Site Map (Global) first, per request, while the
+    // backend pipeline keeps streaming stage updates in the background.
+    setRoute("site-map-global");
 
     let succeeded = true;
     try {
@@ -263,7 +281,11 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
             if (payload.stage === 8 && payload.llm) setLlmInfo(payload.llm);
             if (payload.stage === 6 && payload.status === "complete") {
               setRiskAssessment(payload.data as RiskAssessmentRow[]);
-              setWizardStep("risk");
+              // No forced navigation to the Risk Register page here — the
+              // user lands on Site Map (Global) when the run starts and
+              // stays wherever they are; the nav bar's "complete" badge and
+              // WizardNextLink both surface that this step is now ready
+              // without yanking them off whatever page they're looking at.
             }
             if (payload.stage === 7 && payload.status === "complete") {
               setRanking(payload.data as RankingRow[]);
@@ -282,7 +304,7 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
       succeeded = false;
     } finally {
       setRunning(false);
-      if (!succeeded) setWizardStep("predict");
+      if (!succeeded) setRoute("predict");
     }
   }
 
@@ -301,9 +323,7 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
     completedCount,
     progressPct,
     pipelineDone,
-    wizardStep,
-    setWizardStep,
-    wizardStepAvailable,
+    workflowStepAvailable,
     handleSubmit,
     saveLabel,
     setSaveLabel,

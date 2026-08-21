@@ -2,6 +2,7 @@ import { useState } from "react";
 import { usePipeline } from "../../hooks/usePipeline";
 import WhyThisRating from "../risk/WhyThisRating";
 import WizardNextLink from "../ui/WizardNextLink";
+import StageLoader from "../ui/StageLoader";
 import SaveRunDialog from "../runs/SaveRunDialog";
 import { SaveIcon } from "../ui/Icons";
 import { fetchOutreachDraft } from "../../services/siteCombination.service";
@@ -18,6 +19,7 @@ export default function RecommendationPanel() {
     saveMessage,
     handleSave,
     form,
+    running,
   } = usePipeline();
   const [saveDialogOpen, setSaveDialogOpen] = useState(false);
 
@@ -31,7 +33,21 @@ export default function RecommendationPanel() {
   const [draft, setDraft] = useState<OutreachDraft | null>(null);
   const [draftError, setDraftError] = useState<string | null>(null);
 
-  if (!finalResult) return null;
+  if (!finalResult) {
+    if (running) {
+      return (
+        <div className="card">
+          <StageLoader label="Loading final recommendation…" />
+        </div>
+      );
+    }
+    return null;
+  }
+  // Narrowed alias so the nested draftOutreach() below (a function
+  // declaration, not a same-scope block) can reference it without
+  // TypeScript widening it back to `FinalResult | null` — same value,
+  // just captured after the null check above.
+  const site = finalResult;
 
   async function draftOutreach() {
     if (draftOpen) {
@@ -50,9 +66,9 @@ export default function RecommendationPanel() {
         phase: form.phase || undefined,
         sites: [
           {
-            siteId: finalResult.siteId,
-            siteName: finalResult.recommendedSite,
-            country: finalResult.country,
+            siteId: site.siteId,
+            siteName: site.recommendedSite,
+            country: site.country,
           },
         ],
       });
