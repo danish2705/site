@@ -92,7 +92,7 @@ export interface SiteMapState {
 export const SiteMapContext = createContext<SiteMapState | null>(null);
 
 export function SiteMapProvider({ children }: { children: ReactNode }) {
-  const { form } = usePipeline();
+  const { form, running } = usePipeline();
   const indication = form.indication;
   const selectedCountries = useMemo(
     () => countriesFromRegionKeys(form.regions),
@@ -258,8 +258,6 @@ export function SiteMapProvider({ children }: { children: ReactNode }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedCountries]);
 
-  const countryResolved = selectedCountries.length === 0 || country !== "";
-
   async function runSearch() {
     if (!indication) return;
     setLoading(true);
@@ -281,17 +279,14 @@ export function SiteMapProvider({ children }: { children: ReactNode }) {
     }
   }
 
-  // Auto-run the first search as soon as an indication is picked, instead
-  // of requiring a manual click — now genuinely "once per session" since
-  // this provider mounts once for the whole app (previously this ref lived
-  // inside the SiteMapView tab, which could remount on every tab switch).
-  const autoSearchedRef = useRef(false);
+  const wasRunningRef = useRef(false);
   useEffect(() => {
-    if (autoSearchedRef.current || !indication || !countryResolved) return;
-    autoSearchedRef.current = true;
-    runSearch();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [indication, countryResolved]);
+    const justStarted = running && !wasRunningRef.current;
+    wasRunningRef.current = running;
+    if (justStarted && indication) {
+      runSearch();
+    }
+  }, [running]);
 
   const filteredSites = useMemo(() => {
     const q = search.trim().toLowerCase();

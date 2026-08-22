@@ -7,7 +7,7 @@ import { usePipeline } from "./hooks/usePipeline";
 import TopBar from "./components/layout/TopBar";
 import Sidebar from "./components/layout/Sidebar";
 import WorkflowNav from "./components/layout/WorkflowNav";
-import AIRegionPrediction from "./components/prediction/AIRegionPrediction";
+import PredictRegionModal from "./components/ui/PredictRegionModal";
 import CompetingTrialsPanel from "./components/prediction/CompetingTrialsPanel";
 import RiskAssessmentPanel from "./components/risk/RiskAssessmentPanel";
 import SiteRankingPanel from "./components/ranking/SiteRankingPanel";
@@ -21,6 +21,12 @@ import { countriesFromRegionKeys } from "./utils/region";
 
 function Dashboard() {
   const [historyOpen, setHistoryOpen] = useState(false);
+  const [predictModalOpen, setPredictModalOpen] = useState(false);
+  // Collapsed by default = false (expanded) per spec; toggled by a button
+  // on the sidebar shell. Lives here (not inside Sidebar) purely so the
+  // main-panel layout can react to it — no form/filter state moves, so
+  // collapsing/expanding never touches any entered values.
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const { form, meta, running, error, setForm } = usePipeline();
   const { route } = useRoute();
 
@@ -29,7 +35,33 @@ function Dashboard() {
       <TopBar onOpenHistory={() => setHistoryOpen(true)} />
 
       <div className="dashboard-body">
-        <Sidebar />
+        <div
+          className={`sidebar-shell ${sidebarCollapsed ? "collapsed" : ""}`}
+        >
+          <button
+            type="button"
+            className="sidebar-collapse-toggle"
+            onClick={() => setSidebarCollapsed((c) => !c)}
+            title={
+              sidebarCollapsed
+                ? "Expand Analysis Parameters"
+                : "Collapse Analysis Parameters"
+            }
+            aria-expanded={!sidebarCollapsed}
+            aria-label={
+              sidebarCollapsed
+                ? "Expand Analysis Parameters"
+                : "Collapse Analysis Parameters"
+            }
+          >
+            {sidebarCollapsed ? "›" : "‹"}
+          </button>
+          <div className="sidebar-shell-clip">
+            <div className="sidebar-shell-inner">
+              <Sidebar onOpenPredictModal={() => setPredictModalOpen(true)} />
+            </div>
+          </div>
+        </div>
 
         <main className="main-panel">
           {/* Sits above the right-side page card only — not above the
@@ -44,18 +76,6 @@ function Dashboard() {
           )}
 
           <div className="wizard-panel">
-            {route === "predict" && (
-              <AIRegionPrediction
-                form={form}
-                disabled={!meta || running}
-                onApply={(region, country) =>
-                  setForm((f) => ({
-                    ...f,
-                    regions: [`${region}||${country}`],
-                  }))
-                }
-              />
-            )}
             {route === "site-map-global" && <SiteMapGlobalPage />}
             {route === "site-map-details" && <SiteMapDetailsPage />}
             {route === "site-combination" && <SiteCombinationPlannerPage />}
@@ -73,6 +93,20 @@ function Dashboard() {
       </div>
 
       {historyOpen && <HistoryModal onClose={() => setHistoryOpen(false)} />}
+
+      {predictModalOpen && (
+        <PredictRegionModal
+          form={form}
+          disabled={!meta || running}
+          onApply={(region, country) =>
+            setForm((f) => ({
+              ...f,
+              regions: [`${region}||${country}`],
+            }))
+          }
+          onClose={() => setPredictModalOpen(false)}
+        />
+      )}
     </div>
   );
 }

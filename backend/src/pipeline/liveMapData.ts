@@ -352,13 +352,6 @@ export async function buildLiveSiteMapData(
     }),
   );
 
-  warnings.push(
-    "Patient-segment breakdown (newly-diagnosed / non-responder / stable-on-treatment) is an illustrative fixed split, not derived from real claims/EHR data — no live source distinguishes these groups per site at this granularity.",
-  );
-  warnings.push(
-    "\"Already Enrolled\" and the per-site patient-record sample are synthetic — no live source discloses real per-patient trial-enrollment status. The sample's Available/Enrolled mix matches each site's already-enrolled-elsewhere rate, but it is an illustrative 25-record sample, not a census of real patients.",
-  );
-
   const approxDistanceCount = sites.filter(
     (s) =>
       s.catchmentDistanceSource === "approximate-haversine" ||

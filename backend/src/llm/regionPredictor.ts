@@ -5,6 +5,8 @@ import { buildLiveCandidateSites } from "../pipeline/liveCandidateSites.js";
 import { buildLiveRiskRecords } from "../pipeline/liveRiskAssessment.js";
 import { scoreSites } from "../pipeline/scoring.js";
 import { resolveSpecialty } from "../pipeline/liveIndications.js";
+import { mapWithConcurrency } from "../utils/concurrency.js";
+import { config } from "../config.js";
 import type {
   PipelineInput,
   RegionCandidate,
@@ -42,15 +44,16 @@ async function buildCandidates(
   const durationMonths = Number(input.durationMonths) || 18;
   const { budgetTier } = input;
 
-  const regionRows = await Promise.all(
-    REGION_DEFINITIONS.map((def) =>
+  const regionRows = await mapWithConcurrency(
+    REGION_DEFINITIONS,
+    config.ctgov.regionConcurrency,
+    (def) =>
       buildLiveRegionRow({
         region: def.region,
         country: def.country,
         indication: input.indication,
         specialty,
       }),
-    ),
   );
 
   let excludedNoSites = 0;
@@ -58,8 +61,10 @@ async function buildCandidates(
   const avg = (arr: number[]) =>
     arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : 0;
 
-  const built = await Promise.all(
-    regionRows.map(async (r) => {
+  const built = await mapWithConcurrency(
+    regionRows,
+    config.ctgov.regionConcurrency,
+    async (r) => {
       const liveCandidates = await buildLiveCandidateSites({
         indication: input.indication,
         specialty,
@@ -140,7 +145,7 @@ async function buildCandidates(
             : Math.round(monthsToEnroll * 10) / 10,
         score: 0, // filled in below, once the whole set is known
       };
-    }),
+    },
   );
 
   const rows = built.filter((r): r is NonNullable<typeof r> => r !== null);

@@ -3,12 +3,15 @@ import { useRoute } from "../../context/RouteContext";
 import { usePipeline } from "../../hooks/usePipeline";
 
 /**
- * Persistent top-of-page workflow navigation — the 8-step guided workflow
+ * Persistent top-of-page workflow navigation — the guided workflow
  * requested in place of ad-hoc wizard steps + duplicated Site Map tabs.
- * Every item maps to an existing page; nothing here is new business
- * content, just a way to jump straight to any reachable step, see which
- * ones are done, and go back/forward without losing state (the underlying
- * pages/contexts stay mounted for the life of the app — see App.tsx).
+ * "Predict Region with AI" is deliberately not part of this nav — it's a
+ * modal now, opened from the sidebar. Every item here maps to an existing
+ * page; nothing here is new business content, just a way to jump straight
+ * to any reachable step, see which ones are done, and go back/forward
+ * without losing state (the underlying pages/contexts stay mounted for the
+ * life of the app — see App.tsx). Rendered as a vertical tick-icon-above-
+ * label layout per the requested design (never label-beside-icon).
  */
 export default function WorkflowNav() {
   const { route, setRoute, visited } = useRoute();
@@ -49,12 +52,6 @@ export default function WorkflowNav() {
                 </span>
                 <span className="workflow-nav-label">{step.label}</span>
               </button>
-              {i < WORKFLOW_STEPS.length - 1 && (
-                <span
-                  className={`workflow-nav-connector ${complete ? "complete" : ""}`}
-                  aria-hidden="true"
-                />
-              )}
             </li>
           );
         })}

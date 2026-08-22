@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type {
   MapSiteRow,
   OutreachDraftResponse,
@@ -8,6 +8,8 @@ import {
   fetchOutreachDraft,
   fetchSiteCombination,
 } from "../../services/siteCombination.service";
+import WizardNextLink from "../ui/WizardNextLink";
+import StageLoader from "../ui/StageLoader";
 
 /**
  * "Which sites, together, get me to my enrollment target" planner — the
@@ -54,9 +56,19 @@ export default function SiteCombinationPlanner({
   const [draftStrategyKey, setDraftStrategyKey] = useState<string | null>(
     null,
   );
+  // Once the user types into the Target Enrollment field themselves, stop
+  // overwriting it with the sidebar's value — a deliberate what-if edit
+  // here shouldn't get silently reverted if the sidebar value changes.
+  const userEditedTargetRef = useRef(false);
+  // The last defaultTargetEnrollment value this component has already
+  // auto-filled + auto-run for, so a value that arrives or changes AFTER
+  // mount (not just the one present at first mount) still gets picked up
+  // exactly once each, instead of only ever checking once at mount time.
+  const lastAutoRunForRef = useRef<number | null>(null);
 
-  async function run() {
-    if (!target || target <= 0) {
+  async function run(overrideTarget?: number) {
+    const effectiveTarget = overrideTarget ?? target;
+    if (!effectiveTarget || effectiveTarget <= 0) {
       setError("Enter a target enrollment greater than 0.");
       return;
     }
@@ -67,7 +79,7 @@ export default function SiteCombinationPlanner({
       const res = await fetchSiteCombination({
         indication,
         country,
-        targetEnrollment: Number(target),
+        targetEnrollment: Number(effectiveTarget),
         sites: sites.map((s) => ({
           siteId: s.siteId,
           siteName: s.siteName,
@@ -116,29 +128,46 @@ export default function SiteCombinationPlanner({
     }
   }
 
+  // Keep the Target Enrollment field mirroring the sidebar's value —
+  // whenever one is provided there (at mount, or typed in afterward while
+  // this page is already open), reflect it here too — but only for as
+  // long as the user hasn't typed their own number into this field.
+  useEffect(() => {
+    if (userEditedTargetRef.current) return;
+    if (typeof defaultTargetEnrollment === "number" && defaultTargetEnrollment > 0) {
+      setTarget(defaultTargetEnrollment);
+    }
+  }, [defaultTargetEnrollment]);
+
+  // Auto-find the combination whenever a positive Target Enrollment from
+  // the sidebar and the site list are both available — reacts any time
+  // that value appears or changes (not just once at mount), same as if
+  // the user had typed it in here and clicked "Find combination"
+  // themselves. Calls run() with the value directly (not the `target`
+  // state) so it can't race the field-sync effect above, which only takes
+  // effect on the next render. Stays quiet once the user has taken over
+  // the field manually, and only re-fires for a genuinely new default
+  // value (not on every unrelated re-render/site refetch).
+  useEffect(() => {
+    if (userEditedTargetRef.current) return;
+    if (typeof defaultTargetEnrollment !== "number" || defaultTargetEnrollment <= 0) {
+      return;
+    }
+    if (sites.length === 0) return;
+    if (lastAutoRunForRef.current === defaultTargetEnrollment) return;
+    lastAutoRunForRef.current = defaultTargetEnrollment;
+    run(defaultTargetEnrollment);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [defaultTargetEnrollment, sites.length]);
+
   return (
-    <div className="card" style={{ marginTop: 16 }}>
+    <div className="card">
       <div className="predict-head-top">
         <div className="predict-head-text">
           <span className="predict-title">Site Combination Planner</span>
         </div>
       </div>
-      <p className="section-hint">
-        Which of the {sites.length} site(s) above, taken together, reach a
-        target enrollment for the least cost/risk — compares four pick
-        strategies (lowest risk first, lowest cost first, a balanced blend
-        of risk + cost + recruitment capacity, and highest-capacity-first,
-        which ignores risk/cost and just picks the sites with the most
-        recruitable patients so as few sites as possible are needed).
-        Per-site cost figures are synthetic (illustrative,
-        not real quotes); recruitable-patient counts already apply each
-        site's own assumed consent/conversion rate — a per-site synthetic
-        figure centered around{" "}
-        {result ? `${Math.round(result.assumedConsentRate * 100)}%` : "the configured rate"}
-        , not one flat percentage applied identically everywhere (see each
-        site's row in the table above for its own rate).
-      </p>
-
+      <div className="card-scroll-body">
       <div className="map-controls">
         <label className="map-field">
           <span>Target enrollment</span>
@@ -147,15 +176,16 @@ export default function SiteCombinationPlanner({
             min={1}
             placeholder="e.g. 300"
             value={target}
-            onChange={(e) =>
-              setTarget(e.target.value === "" ? "" : Number(e.target.value))
-            }
+            onChange={(e) => {
+              userEditedTargetRef.current = true;
+              setTarget(e.target.value === "" ? "" : Number(e.target.value));
+            }}
           />
         </label>
         <button
           type="button"
           className="predict-btn"
-          onClick={run}
+          onClick={() => run()}
           disabled={loading || !target}
         >
           {loading ? (
@@ -169,6 +199,10 @@ export default function SiteCombinationPlanner({
       </div>
 
       {error && <p className="error-text">{error}</p>}
+
+      {loading && !result && (
+        <StageLoader label="Finding site combinations…" />
+      )}
 
       {result && (
         <>
@@ -356,6 +390,8 @@ export default function SiteCombinationPlanner({
           ))}
         </div>
       )}
+      </div>
+      <WizardNextLink />
     </div>
   );
 }

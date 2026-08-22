@@ -1,16 +1,21 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { TrialForm, RegionPredictionResponse } from "../../types";
-import WizardNextLink from "../ui/WizardNextLink";
 import { predictRegion } from "../../services/region.service";
 
 export default function AIRegionPrediction({
   form,
   disabled,
   onApply,
+  autoPredict = false,
 }: {
   form: TrialForm;
   disabled: boolean;
   onApply: (region: string, country: string) => void;
+  /** Kick off a prediction as soon as this mounts (once), instead of
+   * waiting for the user to click "Predict Region with AI" a second time
+   * inside the modal — used by PredictRegionModal, since opening the modal
+   * already IS the "predict" action from the user's point of view. */
+  autoPredict?: boolean;
 }) {
   const [result, setResult] = useState<RegionPredictionResponse | null>(null);
   const [loading, setLoading] = useState(false);
@@ -24,6 +29,20 @@ export default function AIRegionPrediction({
     setApplied(null);
     setShowAll(false);
   }, [form.indication]);
+
+  const autoPredictedRef = useRef(false);
+  useEffect(() => {
+    if (
+      autoPredict &&
+      !autoPredictedRef.current &&
+      !disabled &&
+      form.indication
+    ) {
+      autoPredictedRef.current = true;
+      predict();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoPredict, disabled, form.indication]);
 
   async function predict() {
     setLoading(true);
@@ -52,7 +71,7 @@ export default function AIRegionPrediction({
     : (result?.candidates ?? []).slice(0, 5);
 
   return (
-    <div className="card predict-card">
+    <div className="predict-card-content">
       <div className="predict-head">
         <div className="predict-head-top">
           <div className="predict-head-text">
@@ -301,7 +320,6 @@ export default function AIRegionPrediction({
           </>
         )}
       </div>
-      <WizardNextLink />
     </div>
   );
 }

@@ -10,6 +10,8 @@ import { buildLiveTrialRequirement } from "./liveRequirements.js";
 import { buildLiveRegionRow } from "./liveRegionMetrics.js";
 import { resolveSpecialty } from "./liveIndications.js";
 import { REGION_DEFINITIONS } from "../data/regionMap.js";
+import { mapWithConcurrency } from "../utils/concurrency.js";
+import { config } from "../config.js";
 import type {
   PipelineInput,
   SendFn,
@@ -349,16 +351,24 @@ export async function runPipeline(
   // Every defined region/country is now considered for every indication —
   // there is no more per-indication Region_Data to filter against. Live
   // data (competing trials) and LLM estimates (prevalence/regulatory/cost)
-  // determine each region's fit, fetched in parallel per region.
-  const regionRows = await Promise.all(
-    regionDefs.map((def) =>
+  // determine each region's fit, fetched per region.
+  //
+  // Bounded concurrency, not Promise.all — when no region/country is
+  // pre-selected, regionDefs is every REGION_DEFINITIONS entry (~39), each
+  // making a ClinicalTrials.gov call plus an LLM call. Unbounded, that's the
+  // same request-burst pattern that was flooding clinicaltrials.gov/the LLM
+  // provider with 429s in llm/regionPredictor.ts — same fix, same knob
+  // (config.ctgov.regionConcurrency), just applied here too.
+  const regionRows = await mapWithConcurrency(
+    regionDefs,
+    config.ctgov.regionConcurrency,
+    (def) =>
       buildLiveRegionRow({
         region: def.region,
         country: def.country,
         indication,
         specialty,
       }),
-    ),
   );
   if (regionRows.length === 0) {
     throw new Error(

@@ -5,7 +5,11 @@ const PHASES = ["Phase I", "Phase II", "Phase III", "Phase IV"];
 const BUDGETS = ["Low", "Mid", "High"];
 const AGE_GROUPS = ["Child (0–17)", "Adult (18–64)", "Older Adult (65+)"];
 
-export default function Sidebar() {
+export default function Sidebar({
+  onOpenPredictModal,
+}: {
+  onOpenPredictModal: () => void;
+}) {
   const { meta, form, setForm, regionOptions, running, handleSubmit } =
     usePipeline();
 
@@ -125,7 +129,22 @@ export default function Sidebar() {
           </label>
 
           <label className="field-block">
-            <span className="field-label">Region / Country</span>
+            <span className="field-label-row">
+              <span className="field-label">Region / Country</span>
+              <button
+                type="button"
+                className="predict-btn predict-btn-sm"
+                onClick={onOpenPredictModal}
+                disabled={!meta || !form.indication || running}
+                title={
+                  !form.indication
+                    ? "Select an indication first"
+                    : "Let AI propose a region/country based on the trial requirements"
+                }
+              >
+                Predict Region with AI
+              </button>
+            </span>
             <RegionMultiSelect
               options={regionOptions}
               selected={form.regions}

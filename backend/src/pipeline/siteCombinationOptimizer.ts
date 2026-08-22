@@ -217,13 +217,6 @@ export function optimizeSiteCombination(
     (sum, s) => sum + Math.max(0, s.recruitablePatients),
     0,
   );
-  if (meeting.length === 0 && totalRecruitable < targetEnrollment) {
-    warnings.push(
-      `Even combining every candidate site, only ~${totalRecruitable.toLocaleString()} recruitable patients ` +
-        `were found (after the ${Math.round(assumedConsentRate * 100)}% assumed-consent-rate haircut) against a ` +
-        `target of ${targetEnrollment.toLocaleString()} — consider a wider radius, more countries, or a lower enrollment target.`,
-    );
-  }
 
   // Prefer whichever strategy meets the target with fewer sites (less
   // operational overhead — each additional site means another set of

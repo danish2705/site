@@ -1,11 +1,12 @@
 import { useSiteMap } from "../../context/SiteMapContext";
 import {
-  SITE_MAP_RADIUS_MILES,
   downloadCsv,
   riskBand,
   segmentsLine,
   sitesToCsv,
 } from "../../utils/siteMapFormat";
+import WizardNextLink from "../ui/WizardNextLink";
+import StageLoader from "../ui/StageLoader";
 
 /**
  * "Site Map Details" page — the sortable per-site table, per-site detail
@@ -77,15 +78,12 @@ export default function SiteMapDetailsPage() {
             <span className="predict-title">Site Map Details</span>
           </div>
         </div>
-        <p className="section-hint">
-          Every site plotted on the Site Map (Global) page, as a sortable
-          table with per-site detail — for{" "}
-          {indication || "the selected indication"}.
-        </p>
       </div>
 
       <div className="card-scroll-body">
         {error && <p className="error-text">{error}</p>}
+
+        {loading && <StageLoader label="Loading site map details…" />}
 
         {!data && !loading && !error && (
           <p className="predict-placeholder">
@@ -157,13 +155,6 @@ export default function SiteMapDetailsPage() {
                 );
               })()}
             </label>
-
-            <p className="section-hint">
-              Check 2 or more sites below to see how many patients they
-              actually reach TOGETHER — nearby sites often share the same
-              catchment, so simply adding up each site's own number can
-              overstate the real total.
-            </p>
 
             <div className="table-scroll">
               <table
@@ -539,57 +530,6 @@ export default function SiteMapDetailsPage() {
                   ))}
               </div>
             )}
-
-            <p className="map-caveats">
-              Methodology: the map background and place names on the Site
-              Map (Global) page are a real live map (OpenStreetMap). Site
-              coordinates are geocoded live via Google Maps (if a key is
-              configured on the backend) or the free OpenStreetMap Nominatim
-              service, in that order — only falling back to an
-              approximation near the facility's city/country when neither
-              live lookup succeeds (
-              {allSites.filter((s) => s.coordsSource === "approximate").length}{" "}
-              of {allSites.length} site(s) here). Each site's{" "}
-              {SITE_MAP_RADIUS_MILES}-mile catchment is now checked using
-              real driving distance (Google Distance Matrix, or the free
-              OSRM router) wherever available — only falling back to
-              straight-line distance when neither succeeds (
-              {
-                allSites.filter(
-                  (s) =>
-                    s.catchmentDistanceSource === "approximate-haversine" ||
-                    s.catchmentDistanceSource === "mixed",
-                ).length
-              }{" "}
-              of {allSites.length} site(s) had some or all points fall back
-              this way). Patient population within the radius comes from a
-              synthetic dataset — no live public source publishes real
-              population by postal area for arbitrary countries — combined
-              with an AI-estimated disease prevalence rate. The "Exclude
-              patients already enrolled in another trial" checkbox above
-              the table toggles between "Available" (eligible patients minus
-              an estimated already-enrolled-elsewhere share, from real
-              completed-trial benchmarks when available, else a fixed
-              baseline) and "Available + Enrolled" (the full eligible
-              population). A small illustrative sample of synthetic
-              patient-level records per site (Patient ID, age, named
-              comorbidity flags, Available/Enrolled status) is available via
-              "View sample patients" above — fabricated data standing in for
-              real per-patient EHR/claims/CTMS records, which have no live
-              public source. "Expected Recruitment" applies each site's own
-              synthetic consent/conversion rate (shown under the number) to
-              the Available figure — eligible patients don't all convert to
-              enrolled patients, so this is Available × rate, not the full
-              Available population. No live or LLM source discloses a real
-              per-site conversion rate, so this rate is a fabricated,
-              per-site variation around the app's configured default, not a
-              measured figure. The Segments column further splits Available
-              into illustrative treatment-stage buckets (newly-diagnosed /
-              non-responder / stable) using a fixed assumption, not real
-              claims data — see each site's popup on the Site Map (Global)
-              page for the full breakdown. Risk scores are AI-estimated — no
-              public per-site clinical-trial risk database was found.
-            </p>
           </>
         )}
 
@@ -597,6 +537,7 @@ export default function SiteMapDetailsPage() {
           <p className="predict-placeholder">No live sites found for this search.</p>
         )}
       </div>
+      <WizardNextLink />
     </div>
   );
 }

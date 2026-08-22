@@ -86,9 +86,9 @@ export default function RecommendationPanel() {
   }
 
   return (
-    <div className="card recommendation-card">
+    <div className="card">
       <div className="pipeline-card-head">
-        <span className="tag tag-on-dark">Stage 8 Output</span>
+        <span className="tag">Stage 8 Output</span>
         <div style={{ display: "flex", gap: 8 }}>
           <button
             type="button"
@@ -118,7 +118,7 @@ export default function RecommendationPanel() {
         </div>
       </div>
       {draftError && (
-        <p style={{ color: "#fff", fontSize: 13, marginTop: 8 }}>
+        <p className="error-text" style={{ marginTop: 8 }}>
           {draftError}
         </p>
       )}
@@ -164,7 +164,7 @@ export default function RecommendationPanel() {
             <div className="final-why-title">
               Why this site is rated {finalResult.riskLevel}
             </div>
-            <WhyThisRating explanation={finalResult.riskExplanation} onDark />
+            <WhyThisRating explanation={finalResult.riskExplanation} />
           </div>
         )}
 
@@ -177,10 +177,10 @@ export default function RecommendationPanel() {
             className="final-why"
             style={{
               marginTop: 12,
-              background: "rgba(255, 255, 255, 0.14)",
+              background: "#f7f8fb",
+              border: "1px solid var(--line)",
               borderRadius: 12,
               padding: "13px 15px",
-              color: "#fff",
             }}
           >
             <div
@@ -192,17 +192,9 @@ export default function RecommendationPanel() {
               }}
             >
               <strong>Outreach draft (not sent)</strong>
-              <span
-                className="chip"
-                style={{
-                  background: "rgba(255, 255, 255, 0.22)",
-                  color: "#fff",
-                }}
-              >
-                synthetic contact
-              </span>
+              <span className="chip">synthetic contact</span>
             </div>
-            <p style={{ marginTop: 0, fontSize: 12.5, opacity: 0.9 }}>
+            <p className="warning-text" style={{ marginTop: 0 }}>
               This is draft-only text — nothing is emailed from this app.
               ClinicalTrials.gov does not reliably disclose a real
               per-facility contact, so the address below is a fabricated

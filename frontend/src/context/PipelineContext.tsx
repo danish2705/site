@@ -49,7 +49,7 @@ export interface PipelineState {
   progressPct: number;
   pipelineDone: boolean;
 
-  /** Availability guard for the 8-step guided workflow nav (WorkflowNav) and WizardNextLink — same rules the old 5-step wizardStepAvailable used, just extended to cover the 3 Site Map pages (always available, same as before when they were an always-reachable tab). */
+  /** Availability guard for the guided workflow nav (WorkflowNav) and WizardNextLink — same rules the old 5-step wizardStepAvailable used, just extended to cover the 3 Site Map pages (always available, same as before when they were an always-reachable tab). "Predict Region with AI" is no longer a workflow step — it's a modal opened from the sidebar, not gated by this function. */
   workflowStepAvailable: (step: WorkflowStep) => boolean;
 
   handleSubmit: (e: FormEvent<HTMLFormElement>) => Promise<void>;
@@ -109,9 +109,8 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
   function workflowStepAvailable(step: WorkflowStep): boolean {
     // The 3 Site Map pages have no hard prerequisite — same as before,
     // when the map was an always-reachable tab (it degrades gracefully
-    // with no indication picked yet, same as the "predict" page).
+    // with no indication picked yet).
     if (
-      step === "predict" ||
       step === "site-map-global" ||
       step === "site-map-details" ||
       step === "site-combination"
@@ -119,7 +118,7 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
       return true;
     }
     // Live ClinicalTrials.gov lookup keyed only off the indication — doesn't
-    // depend on the pipeline having run, same as "predict".
+    // depend on the pipeline having run.
     if (step === "competing") return !!form.indication;
     // Reachable as soon as the pipeline is running (not only once its data
     // has arrived) so the nav can be clicked mid-run — the page itself
@@ -244,7 +243,6 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
     // backend pipeline keeps streaming stage updates in the background.
     setRoute("site-map-global");
 
-    let succeeded = true;
     try {
       const res = await streamRun(form);
       const reader = res.body!.getReader();
@@ -295,16 +293,17 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
             }
           } else if (eventName === "error") {
             setError(payload.message ?? "Unknown error");
-            succeeded = false;
           }
         }
       }
     } catch (err) {
       setError((err as Error).message);
-      succeeded = false;
     } finally {
       setRunning(false);
-      if (!succeeded) setRoute("predict");
+      // No redirect-on-failure needed: the user is already on Site Map
+      // (Global) (navigated there at the start of this run) and the error
+      // banner above the page surfaces the failure without yanking them
+      // anywhere else.
     }
   }
 

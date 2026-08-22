@@ -1,14 +1,4 @@
-/**
- * The 8-step guided workflow nav. Every key here maps 1:1 to an existing
- * page of the app — nothing here introduces new content, it's the ordered
- * list the persistent WorkflowNav (top bar) and WizardNextLink (per-page
- * back/forward) both walk. Replaces the old 5-entry WIZARD_STEPS in
- * constants/pipeline.ts, which only covered predict/competing/risk/ranking/
- * recommendation and had no notion of the (now 3, previously tab-embedded)
- * Site Map pages.
- */
 export type WorkflowStep =
-  | "predict"
   | "site-map-global"
   | "site-map-details"
   | "site-combination"
@@ -25,7 +15,6 @@ export interface WorkflowStepDef {
 }
 
 export const WORKFLOW_STEPS: WorkflowStepDef[] = [
-  { key: "predict", label: "Predict Region", hash: "#/predict" },
   { key: "site-map-global", label: "Site Map (Global)", hash: "#/site-map" },
   {
     key: "site-map-details",
@@ -47,7 +36,7 @@ export const WORKFLOW_STEPS: WorkflowStepDef[] = [
   },
 ];
 
-export const DEFAULT_WORKFLOW_STEP: WorkflowStep = "predict";
+export const DEFAULT_WORKFLOW_STEP: WorkflowStep = "site-map-global";
 
 export function workflowStepFromHash(hash: string): WorkflowStep | null {
   const found = WORKFLOW_STEPS.find((s) => s.hash === hash);

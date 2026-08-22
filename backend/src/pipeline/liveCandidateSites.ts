@@ -19,6 +19,7 @@ import {
 } from "../llm/client.js";
 import { countActiveFacilityWorkload } from "./liveRiskAssessment.js";
 import { config } from "../config.js";
+import { allSettledWithConcurrency } from "../utils/concurrency.js";
 import {
   syntheticSiteCostFor,
   type SyntheticSiteCost,
@@ -319,16 +320,15 @@ export async function buildLiveCandidateSites(
 
   const benchmarkMedianSampleSize = benchmark.medianSampleSize ?? null;
 
-  const results = await Promise.allSettled(
-    facilities.map(async (f): Promise<LiveCandidateSite> => {
+  const results = await allSettledWithConcurrency(
+    facilities,
+    config.ctgov.facilityConcurrency,
+    async (f): Promise<LiveCandidateSite> => {
       const siteId = siteIdFor(f.facility!, f.city, f.country);
       const historyKey = `${f.facility}|${f.city ?? ""}|${f.country ?? ""}`.toLowerCase();
       const history = histories.get(historyKey);
       const nearbyCompetingTrials = countNearbyCompetingTrials(f, competingPool);
       const siteCost = syntheticSiteCostFor(siteId, f.country ?? params.country);
-      // Best-effort, non-blocking: a failed/empty facility-wide lookup just
-      // resolves to null (see getFacilityWideHistory's own try/catch) — never
-      // throws, so it can't take down this facility's whole candidate build.
       const facilityWideHistory = await getFacilityWideHistory(
         f.facility!,
         f.city,
@@ -455,7 +455,7 @@ export async function buildLiveCandidateSites(
           siteCost,
         };
       }
-    }),
+    },
   );
 
   return results.map((r, i) =>

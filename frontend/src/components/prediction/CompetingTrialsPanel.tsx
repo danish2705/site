@@ -2,18 +2,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { LiveTrialLandscapeResponse } from "../../types";
 import { fetchLiveTrialLandscape } from "../../services/liveTrials.service";
 import WizardNextLink from "../ui/WizardNextLink";
+import StageLoader from "../ui/StageLoader";
 
-/**
- * Srikanth's requirement #2: "Find Other Ongoing Trials for the Same
- * Disease." Shows every real trial ClinicalTrials.gov has on record for the
- * chosen indication — not just the aggregate count shown elsewhere in the
- * app — so you can see exactly which trials/statuses are (and aren't)
- * counted as "active/competing" under the current business definition (see
- * backend config.ts's competingTrials.statuses). Its own wizard step —
- * "Other Ongoing Trials" — sitting between AI Prediction and Risk
- * Assessment (see constants/pipeline.ts's WIZARD_STEPS), since none of this
- * depends on running the full pipeline, only on an indication being picked.
- */
 export default function CompetingTrialsPanel({
   indication,
   selectedCountries = [],
@@ -83,7 +73,6 @@ export default function CompetingTrialsPanel({
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [facilities]);
-  const hiddenOlderCount = facilities.length - recentFacilities.length;
 
   const filtered = search.trim()
     ? recentFacilities.filter((f) =>
@@ -102,12 +91,36 @@ export default function CompetingTrialsPanel({
       .join(" ");
   }
 
+  // Colors each trial's status the same way the Risk Register colors its
+  // risk levels — reusing the exact same .badge/--low/--med/--high/--no-data
+  // classes/tokens, instead of the flat neutral .chip this table used
+  // before, so a status carries the same at-a-glance visual weight here as
+  // a risk rating does there. RECRUITING/COMPLETED read as "healthy"
+  // (green); ACTIVE_NOT_RECRUITING/NOT_YET_RECRUITING/ENROLLING_BY_INVITATION
+  // as an in-between/caution state (amber); the stopped-for-cause statuses
+  // (TERMINATED/WITHDRAWN/SUSPENDED) as high (red); anything else
+  // (null/unrecognized) falls back to the same grey "no-data" treatment
+  // used for an unassessed risk record.
+  function statusBand(status: string | null): "low" | "medium" | "high" | "no-data" {
+    const s = (status ?? "").toUpperCase();
+    if (s === "RECRUITING" || s === "COMPLETED") return "low";
+    if (s === "TERMINATED" || s === "WITHDRAWN" || s === "SUSPENDED") return "high";
+    if (
+      s === "ACTIVE_NOT_RECRUITING" ||
+      s === "NOT_YET_RECRUITING" ||
+      s === "ENROLLING_BY_INVITATION"
+    ) {
+      return "medium";
+    }
+    return "no-data";
+  }
+
   return (
     <div className="card">
       <div className="predict-head">
         <div className="predict-head-top">
           <div className="predict-head-text">
-            <span className="predict-title">Other Ongoing Trials</span>
+            <span className="predict-title">Ongoing Trials</span>
           </div>
           <div className="predict-head-actions">
             {selectedCountries.length > 0 && (
@@ -139,15 +152,13 @@ export default function CompetingTrialsPanel({
             </button>
           </div>
         </div>
-        <p className="section-hint">
-          Every real trial ClinicalTrials.gov has on record for{" "}
-          {indication || "the selected indication"}
-          {country ? ` in ${country}` : ", worldwide"} — not just a count.
-        </p>
       </div>
 
       <div className="card-scroll-body">
       {error && <p className="error-text">{error}</p>}
+
+      {loading && !data && <StageLoader label="Loading ongoing trials…" />}
+
       {data?.warnings.map((w, i) => (
         <p key={i} className="warning-text">
           {w}
@@ -170,14 +181,6 @@ export default function CompetingTrialsPanel({
               <div className="v">{recentFacilities.length.toLocaleString()}</div>
             </div>
           </div>
-
-          <p className="section-hint">
-            Showing only rows last updated on ClinicalTrials.gov within the
-            past {RECENT_YEARS} years
-            {hiddenOlderCount > 0
-              ? ` — ${hiddenOlderCount.toLocaleString()} older/undated row(s) out of ${facilities.length.toLocaleString()} total are hidden.`
-              : "."}
-          </p>
 
           <div className="map-controls">
             <input
@@ -238,7 +241,9 @@ export default function CompetingTrialsPanel({
                         )}
                       </td>
                       <td>
-                        <span className="chip">{statusLabel(f.status)}</span>
+                        <span className={`badge ${statusBand(f.status)}`}>
+                          {statusLabel(f.status)}
+                        </span>
                       </td>
                       <td>{f.lastUpdatePostDate || "—"}</td>
                       <td

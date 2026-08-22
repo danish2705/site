@@ -6,6 +6,8 @@ import "leaflet.markercluster/dist/MarkerCluster.css";
 import "leaflet.markercluster/dist/MarkerCluster.Default.css";
 import type { MapSiteRow } from "../../types";
 import { useSiteMap } from "../../context/SiteMapContext";
+import WizardNextLink from "../ui/WizardNextLink";
+import StageLoader from "../ui/StageLoader";
 import {
   MILES_TO_METERS,
   SITE_MAP_METRIC,
@@ -132,22 +134,6 @@ function siteIcon(): L.DivIcon {
   });
 }
 
-/**
- * "Site Map (Global)" page — real ClinicalTrials.gov site locations for an
- * indication, worldwide, plotted on an actual live map (OpenStreetMap
- * tiles via Leaflet — real streets, place names, and geography, not a
- * hand-drawn outline), with an estimated patient catchment and an
- * LLM-estimated risk score per site. Sites cluster automatically as you
- * zoom out and split apart as you zoom in (via leaflet.markercluster).
- *
- * Data, filters, search, and site selection all come from the shared
- * SiteMapContext so they stay in sync with the Site Map Details and Site
- * Combination Planner pages without refetching. See
- * pipeline/liveMapData.ts on the backend for exactly what's live vs.
- * synthetic vs. approximate — the map tiles and site coordinates are real
- * (geocoded live via Google, or the free OpenStreetMap fallback), but
- * patient population figures are a synthetic dataset.
- */
 export default function SiteMapGlobalPage() {
   const {
     indication,
@@ -326,11 +312,6 @@ export default function SiteMapGlobalPage() {
             </button>
           </div>
         </div>
-        <p className="section-hint">
-          Real ClinicalTrials.gov site locations for{" "}
-          {indication || "the selected indication"}, worldwide, with an
-          estimated patient catchment and risk score per site.
-        </p>
       </div>
 
       <div className="map-controls">
@@ -363,6 +344,8 @@ export default function SiteMapGlobalPage() {
 
       <div className="card-scroll-body">
         {error && <p className="error-text">{error}</p>}
+
+        {loading && <StageLoader label="Loading site map…" />}
 
         {!data && !loading && !error && (
           <p className="predict-placeholder">
@@ -462,6 +445,7 @@ export default function SiteMapGlobalPage() {
           <p className="predict-placeholder">No live sites found for this search.</p>
         )}
       </div>
+      <WizardNextLink />
     </div>
   );
 }

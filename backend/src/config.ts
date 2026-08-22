@@ -36,6 +36,8 @@ export const config = {
     enabled: optional("CTGOV_ENABLED") !== "false",
     timeoutMs: Number(process.env.CTGOV_TIMEOUT_MS) || 6000,
     cacheTtlMs: Number(process.env.CTGOV_CACHE_TTL_MS) || 6 * 60 * 60 * 1000,
+    regionConcurrency: Number(process.env.PREDICT_REGION_CONCURRENCY) || 4,
+    facilityConcurrency: Number(process.env.PREDICT_FACILITY_CONCURRENCY) || 6,
   },
 
   google: {

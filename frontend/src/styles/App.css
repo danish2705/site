@@ -283,6 +283,67 @@ body {
   min-height: 0;
   overflow: hidden;
 }
+/* Collapsible wrapper around <Sidebar> — collapsing/expanding is purely a
+   layout change (width + fade/slide) so the sidebar's form component stays
+   mounted the whole time and every entered value/filter is preserved. */
+.sidebar-shell {
+  position: relative;
+  flex-shrink: 0;
+  height: 100%;
+  transition: width 0.28s ease;
+}
+.sidebar-shell:not(.collapsed) {
+  width: 340px;
+}
+.sidebar-shell.collapsed {
+  width: 20px;
+}
+/* Separate clipping layer from the positioning layer above (.sidebar-shell)
+   so the collapse toggle button — which pokes out past the shell's edge —
+   never gets clipped along with the sidebar content. */
+.sidebar-shell-clip {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
+.sidebar-shell-inner {
+  width: 340px;
+  height: 100%;
+  transition: opacity 0.2s ease, transform 0.28s ease;
+}
+.sidebar-shell.collapsed .sidebar-shell-inner {
+  opacity: 0;
+  transform: translateX(-16px);
+  pointer-events: none;
+}
+.sidebar-collapse-toggle {
+  position: absolute;
+  top: 8px;
+  right: -14px;
+  z-index: 5;
+  width: 28px;
+  height: 28px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: #fff;
+  color: var(--sub);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  box-shadow: var(--shadow-sm);
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1;
+  transition: right 0.28s ease, background 0.15s ease, color 0.15s ease;
+}
+.sidebar-shell.collapsed .sidebar-collapse-toggle {
+  right: -14px;
+}
+.sidebar-collapse-toggle:hover {
+  background: var(--bg);
+  color: var(--ink);
+}
 .sidebar-panel {
   width: 340px;
   flex-shrink: 0;
@@ -340,6 +401,19 @@ body {
   color: var(--sub);
   text-transform: uppercase;
   letter-spacing: 0.03em;
+}
+.field-label-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.predict-btn-sm {
+  padding: 5px 11px;
+  font-size: 11px;
+  border-radius: 7px;
+  gap: 5px;
 }
 .field-hint {
   font-size: 11px;
@@ -1052,19 +1126,13 @@ tbody tr:hover {
     padding: 10px 12px;
   }
 }
-.recommendation-card {
-  background: linear-gradient(135deg, var(--accent), #8b5bff);
-  color: #fff;
-  border: none;
-}
 .save-run-btn {
-  height: 20px;
   display: inline-flex;
   align-items: center;
   gap: 6px;
   background: #fff;
   color: var(--accent-dark);
-  border: none;
+  border: 1px solid var(--line);
   padding: 8px 16px;
   border-radius: 9px;
   font-size: 12.5px;
@@ -1076,6 +1144,11 @@ tbody tr:hover {
 }
 .save-run-btn:hover {
   background: var(--accent-soft);
+  border-color: var(--accent-soft);
+}
+.save-run-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
 }
 .final-grid {
   display: grid;
@@ -1083,13 +1156,14 @@ tbody tr:hover {
   gap: 14px;
 }
 .final-grid .item {
-  background: rgba(255, 255, 255, 0.14);
+  background: #f7f8fb;
+  border: 1px solid var(--line);
   border-radius: 12px;
   padding: 13px 15px;
 }
 .final-grid .item .k {
   font-size: 10.5px;
-  opacity: 0.85;
+  color: var(--sub);
   text-transform: uppercase;
   letter-spacing: 0.05em;
   margin-bottom: 5px;
@@ -1099,11 +1173,12 @@ tbody tr:hover {
   font-size: 14.5px;
   font-weight: 700;
   line-height: 1.4;
+  color: var(--ink);
 }
 .final-text {
   margin: 18px 0 0;
   font-size: 13.5px;
-  opacity: 0.96;
+  color: var(--ink);
   line-height: 1.55;
 }
 .predict-head {
@@ -1552,7 +1627,7 @@ tr.row-pick td {
   font-weight: 700;
   letter-spacing: 0.04em;
   text-transform: uppercase;
-  opacity: 0.85;
+  color: var(--sub);
   margin-bottom: 8px;
 }
 .why-risk.on-dark {
@@ -1657,12 +1732,6 @@ tr.row-pick td {
   font-size: 10px;
   color: var(--med);
   white-space: nowrap;
-}
-/* On the purple gradient recommendation card, the default amber (--med) is
-   too low-contrast to read — use a light warm tone instead. */
-.recommendation-card .score-confidence {
-  color: #ffe1a8;
-  font-weight: 600;
 }
 
 .save-modal-actions {
@@ -1775,7 +1844,12 @@ tr.row-pick td {
   align-items: center;
   justify-content: center;
   padding: 24px;
-  z-index: 100;
+  /* Leaflet's own controls (.leaflet-control, e.g. the zoom +/- buttons on
+     Site Map (Global)) use z-index: 1000 by default — well above this
+     backdrop's old z-index: 100, so the map behind the modal bled through
+     on top of it whenever a modal opened while that page was mounted.
+     5000 comfortably clears every Leaflet pane/control z-index. */
+  z-index: 5000;
 }
 .run-modal {
   background: #fff;
@@ -1814,6 +1888,26 @@ tr.row-pick td {
 .run-modal-head p {
   margin: 0;
   font-size: 12px;
+}
+
+/* ---- Predict Region with AI modal ---- */
+.predict-region-modal {
+  position: relative;
+  padding-top: 56px;
+}
+.predict-region-modal:focus {
+  outline: none;
+}
+.predict-region-modal-close {
+  position: absolute;
+  top: 16px;
+  right: 18px;
+  z-index: 2;
+}
+.predict-card-content {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
 }
 
 /* ---- Predicted Region / Site Map tabs ---- */
@@ -2141,31 +2235,37 @@ tr.pinned-row {
 }
 .workflow-nav-list {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
+  justify-content: space-between;
   list-style: none;
   margin: 0;
   padding: 0;
   min-width: max-content;
+  gap: 4px;
 }
 .workflow-nav-item-wrap {
   display: flex;
-  align-items: center;
   flex-shrink: 0;
 }
+/* Vertical layout per the requested design: tick/number icon on top,
+   label directly below it — never side-by-side with the icon. */
 .workflow-nav-item {
   display: flex;
+  flex-direction: column;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   border: 1px solid transparent;
   background: none;
-  border-radius: 20px;
-  padding: 6px 12px 6px 6px;
+  border-radius: 12px;
+  padding: 8px 12px;
   font: inherit;
-  font-size: 12.5px;
+  font-size: 11.5px;
   font-weight: 600;
   color: var(--sub);
   cursor: pointer;
   white-space: nowrap;
+  min-width: 84px;
+  text-align: center;
   transition: background 0.15s ease, color 0.15s ease;
 }
 .workflow-nav-item:hover:not(:disabled) {
@@ -2188,12 +2288,12 @@ tr.pinned-row {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 22px;
-  height: 22px;
+  width: 26px;
+  height: 26px;
   border-radius: 50%;
   background: var(--line);
   color: var(--sub);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 800;
   flex-shrink: 0;
 }
@@ -2201,14 +2301,8 @@ tr.pinned-row {
   background: var(--accent);
   color: #fff;
 }
-.workflow-nav-connector {
-  width: 16px;
-  height: 1.5px;
-  background: var(--line);
-  flex-shrink: 0;
-}
-.workflow-nav-connector.complete {
-  background: var(--low);
+.workflow-nav-label {
+  line-height: 1.25;
 }
 
 /* Smooth page transition when switching between workflow steps — purely
