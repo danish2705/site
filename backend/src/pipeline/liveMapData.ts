@@ -28,6 +28,10 @@ import {
   syntheticConsentRateFor,
 } from "../data/syntheticSiteCost.js";
 import { buildSyntheticPatientSample } from "../data/syntheticPatients.js";
+import {
+  getAgeEligibleFraction,
+  AGE_ELIGIBILITY_DISCLOSURE,
+} from "../data/ageDemographics.js";
 
 function regionLabelForCountry(country: string): string {
   const match = REGION_DEFINITIONS.find(
@@ -148,6 +152,8 @@ export interface BuildLiveSiteMapParams {
   radiusMiles?: number;
   /** Cap on how many real facilities to plot — each one costs an LLM risk-estimate call. */
   maxSites?: number;
+  /** Trial form's selected Age Group label(s) (e.g. "Adult (18–64)") — see data/ageDemographics.ts. Empty/absent = all ages, no narrowing. */
+  ageGroups?: string[];
 }
 
 export async function buildLiveSiteMapData(
@@ -163,6 +169,11 @@ export async function buildLiveSiteMapData(
   const rawFacilities = await getFacilitiesForCondition(params.indication, {
     country: params.country || undefined,
     pageSize: maxSites * 2,
+    // Real filter on which studies/facilities come back at all — see
+    // ctgov.client.ts's studyAgeGroups for exactly what this does and
+    // how it differs from the population-share scaling further down this
+    // function.
+    ageGroups: params.ageGroups,
   });
   const facilities = dedupeFacilities(rawFacilities).slice(0, maxSites);
 
@@ -174,9 +185,17 @@ export async function buildLiveSiteMapData(
       sites: [],
       warnings: [
         `No live ClinicalTrials.gov sites found for "${params.indication}"` +
-          (params.country ? ` in ${params.country}.` : " in any country."),
+          (params.country ? ` in ${params.country}` : " in any country") +
+          (params.ageGroups && params.ageGroups.length > 0
+            ? ` with eligibility matching ${params.ageGroups.join(", ")} — try removing the Age Group filter to widen the search.`
+            : "."),
       ],
       fetchedAt: new Date().toISOString(),
+      ageGroupsRequested: params.ageGroups ?? [],
+      ageEligibilityDisclosure:
+        params.ageGroups && params.ageGroups.length > 0
+          ? AGE_ELIGIBILITY_DISCLOSURE
+          : null,
     };
   }
 
@@ -208,9 +227,26 @@ export async function buildLiveSiteMapData(
           specialty: params.specialty,
         });
         regionRowByCountry.set(country, row);
-      } catch {
+        // buildLiveRegionRow doesn't throw just because prevalence came back
+        // 0/null (e.g. the LLM returned null for that one field while still
+        // returning the other two) — it only throws on a total failure. So
+        // metricsWarning can be set on a row that still reached this line
+        // successfully. Surface it here too, not just in the catch block
+        // below, otherwise a silent-zero-prevalence row never gets reported
+        // to the terminal or the API response at all.
+        if (row.metricsWarning) {
+          console.error(
+            `[liveMapData] region metrics warning for ${country}: ${row.metricsWarning}`,
+          );
+          warnings.push(row.metricsWarning);
+        }
+      } catch (err) {
+        console.error(
+          `[liveMapData] buildLiveRegionRow threw for ${country}:`,
+          err,
+        );
         warnings.push(
-          `Could not estimate prevalence for ${country} — patient counts for its sites are shown as 0.`,
+          `Could not estimate prevalence for ${country} — patient counts for its sites are shown as 0. (${(err as Error).message})`,
         );
       }
     }),
@@ -222,6 +258,8 @@ export async function buildLiveSiteMapData(
       "LLM not configured — site risk scores are unavailable (shown as Unknown) until an OPENAI_API_KEY or AZURE_OPENAI_* key is set.",
     );
   }
+
+  const ageFallbackCountries = new Set<string>();
 
   const sites = await Promise.all(
     facilities.map(async (f): Promise<MapSiteRow> => {
@@ -237,13 +275,26 @@ export async function buildLiveSiteMapData(
 
       const regionRow = regionRowByCountry.get(country);
       const prevalencePer100k = regionRow?.["Prevalence (per 100k)"] ?? 0;
+      // Real fix for the Age Group selector: it used to be a cosmetic label
+      // only (see runPipeline.ts's requirement text) with zero effect on any
+      // number below. Now it actually scales grossEligiblePatients down to
+      // just the selected group(s)' share of this site's country population
+      // — see data/ageDemographics.ts. fraction is 1 (no change) when no
+      // Age Group was selected, matching the sidebar's own "leave unset to
+      // include all ages" hint.
+      const ageEligibility = getAgeEligibleFraction(params.ageGroups, country);
+      if (params.ageGroups && params.ageGroups.length > 0 && !ageEligibility.matched) {
+        ageFallbackCountries.add(country);
+      }
       // Raw prevalence math (population-in-radius x prevalence-per-100k)
       // counts every person with the condition, not just the fraction
       // actually reachable/eligible for THIS site — see config.map's
-      // addressableFraction doc comment for why that haircut exists.
+      // addressableFraction doc comment for why that haircut exists. Now
+      // also scaled by ageEligibility.fraction for the same reason.
       const grossEligiblePatients = Math.round(
         ((populationInRadius * prevalencePer100k) / 100000) *
-          config.map.addressableFraction,
+          config.map.addressableFraction *
+          ageEligibility.fraction,
       );
 
       const recruitmentRate =
@@ -348,6 +399,8 @@ export async function buildLiveSiteMapData(
         patientSegments: splitPatientSegments(netAvailablePatients),
         patientSegmentSource: "heuristic-illustrative",
         catchmentDistanceSource: catchment.distanceSource,
+        ageEligibleFraction: Math.round(ageEligibility.fraction * 1000) / 1000,
+        ageGroupsApplied: ageEligibility.appliedGroups,
       };
     }),
   );
@@ -378,6 +431,23 @@ export async function buildLiveSiteMapData(
     );
   }
 
+  const ageGroupsRequested = params.ageGroups ?? [];
+  if (ageGroupsRequested.length > 0) {
+    warnings.push(
+      `Age Group filter applied (${ageGroupsRequested.join(", ")}) in two ways: (1) only sites from ` +
+        `trials whose own disclosed ClinicalTrials.gov eligibility (StdAge) includes this group are shown ` +
+        `at all — a real, live filter; (2) each shown site's eligible-patient COUNT is further scaled to ` +
+        `this group's approximate share of its country's population — an estimate, see ` +
+        `ageEligibilityDisclosure. This changes both which sites appear and their numbers, vs. an "all ages" search.`,
+    );
+    if (ageFallbackCountries.size > 0) {
+      warnings.push(
+        `Age Group population scaling (part 2 above) used the global-average fallback (not a ` +
+          `country-specific figure) for: ${Array.from(ageFallbackCountries).join(", ")}.`,
+      );
+    }
+  }
+
   return {
     indication: params.indication,
     country: params.country || null,
@@ -385,6 +455,9 @@ export async function buildLiveSiteMapData(
     sites,
     warnings,
     fetchedAt: new Date().toISOString(),
+    ageGroupsRequested,
+    ageEligibilityDisclosure:
+      ageGroupsRequested.length > 0 ? AGE_ELIGIBILITY_DISCLOSURE : null,
   };
 }
 
@@ -403,6 +476,8 @@ export interface BuildCombinedCatchmentParams {
   country: string;
   radiusMiles?: number;
   sites: CombinedCatchmentSiteInput[];
+  /** Same Age Group narrowing as buildLiveSiteMapData — see data/ageDemographics.ts. Empty/absent = all ages. */
+  ageGroups?: string[];
 }
 
 export async function buildCombinedCatchment(
@@ -456,9 +531,25 @@ export async function buildCombinedCatchment(
     );
   }
 
+  // Same real fix as buildLiveSiteMapData: scale by the selected Age
+  // Group(s)' share of this country's population instead of ignoring the
+  // selection entirely.
+  const ageEligibility = getAgeEligibleFraction(params.ageGroups, params.country);
+  if (params.ageGroups && params.ageGroups.length > 0) {
+    warnings.push(
+      `Age Group filter applied (${params.ageGroups.join(", ")}) — combined patient count scaled to that group's approximate share of ${params.country}'s population. See ageEligibilityDisclosure on the Site Map response.`,
+    );
+    if (!ageEligibility.matched) {
+      warnings.push(
+        `Age Group scaling used the global-average fallback (not a country-specific figure) for ${params.country}.`,
+      );
+    }
+  }
+
   const combinedGrossEligiblePatients = Math.round(
     ((combinedPopulationInRadius * prevalencePer100k) / 100000) *
-      config.map.addressableFraction,
+      config.map.addressableFraction *
+      ageEligibility.fraction,
   );
   const benchmark = await getCompletedTrialBenchmarks(params.indication).catch(
     () => null,

@@ -281,6 +281,10 @@ interface StudiesResponse {
         overallStatus?: string;
         lastUpdatePostDateStruct?: { date?: string };
       };
+      eligibilityModule?: {
+        minimumAge?: string;
+        maximumAge?: string;
+      };
       contactsLocationsModule?: {
         locations?: Array<{
           facility?: string;
@@ -309,13 +313,87 @@ interface StudiesResponse {
  * the study's own OverallStatus when the location-specific one is missing,
  * so a row still shows a real, disclosed status rather than nothing.
  */
+/**
+ * Turns the trial form's selected Age Group label(s) into the standardized
+ * CHILD / ADULT / OLDER_ADULT values ClinicalTrials.gov itself classifies
+ * studies into (the same buckets its own site's age filter uses).
+ */
+function selectedStdAgeValues(ageGroups: string[] | undefined): Set<string> {
+  const values = new Set<string>();
+  for (const g of ageGroups ?? []) {
+    if (/older\s*adult/i.test(g)) values.add("OLDER_ADULT");
+    else if (/^child/i.test(g)) values.add("CHILD");
+    else if (/^adult/i.test(g)) values.add("ADULT");
+  }
+  return values;
+}
+
+// Same 18/65-year cutoffs ClinicalTrials.gov uses for its own CHILD / ADULT /
+// OLDER_ADULT (StdAge) classification.
+const CHILD_UPPER_YEARS = 18;
+const OLDER_ADULT_LOWER_YEARS = 65;
+
+/**
+ * Parses a ClinicalTrials.gov eligibility age string ("18 Years", "6 Months",
+ * "45 Days", "N/A") into a age in years. Returns null for "N/A"/missing/
+ * unparseable — callers treat null as "no bound" (0 for a minimum, +Infinity
+ * for a maximum), matching how ClinicalTrials.gov treats an absent
+ * MinimumAge/MaximumAge as no lower/upper limit.
+ */
+function parseAgeYears(age: string | null | undefined): number | null {
+  if (!age) return null;
+  const m = age.trim().match(/^(\d+(?:\.\d+)?)\s*(year|month|week|day)s?$/i);
+  if (!m) return null;
+  const n = Number(m[1]);
+  switch (m[2].toLowerCase()) {
+    case "year":
+      return n;
+    case "month":
+      return n / 12;
+    case "week":
+      return n / 52;
+    default:
+      return n / 365; // day
+  }
+}
+
+/**
+ * Derives which StdAge bucket(s) a study's real, disclosed MinimumAge/
+ * MaximumAge eligibility range overlaps — computed locally from the same
+ * two fields ClinicalTrials.gov's own StdAge classification is itself
+ * derived from, rather than trusting an Essie `query.term=AREA[StdAge]...`
+ * filter sent to the live API (whose exact syntax/behavior this sandbox has
+ * no live network access to verify — see the old version of this comment,
+ * kept for history in git). Computing the bucket ourselves from two already-
+ * fetched, already-used-elsewhere-in-this-file fields is fully testable and
+ * doesn't depend on unverifiable server-side query behavior. A study with no
+ * age fields disclosed is treated as "all ages" (matches every group) rather
+ * than excluded, since an unknown eligibility range is not evidence the
+ * study excludes anyone.
+ */
+function studyAgeGroups(
+  minimumAge: string | null | undefined,
+  maximumAge: string | null | undefined,
+): Set<string> {
+  const minYears = parseAgeYears(minimumAge) ?? 0;
+  const maxYears = parseAgeYears(maximumAge) ?? Infinity;
+  const groups = new Set<string>();
+  if (minYears < CHILD_UPPER_YEARS) groups.add("CHILD");
+  if (maxYears >= CHILD_UPPER_YEARS && minYears < OLDER_ADULT_LOWER_YEARS) {
+    groups.add("ADULT");
+  }
+  if (maxYears >= OLDER_ADULT_LOWER_YEARS) groups.add("OLDER_ADULT");
+  return groups;
+}
+
 export async function getFacilitiesForCondition(
   condition: string,
-  opts: { country?: string; pageSize?: number } = {},
+  opts: { country?: string; pageSize?: number; ageGroups?: string[] } = {},
 ): Promise<LiveFacility[]> {
   if (!config.ctgov.enabled) return [];
   const pageSize = opts.pageSize ?? 30;
-  const cacheKey = `facilities:${condition.toLowerCase()}|${(opts.country ?? "").toLowerCase()}|${pageSize}`;
+  const ageKey = (opts.ageGroups ?? []).slice().sort().join(",").toLowerCase();
+  const cacheKey = `facilities:${condition.toLowerCase()}|${(opts.country ?? "").toLowerCase()}|${pageSize}|${ageKey}`;
   const cached = getCached<LiveFacility[]>(cacheKey);
   if (cached !== undefined) return cached;
 
@@ -324,6 +402,8 @@ export async function getFacilitiesForCondition(
     "BriefTitle",
     "OverallStatus",
     "LastUpdatePostDate",
+    "MinimumAge",
+    "MaximumAge",
     "LocationFacility",
     "LocationCity",
     "LocationState",
@@ -331,15 +411,31 @@ export async function getFacilitiesForCondition(
     "LocationStatus",
   ].join(",");
 
-  let url =
+  const url =
     `${BASE_URL}/studies?query.cond=${encodeURIComponent(condition)}` +
-    `&fields=${fields}&pageSize=${pageSize}`;
-  if (opts.country) url += `&query.locn=${encodeURIComponent(opts.country)}`;
+    `&fields=${fields}&pageSize=${pageSize}` +
+    (opts.country ? `&query.locn=${encodeURIComponent(opts.country)}` : "");
+
+  const selectedAges = selectedStdAgeValues(opts.ageGroups);
 
   try {
     const json = await fetchJson<StudiesResponse>(url, config.ctgov.timeoutMs);
     const facilities: LiveFacility[] = [];
     for (const study of json.studies ?? []) {
+      // Real age-eligibility filter, computed locally from this study's own
+      // disclosed MinimumAge/MaximumAge (see studyAgeGroups) rather than sent
+      // to the live API as an unverified query — see that function's doc
+      // comment. Applied at the STUDY level (MinimumAge/MaximumAge aren't
+      // per-location fields), so either every location below is kept or the
+      // whole study is skipped.
+      if (selectedAges.size > 0) {
+        const groups = studyAgeGroups(
+          study.protocolSection?.eligibilityModule?.minimumAge,
+          study.protocolSection?.eligibilityModule?.maximumAge,
+        );
+        const overlaps = [...selectedAges].some((g) => groups.has(g));
+        if (!overlaps) continue;
+      }
       const nctId = study.protocolSection?.identificationModule?.nctId ?? "";
       const briefTitle =
         study.protocolSection?.identificationModule?.briefTitle ?? null;
@@ -687,11 +783,28 @@ export async function getFacilityWideHistory(
  * is defensive: any missing/renamed/reshaped field just yields `null` rather
  * than throwing.
  */
+export interface RaceBreakdownEntry {
+  /** Real category name as reported by ClinicalTrials.gov (e.g. "White", "Black or African American", "Hispanic or Latino", "Asian", "American Indian or Alaska Native"). */
+  category: string;
+  /** 0-100, this category's share of the trial's total reported race/ethnicity count. Rounded to 1 decimal. */
+  percent: number;
+}
+
 export interface FacilityResultsSignal {
   /** 0-100. null if no STARTED/COMPLETED milestone data could be parsed. */
   dropoutRatePercent: number | null;
   /** 0-100 (Gini-Simpson diversity index over Race/Ethnicity categories, scaled). null if no race/ethnicity breakdown was found. */
   diversityIndex: number | null;
+  /**
+   * The actual real category-by-category breakdown the diversityIndex above
+   * was computed from (e.g. [{category:"White",percent:61.2}, ...]) — kept
+   * around instead of discarded, so the UI can show the real ratio itself
+   * rather than only the collapsed 0-100 index. Same trial-wide caveat as
+   * diversityIndex: this is pooled across the whole study (every site that
+   * participated), not specific to any one facility. null whenever
+   * diversityIndex is null.
+   */
+  raceBreakdown: RaceBreakdownEntry[] | null;
   /**
    * 0-100 — real, disclosed serious-adverse-event rate: sum(seriousNumAffected)
    * / sum(seriousNumAtRisk) across resultsSection.adverseEventsModule.eventGroups
@@ -765,12 +878,27 @@ function sumMilestone(period: FlowPeriod, type: string): number | null {
   return any ? total : null;
 }
 
-function raceDiversityIndex(measures: BaselineMeasure[] | undefined): number | null {
+interface RaceDiversityResult {
+  index: number | null;
+  breakdown: RaceBreakdownEntry[] | null;
+}
+
+/**
+ * Computes the Gini-Simpson diversity index AND returns the real
+ * category-by-category breakdown it was computed from (category name +
+ * real reported count per category) — previously this function discarded
+ * the breakdown and returned only the collapsed index, so the UI had no way
+ * to show the actual real race/ethnicity ratio, only a single opaque
+ * number.
+ */
+function raceDiversityIndex(
+  measures: BaselineMeasure[] | undefined,
+): RaceDiversityResult {
   const raceMeasure = (measures ?? []).find((m) =>
     /race|ethnicity/i.test(m.title ?? ""),
   );
-  if (!raceMeasure) return null;
-  const totals: number[] = [];
+  if (!raceMeasure) return { index: null, breakdown: null };
+  const entries: { category: string; total: number }[] = [];
   for (const cls of raceMeasure.classes ?? []) {
     for (const cat of cls.categories ?? []) {
       let catTotal = 0;
@@ -782,14 +910,25 @@ function raceDiversityIndex(measures: BaselineMeasure[] | undefined): number | n
           any = true;
         }
       }
-      if (any) totals.push(catTotal);
+      if (any) entries.push({ category: cat.title ?? "Unspecified", total: catTotal });
     }
   }
-  const grandTotal = totals.reduce((a, b) => a + b, 0);
-  if (grandTotal <= 0 || totals.length < 2) return null;
+  const grandTotal = entries.reduce((a, b) => a + b.total, 0);
+  if (grandTotal <= 0 || entries.length < 2) return { index: null, breakdown: null };
   // Gini-Simpson diversity index: 1 - sum(p_i^2), scaled to 0-100.
-  const sumSquares = totals.reduce((sum, t) => sum + Math.pow(t / grandTotal, 2), 0);
-  return Math.round((1 - sumSquares) * 1000) / 10;
+  const sumSquares = entries.reduce(
+    (sum, e) => sum + Math.pow(e.total / grandTotal, 2),
+    0,
+  );
+  const index = Math.round((1 - sumSquares) * 1000) / 10;
+  const breakdown: RaceBreakdownEntry[] = entries
+    .map((e) => ({
+      category: e.category,
+      percent: Math.round((e.total / grandTotal) * 1000) / 10,
+    }))
+    // Largest share first — reads better in a tooltip/list than source order.
+    .sort((a, b) => b.percent - a.percent);
+  return { index, breakdown };
 }
 
 export async function getFacilityResultsSignal(
@@ -820,7 +959,7 @@ export async function getFacilityResultsSignal(
         break;
       }
     }
-    const diversityIndex = raceDiversityIndex(
+    const { index: diversityIndex, breakdown: raceBreakdown } = raceDiversityIndex(
       json.resultsSection?.baselineCharacteristicsModule?.measures,
     );
     const seriousAdverseEventRatePercent = seriousAdverseEventRateFrom(
@@ -837,6 +976,7 @@ export async function getFacilityResultsSignal(
     const result: FacilityResultsSignal = {
       dropoutRatePercent,
       diversityIndex,
+      raceBreakdown,
       seriousAdverseEventRatePercent,
       sourceNctId: nctId,
     };

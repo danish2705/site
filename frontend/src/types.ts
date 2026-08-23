@@ -148,6 +148,8 @@ export interface RiskAssessmentRow {
   /** True when this site has no real or estimated risk data at all — show "No Data" instead of trusting overallRisk's "Low". */
   riskDataUnavailable: boolean;
   riskRecords: RiskRecord[];
+  /** Real, raw ClinicalTrials.gov status for this site (e.g. "RECRUITING", "NOT_YET_RECRUITING", "COMPLETED"...) — null if the source facility had no disclosed status. Every real status is included (no server-side filtering); use the Status filter dropdown to narrow the view. */
+  status: string | null;
 }
 
 export interface ComponentScores {
@@ -183,6 +185,12 @@ export interface RankingRow {
   dataSource?: "excel" | "llm-estimated";
   /** Raw KPI field names (e.g. "Historical Enrollment Rate (pts/month)") overridden with real ClinicalTrials.gov data instead of the LLM estimate. Empty when every field is still estimated. */
   liveKpiFields?: string[];
+  /** The NCTId Dropout Rate/Diversity Index (if real) were sourced from — trial-wide, not this site alone. null when neither is real. */
+  liveKpiSourceNctId?: string | null;
+  /** Real race/ethnicity category breakdown behind the Diversity component, when it's real (not LLM-estimated) — e.g. [{category:"White",percent:61.2},...]. null otherwise. */
+  raceBreakdown?: { category: string; percent: number }[] | null;
+  /** Real, raw ClinicalTrials.gov status for this site (e.g. "RECRUITING", "NOT_YET_RECRUITING", "COMPLETED"...) — null if the source facility had no disclosed status. Every real status is included (no server-side filtering); use the Status filter dropdown to narrow the view. */
+  status: string | null;
 }
 
 export interface FinalResult {
@@ -357,6 +365,10 @@ export interface MapSiteRow {
    * has no live public source. See backend data/syntheticPatients.ts.
    */
   patientSample: SyntheticPatientRecord[];
+  /** 0-1 multiplier actually applied to this site's grossEligiblePatients for the selected Age Group(s). 1 = no narrowing (all ages). */
+  ageEligibleFraction: number;
+  /** Which Age Group label(s) were actually applied to this site's numbers — empty when none were selected. */
+  ageGroupsApplied: string[];
 }
 
 /** See MapSiteRow.siteCost. */
@@ -392,6 +404,10 @@ export interface LiveMapResponse {
   sites: MapSiteRow[];
   warnings: string[];
   fetchedAt: string;
+  /** The Age Group label(s) the trial form had selected for this request — empty means "all ages" (no narrowing applied). */
+  ageGroupsRequested: string[];
+  /** What the per-site age-eligibility adjustment is and isn't. null when ageGroupsRequested is empty. */
+  ageEligibilityDisclosure: string | null;
 }
 
 export interface CombinedCatchmentResponse {
@@ -462,7 +478,10 @@ export interface OutreachDraftResponse {
 
 export interface EligibilityFilterOption {
   id: string;
+  /** Short checkbox phrase, kept <=45 characters server-side so it never needs truncating in the UI. */
   label: string;
+  /** Fuller clinical wording behind the short label — show this in a tooltip/title, not on the checkbox itself. Equal to `label` when there's nothing more to add. */
+  detail: string;
   type: "inclusion" | "exclusion";
   /** LLM-estimated % of the general indication population this single criterion alone would exclude — not cumulative with other filters, not a measured fact. */
   estimatedExcludedPercent: number;

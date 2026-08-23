@@ -131,6 +131,10 @@ function applyLiveKpiOverrides(
   if (real.resultsSignal?.diversityIndex != null) {
     out["Diversity Index (0-100)"] = real.resultsSignal.diversityIndex;
     liveKpiFields.push("Diversity Index (0-100)");
+    // Carry the real category-by-category breakdown along too, not just
+    // the collapsed index — lets the UI show the actual race/ethnicity
+    // ratio instead of only a single 0-100 number.
+    out.raceBreakdown = real.resultsSignal.raceBreakdown ?? null;
   }
   if (real.realActiveWorkload !== null) {
     out["Competing Trials at Site"] = real.realActiveWorkload;
@@ -198,7 +202,7 @@ export interface LiveCandidateSite {
   siteCost: SyntheticSiteCost;
 }
 
-const RECRUITING_LOCATION_STATUSES = new Set([
+export const RECRUITING_LOCATION_STATUSES = new Set([
   "RECRUITING",
   "NOT_YET_RECRUITING",
 ]);
@@ -286,6 +290,8 @@ export interface BuildLiveCandidateSitesParams {
   avgCostPerPatient: number;
   /** Cap on how many real facilities to pull/estimate per run — each one costs an LLM call. */
   maxSites?: number;
+  /** Trial form's selected Age Group label(s) — see services/ctgov.client.ts's studyAgeGroups and data/ageDemographics.ts. Empty/absent = all ages, no filtering. */
+  ageGroups?: string[];
 }
 
 export async function buildLiveCandidateSites(
@@ -296,6 +302,13 @@ export async function buildLiveCandidateSites(
   const rawFacilities = await getFacilitiesForCondition(params.indication, {
     country: params.country,
     pageSize: maxSites * 2, // fetch a few extra since some rows lack a facility name
+    // Real filter: only sites from trials whose disclosed StdAge eligibility
+    // includes the selected group(s) — same mechanism as the Site Map tab
+    // (pipeline/liveMapData.ts). Left OFF the competing-pool fetch further
+    // below (deliberately): "how many other trials compete for the same
+    // pool of staff/patients here" is still a meaningful signal even when
+    // those competing trials have a different age scope than THIS trial.
+    ageGroups: params.ageGroups,
   });
   const facilities = dedupeFacilities(rawFacilities).slice(0, maxSites);
   if (facilities.length === 0) return [];
@@ -345,6 +358,7 @@ export async function buildLiveCandidateSites(
         "Hospital Type": "Unknown (live-sourced)",
         Accreditation: "Unknown",
         dataSource: "live",
+        recruitingStatus: f.status ?? null,
       };
 
       if (!llmConfigured) {
@@ -472,6 +486,7 @@ export async function buildLiveCandidateSites(
             "Hospital Type": "Unknown (live-sourced)",
             Accreditation: "Unknown",
             dataSource: "live" as const,
+            recruitingStatus: facilities[i].status ?? null,
           },
           evalRow: null,
           warning: `${facilities[i].facility ?? "A live site"}: unexpected error building this candidate — shown but not scored.`,

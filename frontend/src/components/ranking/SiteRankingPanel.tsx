@@ -1,4 +1,4 @@
-import { Fragment, useState } from "react";
+import { Fragment, useMemo, useState } from "react";
 import { usePipeline } from "../../hooks/usePipeline";
 import ScoreBreakdown from "./ScoreBreakdown";
 import WizardNextLink from "../ui/WizardNextLink";
@@ -6,8 +6,64 @@ import StageLoader from "../ui/StageLoader";
 import { fetchOutreachDraft } from "../../services/siteCombination.service";
 import type { OutreachDraft, RankingRow } from "../../types";
 
+// Same status grouping/label/color treatment as the Ongoing Trials and Risk
+// Register pages (see CompetingTrialsPanel.tsx / RiskAssessmentAccordion.tsx)
+// — kept as a local copy per this codebase's existing per-component
+// convention.
+function statusGroupFor(status: string | null): "completed" | "active" | "other" {
+  const s = (status ?? "").toUpperCase();
+  if (s === "COMPLETED") return "completed";
+  if (
+    s === "RECRUITING" ||
+    s === "ACTIVE_NOT_RECRUITING" ||
+    s === "NOT_YET_RECRUITING" ||
+    s === "ENROLLING_BY_INVITATION"
+  ) {
+    return "active";
+  }
+  return "other";
+}
+
+function statusLabel(status: string | null): string {
+  if (!status) return "Unknown";
+  if (status.toUpperCase() === "NOT_YET_RECRUITING") {
+    return "Recruiting not yet started";
+  }
+  return status
+    .toLowerCase()
+    .split("_")
+    .map((w) => w[0]?.toUpperCase() + w.slice(1))
+    .join(" ");
+}
+
+function statusBand(
+  status: string | null,
+): "low" | "medium" | "high" | "info" | "no-data" {
+  const s = (status ?? "").toUpperCase();
+  if (s === "COMPLETED") return "info";
+  if (s === "RECRUITING") return "low";
+  if (s === "TERMINATED" || s === "WITHDRAWN" || s === "SUSPENDED") return "high";
+  if (
+    s === "ACTIVE_NOT_RECRUITING" ||
+    s === "NOT_YET_RECRUITING" ||
+    s === "ENROLLING_BY_INVITATION"
+  ) {
+    return "medium";
+  }
+  return "no-data";
+}
+
 export default function SiteRankingPanel() {
   const { ranking, form, running } = usePipeline();
+  const [statusFilter, setStatusFilter] = useState<
+    "all" | "completed" | "active" | "other"
+  >("all");
+
+  const filteredRanking = useMemo(() => {
+    if (!ranking) return [];
+    if (statusFilter === "all") return ranking;
+    return ranking.filter((r) => statusGroupFor(r.status) === statusFilter);
+  }, [ranking, statusFilter]);
 
   // Per-site outreach draft state — see backend pipeline/outreachDraft.ts.
   // IMPORTANT: this only ever generates draft text; it never sends an email.
@@ -66,7 +122,35 @@ export default function SiteRankingPanel() {
 
   return (
     <div className="card">
-      <span className="tag">Stage 7 Output</span>
+      <div className="predict-head">
+        <div className="predict-head-top">
+          <div className="predict-head-text">
+            <span className="tag">Stage 7 Output</span>
+          </div>
+          <div className="predict-head-actions">
+            <select
+              value={statusFilter}
+              onChange={(e) =>
+                setStatusFilter(
+                  e.target.value as "all" | "completed" | "active" | "other",
+                )
+              }
+              title="Filter sites by trial status"
+            >
+              <option value="all">All statuses</option>
+              <option value="active">Active (Recruiting, etc.)</option>
+              <option value="completed">Completed</option>
+              <option value="other">
+                Other (Terminated/Withdrawn/Suspended/Unknown)
+              </option>
+            </select>
+            <span className="map-table-count">
+              {filteredRanking.length.toLocaleString()} of{" "}
+              {ranking.length.toLocaleString()} site(s)
+            </span>
+          </div>
+        </div>
+      </div>
       {draftError && <p className="error-text">{draftError}</p>}
       <div className="card-scroll-body">
         <div className="table-scroll">
@@ -80,13 +164,23 @@ export default function SiteRankingPanel() {
                 <th>Breakdown</th>
                 <th>Protocol fit</th>
                 <th>Risk</th>
+                <th title="Live ClinicalTrials.gov status for this site.">
+                  Status
+                </th>
                 <th title="Draft-only outreach text — no real contact email exists for these sites, and this app never actually sends anything.">
                   Outreach
                 </th>
               </tr>
             </thead>
             <tbody>
-              {ranking.map((r) => (
+              {filteredRanking.length === 0 && (
+                <tr>
+                  <td colSpan={9} className="predict-placeholder">
+                    No sites match the selected status filter.
+                  </td>
+                </tr>
+              )}
+              {filteredRanking.map((r) => (
                 <Fragment key={r.siteId}>
                 <tr>
                   <td>{r.rank}</td>
@@ -110,6 +204,8 @@ export default function SiteRankingPanel() {
                     <ScoreBreakdown
                       components={r.components}
                       liveKpiFields={r.liveKpiFields}
+                      liveKpiSourceNctId={r.liveKpiSourceNctId}
+                      raceBreakdown={r.raceBreakdown}
                     />
                   </td>
                   <td>
@@ -127,6 +223,11 @@ export default function SiteRankingPanel() {
                   <td>
                     <span className={`badge ${r.riskLevel.toLowerCase()}`}>
                       {r.riskLevel}
+                    </span>
+                  </td>
+                  <td>
+                    <span className={`badge ${statusBand(r.status)}`}>
+                      {statusLabel(r.status)}
                     </span>
                   </td>
                   <td>
@@ -149,7 +250,7 @@ export default function SiteRankingPanel() {
                 </tr>
                 {openDraftSiteId === r.siteId && drafts[r.siteId] && (
                   <tr>
-                    <td colSpan={8} style={{ background: "#f7f8fb" }}>
+                    <td colSpan={9} style={{ background: "#f7f8fb" }}>
                       <div style={{ padding: "10px 4px" }}>
                         <div
                           style={{

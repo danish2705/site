@@ -15,6 +15,8 @@
   --high-bg: #fbe9e9;
   --no-data: #5f6579;
   --no-data-bg: #e6e8f0;
+  --info: #1d5fbf;
+  --info-bg: #e6eefc;
   --shadow-sm: 0 1px 2px rgba(23, 27, 46, 0.04);
   --shadow: 0 1px 2px rgba(23, 27, 46, 0.04), 0 10px 28px rgba(23, 27, 46, 0.07);
   --radius: 14px;
@@ -1029,6 +1031,10 @@ tbody tr:hover {
   background: var(--no-data-bg);
   font-style: italic;
 }
+.badge.info {
+  color: var(--info);
+  background: var(--info-bg);
+}
 .badge.unknown {
   color: var(--no-data);
   background: var(--no-data-bg);
@@ -1047,7 +1053,7 @@ tbody tr:hover {
 .risk-accordion-header {
   width: 100%;
   display: grid;
-  grid-template-columns: minmax(140px, 1.6fr) minmax(100px, 0.9fr) 92px minmax(110px, 1fr) 18px;
+  grid-template-columns: minmax(140px, 1.6fr) minmax(100px, 0.9fr) minmax(120px, 0.9fr) 92px minmax(110px, 1fr) 18px;
   align-items: center;
   gap: 14px;
   background: #fff;
@@ -1089,6 +1095,14 @@ tbody tr:hover {
   color: var(--sub);
   font-size: 12.5px;
 }
+.risk-accordion-status {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--sub);
+  font-size: 12.5px;
+}
 .risk-accordion-badge-col {
   justify-self: start;
 }
@@ -1121,7 +1135,7 @@ tbody tr:hover {
 }
 @media (max-width: 720px) {
   .risk-accordion-header {
-    grid-template-columns: minmax(90px, 1.5fr) minmax(70px, 0.8fr) 76px minmax(84px, 0.9fr) 16px;
+    grid-template-columns: minmax(90px, 1.5fr) minmax(70px, 0.8fr) minmax(80px, 0.8fr) 76px minmax(84px, 0.9fr) 16px;
     gap: 8px;
     padding: 10px 12px;
   }

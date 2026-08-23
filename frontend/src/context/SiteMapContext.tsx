@@ -235,6 +235,7 @@ export function SiteMapProvider({ children }: { children: ReactNode }) {
           lng: s.lng,
           netAvailablePatients: s.netAvailablePatients,
         })),
+        ageGroups: form.ageGroups,
       });
       setCombineResult(res);
     } catch (err) {
@@ -267,6 +268,7 @@ export function SiteMapProvider({ children }: { children: ReactNode }) {
         indication,
         country: country || undefined,
         radiusMiles: SITE_MAP_RADIUS_MILES,
+        ageGroups: form.ageGroups,
       });
       setData(res);
       setSelectedSiteId(null);

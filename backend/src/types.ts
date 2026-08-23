@@ -147,6 +147,15 @@ export interface MapSiteRow {
    * derived from any real EHR/claims/CTMS source.
    */
   patientSample: SyntheticPatientRecord[];
+  /**
+   * 0-1 multiplier actually applied to this site's grossEligiblePatients to
+   * reflect the trial form's selected Age Group(s) — see
+   * data/ageDemographics.ts's getAgeEligibleFraction. 1 when no Age Group
+   * was selected (all ages included, no narrowing).
+   */
+  ageEligibleFraction: number;
+  /** Which Age Group label(s) were actually applied to this site's numbers — empty when none were selected. */
+  ageGroupsApplied: string[];
 }
 
 /** See MapSiteRow.patientSegments. */
@@ -167,6 +176,10 @@ export interface LiveMapResponse {
   sites: MapSiteRow[];
   warnings: string[];
   fetchedAt: string;
+  /** The Age Group label(s) the trial form had selected for this request — empty means "all ages" (no narrowing applied). */
+  ageGroupsRequested: string[];
+  /** What the per-site age-eligibility adjustment is and isn't — see data/ageDemographics.ts. null when ageGroupsRequested is empty (nothing to disclose). */
+  ageEligibilityDisclosure: string | null;
 }
 
 export interface CombinedCatchmentRequestSite {
@@ -324,6 +337,8 @@ export interface SiteRow {
   Accreditation: string;
   /** "live" = real facility pulled from ClinicalTrials.gov this run; absent/"excel" = from Candidate_Sites. */
   dataSource?: "excel" | "live";
+  /** Real, live OverallStatus for this facility's trial from ClinicalTrials.gov (e.g. "RECRUITING", "NOT_YET_RECRUITING", "COMPLETED"...). null/absent for a non-live site or if the source facility had no status. Used to restrict Risk Register/Ranking to only actively-or-soon recruiting sites and to label the Status column shown on those pages. */
+  recruitingStatus?: string | null;
 }
 
 export interface EvaluationRow {
@@ -504,6 +519,8 @@ export interface RiskAssessmentRow {
   highRiskCount: number;
   mediumRiskCount: number;
   riskRecords: RiskRecord[];
+  /** Real, raw ClinicalTrials.gov status for this site (e.g. "RECRUITING", "NOT_YET_RECRUITING", "COMPLETED"...) — null if the source facility had no disclosed status. Every real status is included here (not filtered server-side); the UI derives its own display label/color and status filter from this. Not to be confused with RiskRow.Status, which is a risk-mitigation workflow status (e.g. "Open"). */
+  status: string | null;
 }
 
 export type StageStatus = "in-progress" | "complete";

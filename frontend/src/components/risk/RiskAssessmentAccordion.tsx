@@ -12,6 +12,38 @@ function isAllNoRisk(r: RiskAssessmentRow): boolean {
   );
 }
 
+// Same status label/color treatment as the Ongoing Trials page (see
+// CompetingTrialsPanel.tsx) — kept as a local copy rather than a shared
+// import, matching this codebase's existing per-component convention.
+function statusLabel(status: string | null): string {
+  if (!status) return "Unknown";
+  if (status.toUpperCase() === "NOT_YET_RECRUITING") {
+    return "Recruiting not yet started";
+  }
+  return status
+    .toLowerCase()
+    .split("_")
+    .map((w) => w[0]?.toUpperCase() + w.slice(1))
+    .join(" ");
+}
+
+function statusBand(
+  status: string | null,
+): "low" | "medium" | "high" | "info" | "no-data" {
+  const s = (status ?? "").toUpperCase();
+  if (s === "COMPLETED") return "info";
+  if (s === "RECRUITING") return "low";
+  if (s === "TERMINATED" || s === "WITHDRAWN" || s === "SUSPENDED") return "high";
+  if (
+    s === "ACTIVE_NOT_RECRUITING" ||
+    s === "NOT_YET_RECRUITING" ||
+    s === "ENROLLING_BY_INVITATION"
+  ) {
+    return "medium";
+  }
+  return "no-data";
+}
+
 function overallRiskTooltip(r: RiskAssessmentRow): string {
   const total = r.riskRecords.length;
   if (r.riskDataUnavailable) {
@@ -72,6 +104,10 @@ export default function RiskAssessmentAccordion({
     return copy;
   }, [rows, expanded]);
 
+  if (orderedRows.length === 0) {
+    return <p className="predict-placeholder">No sites match the selected status filter.</p>;
+  }
+
   return (
     <div className="risk-accordion">
       {orderedRows.map((r) => {
@@ -92,6 +128,14 @@ export default function RiskAssessmentAccordion({
                 <span className="site-id">{r.siteId}</span>
               </span>
               <span className="risk-accordion-region">{r.region}</span>
+              <span className="risk-accordion-status">
+                <span
+                  className={`badge ${statusBand(r.status)}`}
+                  title="Live ClinicalTrials.gov status for this site."
+                >
+                  {statusLabel(r.status)}
+                </span>
+              </span>
               <span className="risk-accordion-badge-col">
                 {r.riskDataUnavailable ? (
                   <span className="badge no-data" title={overallRiskTooltip(r)}>

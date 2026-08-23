@@ -27,10 +27,16 @@ const LIVE_FIELDS_FOR_COMPONENT: Partial<Record<keyof ComponentScores, string[]>
 export default function ScoreBreakdown({
   components,
   liveKpiFields,
+  liveKpiSourceNctId,
+  raceBreakdown,
 }: {
   components: ComponentScores;
   /** Raw KPI field names on this site's row that are real ClinicalTrials.gov data rather than an LLM estimate. */
   liveKpiFields?: string[];
+  /** The NCTId Dropout Rate/Diversity Index (if real) were sourced from — trial-wide, not this site alone. */
+  liveKpiSourceNctId?: string | null;
+  /** Real race/ethnicity category breakdown behind the Diversity component, when real. null/undefined when it's LLM-estimated instead. */
+  raceBreakdown?: { category: string; percent: number }[] | null;
 }) {
   return (
     <div className="score-breakdown">
@@ -40,18 +46,37 @@ export default function ScoreBreakdown({
         const isValid = value !== null && !Number.isNaN(value);
         const liveFields = LIVE_FIELDS_FOR_COMPONENT[key];
         const isPartlyLive = !!liveFields?.some((f) => liveKpiFields?.includes(f));
+
+        // Diversity-specific: when it's real, build a quick "White 61% ·
+        // Black 19% · ..." line from the actual reported category
+        // breakdown instead of just the collapsed 0-100 index — this is
+        // the tooltip-list option (no extra click), so it has to stay
+        // short; showing every category is fine since there are usually
+        // only 4-6 of them.
+        const raceBreakdownLine =
+          key === "diversity" && raceBreakdown && raceBreakdown.length > 0
+            ? raceBreakdown
+                .map((r) => `${r.category} ${r.percent.toFixed(0)}%`)
+                .join(" · ")
+            : null;
+
+        const title = !isValid
+          ? `${label} (${weight}%): no data — excluded, weight redistributed`
+          : `${label} (${weight}%): ${value.toFixed(1)}/100` +
+            (raceBreakdownLine
+              ? `\n${raceBreakdownLine}` +
+                (liveKpiSourceNctId
+                  ? `\n(from ${liveKpiSourceNctId}'s posted results — trial-wide, not this facility alone)`
+                  : "")
+              : isPartlyLive
+                ? " — partly backed by real ClinicalTrials.gov data"
+                : "");
+
         return (
           <div
             key={key}
             className={`score-component${isPartlyLive ? " score-component--live" : ""}`}
-            title={
-              isValid
-                ? `${label} (${weight}%): ${value.toFixed(1)}/100` +
-                  (isPartlyLive
-                    ? " — partly backed by real ClinicalTrials.gov data"
-                    : "")
-                : `${label} (${weight}%): no data — excluded, weight redistributed`
-            }
+            title={title}
           >
             <span className="score-component-label">{label.slice(0, 4)}</span>
             <span className="score-component-track">

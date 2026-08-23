@@ -28,6 +28,19 @@ export async function getLiveSiteMap(
   const radiusMiles = req.query.radiusMiles
     ? Number(req.query.radiusMiles)
     : undefined;
+  // Accepts either repeated ?ageGroups=A&ageGroups=B (Express gives an
+  // array) or a single comma-separated ?ageGroups=A,B — either way ends up
+  // as a clean string[], empty when not provided (all ages).
+  const ageGroupsRaw = req.query.ageGroups;
+  const ageGroups = (
+    Array.isArray(ageGroupsRaw)
+      ? ageGroupsRaw.map((v) => String(v))
+      : typeof ageGroupsRaw === "string" && ageGroupsRaw.length > 0
+        ? ageGroupsRaw.split(",")
+        : []
+  )
+    .map((g) => g.trim())
+    .filter(Boolean);
 
   let specialty = "";
   try {
@@ -41,6 +54,7 @@ export async function getLiveSiteMap(
     specialty,
     country: country || undefined,
     radiusMiles,
+    ageGroups,
   });
 
   res.json(response);
@@ -60,7 +74,7 @@ export async function getCombinedCatchment(
   req: Request,
   res: Response,
 ): Promise<void> {
-  const { indication, country, radiusMiles, sites } = req.body ?? {};
+  const { indication, country, radiusMiles, sites, ageGroups } = req.body ?? {};
 
   if (!indication || typeof indication !== "string") {
     throw badRequest('Body field "indication" is required.');
@@ -109,6 +123,9 @@ export async function getCombinedCatchment(
     country,
     radiusMiles: radiusMiles ? Number(radiusMiles) : undefined,
     sites: parsedSites,
+    ageGroups: Array.isArray(ageGroups)
+      ? ageGroups.map((g: unknown) => String(g)).filter(Boolean)
+      : [],
   });
 
   res.json(response);

@@ -404,16 +404,29 @@ export interface RegionMetricsEstimate {
  * the call fails/doesn't parse, so callers can surface an explicit warning
  * instead of showing fabricated numbers.
  */
-export async function estimateRegionMetrics(
-  input: RegionMetricsEstimateInput,
-): Promise<RegionMetricsEstimate> {
-  if (!client) {
-    throw new Error(
-      "LLM not configured (no OPENAI_API_KEY or AZURE_OPENAI_ENDPOINT/AZURE_OPENAI_API_KEY in backend/.env) — cannot estimate region metrics.",
-    );
-  }
+// Azure OpenAI's Responsible AI content filter occasionally blocks THIS
+// prompt for certain indications (observed: "Psoriasis (Moderate-Severe)")
+// even though the near-identical estimateSiteGeoRisk prompt for the same
+// indication goes through fine — RAI filtering runs over the model's actual
+// generated completion (which varies run-to-run at temperature 0.3), not
+// just the fixed input text, so a block is not guaranteed to repeat on a
+// retry of the exact same request. isContentFilterError/buildRegionMetricsPrompt
+// below let estimateRegionMetrics retry past a transient block, and fall
+// back to a reworded prompt (no disease-severity qualifier, explicitly
+// framed as a non-clinical business planning estimate) if it keeps
+// recurring — rather than the whole Site Map silently showing 0 for every
+// site in that country every time this specific indication is searched.
+function isContentFilterError(err: unknown): boolean {
+  const e = err as { code?: string; error?: { code?: string } } | null;
+  return e?.code === "content_filter" || e?.error?.code === "content_filter";
+}
 
-  const prompt = `You are a clinical trial feasibility analyst. No public data source (not
+function buildRegionMetricsPrompt(
+  input: RegionMetricsEstimateInput,
+  variant: "default" | "reworded",
+): string {
+  if (variant === "default") {
+    return `You are a clinical trial feasibility analyst. No public data source (not
 ClinicalTrials.gov, not WHO, nowhere) publishes disease prevalence at the granularity of a
 specific trial indication, regulatory approval time by country, or cost per patient by country/
 region. Your job is to give your best-informed estimate of these three figures for the
@@ -437,51 +450,140 @@ Reply with ONLY a JSON object, no prose or markdown fences, in exactly this shap
   "avgCostPerPatientUsd": <number or null, range 500-15000>,
   "rationale": "<2-3 sentences on what you grounded this estimate in and what you were least sure about>"
 }`;
+  }
 
-  const completion = await client.chat.completions.create({
-    model: MODEL,
-    messages: [{ role: "user", content: prompt }],
-    temperature: 0.3,
-    response_format: { type: "json_object" },
-  });
+  // Reworded fallback variant: strips any parenthetical severity/staging
+  // qualifier from the indication (e.g. "Psoriasis (Moderate-Severe)" ->
+  // "Psoriasis"), and reframes the ask as a business/market-sizing estimate
+  // rather than a clinical judgment, in case that framing is what trips the
+  // filter for certain indications.
+  const plainIndication = input.indication.replace(/\s*\([^)]*\)\s*$/, "").trim();
+  return `You are a market-sizing analyst supporting internal clinical-trial site-selection
+business planning (NOT medical advice, NOT a clinical diagnosis or treatment recommendation).
+No public data source publishes condition prevalence at this granularity, drug-approval timelines
+by country, or per-patient trial cost by country/region, so provide a best-informed planning
+estimate for the three numeric fields below, reasoning only from general country-level context
+(regulatory maturity, healthcare cost of living, typical disease-area context).
 
-  const raw = completion.choices[0].message.content ?? "";
-  const parsed = parseJsonResponse<
-    Partial<RegionMetricsEstimateFields> & { rationale?: string }
-  >(raw);
+PLANNING INPUT
+Region grouping: ${input.region}
+Country: ${input.country}
+Condition area: ${plainIndication}
+Relevant specialty: ${input.specialty}
 
-  const fields: RegionMetricsEstimateFields = {
-    prevalencePer100k:
-      typeof parsed.prevalencePer100k === "number" && Number.isFinite(parsed.prevalencePer100k)
-        ? parsed.prevalencePer100k
-        : null,
-    regulatoryApprovalWeeks:
-      typeof parsed.regulatoryApprovalWeeks === "number" &&
-      Number.isFinite(parsed.regulatoryApprovalWeeks)
-        ? parsed.regulatoryApprovalWeeks
-        : null,
-    avgCostPerPatientUsd:
-      typeof parsed.avgCostPerPatientUsd === "number" &&
-      Number.isFinite(parsed.avgCostPerPatientUsd)
-        ? parsed.avgCostPerPatientUsd
-        : null,
-  };
+INSTRUCTIONS
+Give a best-effort numeric estimate within the stated range for each field. Return null only if
+you truly have no reasonable basis.
 
-  const hasAnyValue = Object.values(fields).some((v) => v !== null);
-  if (!hasAnyValue) {
+Reply with ONLY a JSON object, no prose or markdown fences, in exactly this shape:
+{
+  "prevalencePer100k": <number or null, range 1-2000>,
+  "regulatoryApprovalWeeks": <number or null, range 4-52>,
+  "avgCostPerPatientUsd": <number or null, range 500-15000>,
+  "rationale": "<2-3 sentences on what you grounded this estimate in and what you were least sure about>"
+}`;
+}
+
+export async function estimateRegionMetrics(
+  input: RegionMetricsEstimateInput,
+): Promise<RegionMetricsEstimate> {
+  if (!client) {
     throw new Error(
-      "LLM returned no usable region metric values (all null or unparseable).",
+      "LLM not configured (no OPENAI_API_KEY or AZURE_OPENAI_ENDPOINT/AZURE_OPENAI_API_KEY in backend/.env) — cannot estimate region metrics.",
     );
   }
 
-  return {
-    fields,
-    rationale:
-      "(AI-estimated) " +
-      (typeof parsed.rationale === "string" && parsed.rationale.trim()
-        ? parsed.rationale.trim()
-        : "No rationale returned by the model."),
-  };
+  // Attempt plan: same prompt twice (a content-filter block isn't
+  // guaranteed to repeat, since it's evaluated against the model's actual
+  // generated completion, which varies at temperature 0.3), then one
+  // reworded/de-clinicalized prompt as a last resort.
+  const attempts: Array<"default" | "reworded"> = [
+    "default",
+    "default",
+    "reworded",
+  ];
+
+  let lastErr: unknown;
+  for (let i = 0; i < attempts.length; i++) {
+    const variant = attempts[i];
+    const prompt = buildRegionMetricsPrompt(input, variant);
+    try {
+      const completion = await client.chat.completions.create({
+        model: MODEL,
+        messages: [{ role: "user", content: prompt }],
+        temperature: 0.3,
+        response_format: { type: "json_object" },
+      });
+
+      const raw = completion.choices[0].message.content ?? "";
+      const parsed = parseJsonResponse<
+        Partial<RegionMetricsEstimateFields> & { rationale?: string }
+      >(raw);
+
+      const fields: RegionMetricsEstimateFields = {
+        prevalencePer100k:
+          typeof parsed.prevalencePer100k === "number" &&
+          Number.isFinite(parsed.prevalencePer100k)
+            ? parsed.prevalencePer100k
+            : null,
+        regulatoryApprovalWeeks:
+          typeof parsed.regulatoryApprovalWeeks === "number" &&
+          Number.isFinite(parsed.regulatoryApprovalWeeks)
+            ? parsed.regulatoryApprovalWeeks
+            : null,
+        avgCostPerPatientUsd:
+          typeof parsed.avgCostPerPatientUsd === "number" &&
+          Number.isFinite(parsed.avgCostPerPatientUsd)
+            ? parsed.avgCostPerPatientUsd
+            : null,
+      };
+
+      const hasAnyValue = Object.values(fields).some((v) => v !== null);
+      if (!hasAnyValue) {
+        throw new Error(
+          "LLM returned no usable region metric values (all null or unparseable).",
+        );
+      }
+
+      if (i > 0) {
+        console.log(
+          `[estimateRegionMetrics] succeeded on attempt ${i + 1}/${attempts.length} ` +
+            `(variant="${variant}") for "${input.indication}" after an earlier attempt failed.`,
+        );
+      }
+
+      return {
+        fields,
+        rationale:
+          "(AI-estimated) " +
+          (typeof parsed.rationale === "string" && parsed.rationale.trim()
+            ? parsed.rationale.trim()
+            : "No rationale returned by the model."),
+      };
+    } catch (err) {
+      lastErr = err;
+      if (!isContentFilterError(err)) {
+        // Not a content-filter block (network error, rate limit, etc.) —
+        // retrying with a reworded prompt wouldn't help, so fail fast.
+        throw err;
+      }
+      const contentFilterResult = (
+        err as {
+          error?: { innererror?: { content_filter_result?: unknown } };
+        }
+      )?.error?.innererror?.content_filter_result;
+      console.error(
+        `[estimateRegionMetrics] content_filter block on attempt ${i + 1}/${attempts.length} ` +
+          `(variant="${variant}") for "${input.indication}" in ${input.country} — ` +
+          `${i + 1 < attempts.length ? "retrying" : "giving up"}. ` +
+          `content_filter_result: ${JSON.stringify(contentFilterResult)}`,
+      );
+    }
+  }
+
+  throw lastErr instanceof Error
+    ? lastErr
+    : new Error("LLM region-metrics estimate failed after retries.");
 }
 
 /* ---------------------------------------------------------------------- */
@@ -645,8 +747,21 @@ export function llmStatus(): { configured: boolean; model: string } {
 export interface EligibilityFilterEstimateItem {
   /** URL/DOM-safe slug derived from label, e.g. "pregnancy" or "prior-therapy". */
   id: string;
-  /** Short human-readable label for a checkbox, e.g. "Pregnant or breastfeeding". */
+  /**
+   * Short human-readable label for a checkbox — kept under
+   * MAX_FILTER_LABEL_LENGTH so it always reads as one clean line in the UI,
+   * e.g. "Pregnant or breastfeeding" rather than the full clinical sentence.
+   */
   label: string;
+  /**
+   * The fuller clinical wording behind the short label (closer to the
+   * original criteria text), shown in a tooltip rather than the checkbox
+   * itself — e.g. label "Pregnant or breastfeeding" might have detail
+   * "Pregnant, breastfeeding, or planning pregnancy during the study
+   * period; must use protocol-specified contraception." Falls back to
+   * equal to `label` if the model didn't have anything longer to add.
+   */
+  detail: string;
   type: "inclusion" | "exclusion";
   /**
    * The analyst's best-informed estimate of what percentage of the general
@@ -688,12 +803,14 @@ export async function estimateEligibilityFilterImpact(input: {
 
   const prompt = `You are a clinical trial feasibility analyst. Below is the REAL, disclosed
 eligibility criteria text for a trial in this indication, taken verbatim from ClinicalTrials.gov.
-Extract up to 8 of the most clinically significant, distinct inclusion or exclusion criteria from
-it — do not invent criteria that aren't in the text. For each one, give your best-informed estimate
-of what percentage of the GENERAL population of people who have this indication would be excluded
-by that single criterion alone (not cumulative with the others). No public source publishes this
-percentage — reason from general epidemiology and typical comorbidity/demographic rates for this
-condition.
+Extract EVERY distinct, clinically meaningful inclusion or exclusion criterion from it — do not
+artificially limit how many you return, and do not invent criteria that aren't in the text. A
+criterion left out here is still a real exclusion in practice; it just wouldn't be selectable by
+the user, so completeness matters more than brevity of the list. For each one, give your
+best-informed estimate of what percentage of the GENERAL population of people who have this
+indication would be excluded by that single criterion alone (not cumulative with the others). No
+public source publishes this percentage — reason from general epidemiology and typical
+comorbidity/demographic rates for this condition.
 
 INDICATION: ${input.indication}
 
@@ -708,22 +825,32 @@ INSTRUCTIONS
    redundant — skip it even if the text states one.
 2. When the text lumps several organ systems/conditions into one criterion (e.g. "clinically
    significant renal, hepatic, or cardiovascular disease", "significant comorbidities"), DO NOT
-   return that as a single vague line. Split it into up to 4 separate, specific, named-disease
-   checkboxes instead (e.g. "Chronic kidney disease", "Liver disease", "Heart disease", "Type 1 or
-   type 2 diabetes" — whichever specific conditions the lumped phrase actually implies for this
+   return that as a single vague line. Split it into separate, specific, named-disease checkboxes
+   instead (e.g. "Chronic kidney disease", "Liver disease", "Heart disease", "Type 1 or type 2
+   diabetes" — whichever specific conditions the lumped phrase actually implies for this
    indication). Each split-out disease still needs its own estimatedExcludedPercent — don't just
-   copy the same number to every split item if their real-world prevalence would differ.
-3. Otherwise prefer criteria that would meaningfully change a recruitment estimate (pregnancy,
-   specific comorbidities, prior treatment/trial history, lab-value ranges) over administrative
-   ones (e.g. "informed consent").
+   copy the same number to every split item if their real-world prevalence would differ. Splitting
+   a criterion this way must NOT reduce how many OTHER, unrelated criteria you extract — extract
+   every meaningful criterion in the text, whether or not another one needed splitting.
+3. Include criteria that would meaningfully change a recruitment estimate (pregnancy, specific
+   comorbidities, prior treatment/trial history, lab-value ranges, concurrent trial participation,
+   recent vaccination, drug hypersensitivity, etc.). You may skip purely administrative ones (e.g.
+   "able to provide informed consent") since those don't affect the addressable patient count.
 4. If the text is too vague to extract any meaningful criterion, return an empty filters array
    rather than inventing one.
+5. EVERY "label" must be a short, plain phrase of 45 characters or fewer that reads cleanly as one
+   checkbox line (e.g. "Chronic kidney disease", "Pregnant or breastfeeding") — never a full
+   clinical sentence. Put any fuller clinical wording/thresholds/qualifiers that don't fit in the
+   45-character label into a separate "detail" field instead (e.g. label "Severity threshold not
+   met", detail "PASI score <12, BSA <10%, or sPGA <3 at screening"). If the label alone already
+   says everything needed, repeat it verbatim as "detail".
 
 Reply with ONLY a JSON object, no prose or markdown fences, in exactly this shape:
 {
   "filters": [
     {
-      "label": "<short, specific label naming one disease/condition, e.g. 'Chronic kidney disease'>",
+      "label": "<short checkbox phrase, <=45 characters, e.g. 'Chronic kidney disease'>",
+      "detail": "<fuller clinical wording for a tooltip, or the same as label if nothing more to add>",
       "type": "inclusion" | "exclusion",
       "estimatedExcludedPercent": <number 0-100>
     }
@@ -742,11 +869,28 @@ Reply with ONLY a JSON object, no prose or markdown fences, in exactly this shap
   const parsed = parseJsonResponse<{
     filters?: Array<{
       label?: string;
+      detail?: string;
       type?: string;
       estimatedExcludedPercent?: number;
     }>;
     rationale?: string;
   }>(raw);
+
+  // No count cap here on purpose (see the prompt's "extract EVERY distinct,
+  // clinically meaningful criterion" instruction) — a criterion dropped here
+  // is still a real exclusion in the actual trial, it just wouldn't be
+  // selectable, silently understating how narrow the true patient
+  // population is. FILTER_COUNT_SAFETY_CAP exists only to bound a
+  // pathological response (e.g. the model mis-parsing the text into
+  // dozens of near-duplicate fragments), not as a design limit — a real
+  // trial's meaningful criteria essentially never reach this number, and
+  // the UI panel scrolls vertically to accommodate however many come back.
+  const FILTER_COUNT_SAFETY_CAP = 40;
+  // Labels are enforced short server-side (not just requested in the
+  // prompt) so the UI never has to truncate/overflow — any excess text the
+  // model puts in "label" instead of "detail" is moved into detail instead
+  // of being silently lost.
+  const MAX_FILTER_LABEL_LENGTH = 45;
 
   const seenIds = new Set<string>();
   const filters: EligibilityFilterEstimateItem[] = (
@@ -760,10 +904,26 @@ Reply with ONLY a JSON object, no prose or markdown fences, in exactly this shap
         typeof f.estimatedExcludedPercent === "number" &&
         Number.isFinite(f.estimatedExcludedPercent),
     )
-    .slice(0, 8)
+    .slice(0, FILTER_COUNT_SAFETY_CAP)
     .map((f) => {
-      let id = f.label!
-        .trim()
+      const trimmedLabel = f.label!.trim();
+      const fullDetail =
+        typeof f.detail === "string" && f.detail.trim()
+          ? f.detail.trim()
+          : trimmedLabel;
+      const label =
+        trimmedLabel.length > MAX_FILTER_LABEL_LENGTH
+          ? `${trimmedLabel.slice(0, MAX_FILTER_LABEL_LENGTH - 1).trimEnd()}…`
+          : trimmedLabel;
+      // If the model put the long version in "label" and left "detail"
+      // empty/identical, the truncation above would otherwise lose text —
+      // preserve the full original label as the detail in that case.
+      const detail =
+        label !== trimmedLabel && fullDetail === trimmedLabel
+          ? trimmedLabel
+          : fullDetail;
+
+      let id = trimmedLabel
         .toLowerCase()
         .replace(/[^a-z0-9]+/g, "-")
         .replace(/(^-|-$)/g, "");
@@ -772,7 +932,8 @@ Reply with ONLY a JSON object, no prose or markdown fences, in exactly this shap
       seenIds.add(id);
       return {
         id,
-        label: f.label!.trim(),
+        label,
+        detail,
         type: f.type === "inclusion" ? "inclusion" : "exclusion",
         estimatedExcludedPercent: Math.max(
           0,

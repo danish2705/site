@@ -92,6 +92,16 @@ export default function SiteMapDetailsPage() {
           </p>
         )}
 
+        {data && data.warnings.length > 0 && (
+          <div className="map-warnings">
+            {data.warnings.map((w, i) => (
+              <p key={i} className="warning-text">
+                {w}
+              </p>
+            ))}
+          </div>
+        )}
+
         {data && allSites.length > 0 && (
           <>
             <div className="map-table-toolbar">
@@ -224,9 +234,15 @@ export default function SiteMapDetailsPage() {
                             top: "100%",
                             left: 0,
                             zIndex: 1000,
-                            width: 320,
-                            maxHeight: 320,
+                            // Wider than before (320 -> 380) and no horizontal
+                            // scrolling — labels are now capped at 45 chars
+                            // server-side and wrap onto a second line if
+                            // needed instead of being cut off or requiring a
+                            // horizontal scrollbar to read.
+                            width: 380,
+                            maxHeight: 380,
                             overflowY: "auto",
+                            overflowX: "hidden",
                             background: "#fff",
                             border: "1px solid #d7dbe6",
                             borderRadius: 6,
@@ -275,22 +291,45 @@ export default function SiteMapDetailsPage() {
                               {eligFilters.filters.map((f) => (
                                 <label
                                   key={f.id}
-                                  title={`${f.type} — ~${f.estimatedExcludedPercent}% of the general population excluded (AI-estimated)`}
+                                  title={`${f.detail}\n\n(${f.type} — ~${f.estimatedExcludedPercent}% of the general population excluded, AI-estimated)`}
                                   style={{
                                     display: "flex",
-                                    alignItems: "center",
+                                    alignItems: "flex-start",
                                     gap: 8,
                                     fontSize: 12.5,
-                                    padding: "3px 4px",
+                                    padding: "4px 4px",
                                   }}
                                 >
                                   <input
                                     type="checkbox"
                                     checked={selectedFilterIds.has(f.id)}
                                     onChange={() => toggleEligFilter(f.id)}
+                                    style={{ marginTop: 2 }}
                                   />
-                                  <span style={{ flex: 1 }}>{f.label}</span>
-                                  <span style={{ color: "#888", fontSize: 11 }}>
+                                  {/* Labels are capped at 45 chars server-side,
+                                      so this wraps onto at most two short
+                                      lines instead of being cut off or forcing
+                                      a horizontal scrollbar — the fuller
+                                      clinical wording is in the title tooltip
+                                      above, not squeezed into this line. */}
+                                  <span
+                                    style={{
+                                      flex: 1,
+                                      whiteSpace: "normal",
+                                      wordBreak: "break-word",
+                                      lineHeight: 1.35,
+                                    }}
+                                  >
+                                    {f.label}
+                                  </span>
+                                  <span
+                                    style={{
+                                      color: "#888",
+                                      fontSize: 11,
+                                      flexShrink: 0,
+                                      paddingTop: 1,
+                                    }}
+                                  >
                                     ~{f.estimatedExcludedPercent}%
                                   </span>
                                 </label>
@@ -322,25 +361,6 @@ export default function SiteMapDetailsPage() {
                                 </button>
                               </div>
 
-                              {eligFilters.criteriaText && (
-                                <details style={{ marginTop: 6 }}>
-                                  <summary style={{ cursor: "pointer", fontSize: 11, color: "#666" }}>
-                                    View full raw criteria text
-                                  </summary>
-                                  <pre
-                                    style={{
-                                      whiteSpace: "pre-wrap",
-                                      marginTop: 6,
-                                      fontFamily: "inherit",
-                                      fontSize: 11.5,
-                                      maxHeight: 160,
-                                      overflowY: "auto",
-                                    }}
-                                  >
-                                    {eligFilters.criteriaText}
-                                  </pre>
-                                </details>
-                              )}
                             </>
                           )}
 

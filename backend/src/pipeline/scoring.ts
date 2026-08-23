@@ -81,6 +81,8 @@ export interface ExtendedEvaluationRow extends EvaluationRow {
   "Site Cost per Patient (USD)"?: number | null;
   "Catchment Population"?: number | null;
   "Diversity Index (0-100)"?: number | null;
+  /** The real category-by-category breakdown Diversity Index was computed from (e.g. [{category:"White",percent:61.2},...]) — see services/ctgov.client.ts's raceDiversityIndex. null/absent whenever Diversity Index is LLM-estimated rather than real. Same trial-wide (not this-facility-alone) caveat as liveKpiSourceNctId. */
+  raceBreakdown?: { category: string; percent: number }[] | null;
   /** "llm-estimated" = KPIs guessed by an LLM for a real live-sourced site with no measured data; absent/"excel" = measured, from Site_Evaluation. */
   dataSource?: "excel" | "llm-estimated";
   /** Set only when dataSource === "llm-estimated" — the model's own explanation of what it grounded the estimate in. */

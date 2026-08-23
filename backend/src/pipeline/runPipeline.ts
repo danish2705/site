@@ -452,6 +452,14 @@ export async function runPipeline(
       regulatoryWeeks: topRegion["Regulatory Approval Time (weeks)"],
       regionCompetingTrials: topRegion["Active Competing Trials"],
       avgCostPerPatient: topRegion["Avg Cost per Patient (USD)"],
+      // Real fix: this used to only affect Stage 1's text label (see the
+      // requirement["Age Group"] detail string above) — the actual
+      // candidate sites feeding Stages 4-7 (Ongoing Trials, Risk Register,
+      // Ranking, Final Recommendation) never filtered on it at all. Now
+      // the same live StdAge filter used by the Site Map tab applies here
+      // too, so every stage after this one is working from the same
+      // age-eligible site list, not two different unrelated lists.
+      ageGroups,
     });
   } catch (err) {
     console.warn(
@@ -562,6 +570,11 @@ export async function runPipeline(
     })),
   });
 
+  // Risk Register and Ranking show sites of every real recruiting status
+  // (Recruiting, Not Yet Recruiting, Completed, Terminated, etc.) — no
+  // status is excluded server-side. Each site carries its real status
+  // (site.recruitingStatus, surfaced below as `status`) so the UI can offer
+  // its own status filter instead.
   send("stage", { stage: 6, name: STAGE_NAMES[6], status: "in-progress" });
   const riskWarnings: string[] = [];
   const withRisk: RankedSite[] = await Promise.all(
@@ -638,6 +651,10 @@ export async function runPipeline(
       riskDataUnavailable: s.riskDataUnavailable,
       riskRecords: s.risks.map(toRiskRecord),
       dataSource: s.evalRow.dataSource ?? "llm-estimated",
+      // Real, raw ClinicalTrials.gov status (e.g. "RECRUITING",
+      // "NOT_YET_RECRUITING", "COMPLETED"...) — the UI derives its own
+      // display label/color and offers its own status filter from this.
+      status: s.recruitingStatus ?? null,
     })),
     warnings: riskWarnings,
   });
@@ -677,6 +694,9 @@ export async function runPipeline(
       highRiskCount: s.highRiskCount,
       dataSource: s.evalRow.dataSource ?? "llm-estimated",
       liveKpiFields: s.evalRow.liveKpiFields ?? [],
+      liveKpiSourceNctId: s.evalRow.liveKpiSourceNctId ?? null,
+      raceBreakdown: s.evalRow.raceBreakdown ?? null,
+      status: s.recruitingStatus ?? null,
     })),
   });
 

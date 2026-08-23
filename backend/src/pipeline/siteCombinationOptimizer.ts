@@ -222,6 +222,19 @@ export function optimizeSiteCombination(
   // operational overhead — each additional site means another set of
   // inspections/monitoring visits, per the call's own cost-of-sites point);
   // tie-break on lower total cost, then lower portfolio risk.
+  //
+  // NOTE: an earlier version of this function also factored in an
+  // "Age-Cohort Balance" score from a small trained model here. That model
+  // was removed — it scored a fabricated country-level age proxy that never
+  // reflected the trial's actual selected Age Group input, so it could show
+  // a confident-looking number with no real connection to what the user
+  // asked for. The RIGHT fix for age was upstream: pipeline/liveMapData.ts's
+  // grossEligiblePatients (and therefore every site's recruitablePatients
+  // that this function accumulates) is now itself scaled by the real
+  // selected Age Group(s) — see data/ageDemographics.ts's
+  // getAgeEligibleFraction. So age is already accounted for in the numbers
+  // this optimizer works with, without needing a second, separate model
+  // bolted on here.
   let recommended: SiteCombinationStrategyResult | null = null;
   for (const s of meeting) {
     if (!recommended) {

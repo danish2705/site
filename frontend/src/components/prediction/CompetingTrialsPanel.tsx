@@ -17,6 +17,9 @@ export default function CompetingTrialsPanel({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState<
+    "all" | "completed" | "active" | "other"
+  >("all");
 
   useEffect(() => {
     if (selectedCountries.length === 0) {
@@ -74,13 +77,39 @@ export default function CompetingTrialsPanel({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [facilities]);
 
+  // Groups the same real, disclosed OverallStatus values statusBand already
+  // color-codes into the three buckets the Status filter offers — kept
+  // separate from statusBand because that function groups RECRUITING and
+  // COMPLETED together (both read as "healthy," so both get the same green
+  // color), while this filter needs to tell them apart. "Other" (not
+  // silently hidden — always selectable) covers TERMINATED/WITHDRAWN/
+  // SUSPENDED and any unrecognized/null status.
+  function statusGroupFor(status: string | null): "completed" | "active" | "other" {
+    const s = (status ?? "").toUpperCase();
+    if (s === "COMPLETED") return "completed";
+    if (
+      s === "RECRUITING" ||
+      s === "ACTIVE_NOT_RECRUITING" ||
+      s === "NOT_YET_RECRUITING" ||
+      s === "ENROLLING_BY_INVITATION"
+    ) {
+      return "active";
+    }
+    return "other";
+  }
+
+  const statusFiltered =
+    statusFilter === "all"
+      ? recentFacilities
+      : recentFacilities.filter((f) => statusGroupFor(f.status) === statusFilter);
+
   const filtered = search.trim()
-    ? recentFacilities.filter((f) =>
+    ? statusFiltered.filter((f) =>
         [f.nctId, f.briefTitle, f.facility, f.city, f.state, f.country]
           .filter(Boolean)
           .some((v) => (v as string).toLowerCase().includes(search.trim().toLowerCase())),
       )
-    : recentFacilities;
+    : statusFiltered;
 
   function statusLabel(status: string | null): string {
     if (!status) return "Unknown";
@@ -92,18 +121,24 @@ export default function CompetingTrialsPanel({
   }
 
   // Colors each trial's status the same way the Risk Register colors its
-  // risk levels — reusing the exact same .badge/--low/--med/--high/--no-data
+  // risk levels — reusing the same .badge/--low/--med/--high/--no-data
   // classes/tokens, instead of the flat neutral .chip this table used
   // before, so a status carries the same at-a-glance visual weight here as
-  // a risk rating does there. RECRUITING/COMPLETED read as "healthy"
-  // (green); ACTIVE_NOT_RECRUITING/NOT_YET_RECRUITING/ENROLLING_BY_INVITATION
-  // as an in-between/caution state (amber); the stopped-for-cause statuses
+  // a risk rating does there. RECRUITING reads as "healthy" (green);
+  // COMPLETED gets its own distinct blue ("info") rather than sharing
+  // green with Recruiting, since "still enrolling" and "already finished"
+  // are different states worth telling apart at a glance;
+  // ACTIVE_NOT_RECRUITING/NOT_YET_RECRUITING/ENROLLING_BY_INVITATION read as
+  // an in-between/caution state (amber); the stopped-for-cause statuses
   // (TERMINATED/WITHDRAWN/SUSPENDED) as high (red); anything else
   // (null/unrecognized) falls back to the same grey "no-data" treatment
   // used for an unassessed risk record.
-  function statusBand(status: string | null): "low" | "medium" | "high" | "no-data" {
+  function statusBand(
+    status: string | null,
+  ): "low" | "medium" | "high" | "info" | "no-data" {
     const s = (status ?? "").toUpperCase();
-    if (s === "RECRUITING" || s === "COMPLETED") return "low";
+    if (s === "COMPLETED") return "info";
+    if (s === "RECRUITING") return "low";
     if (s === "TERMINATED" || s === "WITHDRAWN" || s === "SUSPENDED") return "high";
     if (
       s === "ACTIVE_NOT_RECRUITING" ||
@@ -190,6 +225,22 @@ export default function CompetingTrialsPanel({
               value={search}
               onChange={(e) => setSearch(e.target.value)}
             />
+            <select
+              value={statusFilter}
+              onChange={(e) =>
+                setStatusFilter(
+                  e.target.value as "all" | "completed" | "active" | "other",
+                )
+              }
+              title="Filter rows by trial status"
+            >
+              <option value="all">All statuses</option>
+              <option value="active">Active (Recruiting, etc.)</option>
+              <option value="completed">Completed</option>
+              <option value="other">
+                Other (Terminated/Withdrawn/Suspended/Unknown)
+              </option>
+            </select>
             <span className="map-table-count">
               {filtered.length.toLocaleString()} of{" "}
               {recentFacilities.length.toLocaleString()} row(s)
@@ -273,7 +324,9 @@ export default function CompetingTrialsPanel({
                     <td colSpan={5} className="predict-placeholder">
                       {facilities.length === 0
                         ? "No trials found on ClinicalTrials.gov for this indication."
-                        : `No rows match "${search}".`}
+                        : search.trim()
+                          ? `No rows match "${search}".`
+                          : "No rows match the selected status filter."}
                     </td>
                   </tr>
                 )}
