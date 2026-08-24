@@ -7,15 +7,23 @@ const AGE_GROUPS = ["Child (0–17)", "Adult (18–64)", "Older Adult (65+)"];
 
 export default function Sidebar({
   onOpenPredictModal,
+  onCollapse,
 }: {
   onOpenPredictModal: () => void;
+  onCollapse: () => void;
 }) {
   const { meta, form, setForm, regionOptions, running, handleSubmit } =
     usePipeline();
 
   return (
     <aside className="sidebar-panel">
-      <form className="card sidebar-form" onSubmit={handleSubmit}>
+      <form 
+        className="card sidebar-form" 
+        onSubmit={(e) => {
+          handleSubmit(e);
+          onCollapse();
+        }}
+      >
         <div className="sidebar-form-title">
           <span className="sidebar-form-icon" aria-hidden="true">
             <svg
@@ -36,7 +44,9 @@ export default function Sidebar({
 
         <div className="sidebar-form-scroll">
           <label className="field-block">
-            <span className="field-label">Indication</span>
+            <span className="field-label">
+              Indication <span style={{ color: "#e5342b" }}>*</span>
+            </span>
             <select
               value={form.indication}
               onChange={(e) =>
@@ -72,9 +82,6 @@ export default function Sidebar({
                 </button>
               ))}
             </div>
-            <span className="field-hint">
-              Optional — uses the indication's standard phase if left unset.
-            </span>
           </label>
 
           <label className="field-block">
@@ -102,10 +109,6 @@ export default function Sidebar({
                 );
               })}
             </div>
-            <span className="field-hint">
-              Optional — select every age group eligible for this trial; leave
-              unset to include all ages.
-            </span>
           </label>
 
           <label className="field-block">
@@ -123,9 +126,6 @@ export default function Sidebar({
                 })
               }
             />
-            <span className="field-hint">
-              Optional — uses the indication's target sample size if left blank.
-            </span>
           </label>
 
           <label className="field-block">
@@ -168,9 +168,6 @@ export default function Sidebar({
                 })
               }
             />
-            <span className="field-hint">
-              Optional — uses the indication's standard duration if left blank.
-            </span>
           </label>
 
           <label className="field-block">
@@ -188,10 +185,6 @@ export default function Sidebar({
                 </option>
               ))}
             </select>
-            <span className="field-hint">
-              Optional — uses the indication's standard budget tier if left
-              unset.
-            </span>
           </label>
         </div>
 

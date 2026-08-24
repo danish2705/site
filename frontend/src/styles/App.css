@@ -2359,3 +2359,28 @@ tr.pinned-row {
   font-size: 13px;
   color: var(--sub);
 }
+
+/* ==========================================================================
+   Global Table Scrolling & Sticky Headers
+   ========================================================================== */
+
+.table-scroll {
+  width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+th {
+  position: sticky;
+  top: 0;
+  background: var(--bg);
+  z-index: 10;
+  /* Replaces border-bottom to prevent a transparent gap during scrolling */
+  box-shadow: 0 1px 0 var(--line);
+  border-bottom: none !important;
+}
+
+html.dark th {
+  background: var(--bg) !important;
+  box-shadow: 0 1px 0 var(--line);
+}

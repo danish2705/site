@@ -6,10 +6,6 @@ import StageLoader from "../ui/StageLoader";
 import { fetchOutreachDraft } from "../../services/siteCombination.service";
 import type { OutreachDraft, RankingRow } from "../../types";
 
-// Only show sites that are currently Recruiting or Active (Not Recruiting) —
-// Completed/Terminated/Withdrawn/Suspended/unknown-status sites aren't useful
-// candidates here, and there's no longer a status dropdown for the user to
-// toggle this themselves (removed per request — the filter wasn't needed).
 function isLiveActiveStatus(status: string | null): boolean {
   const s = (status ?? "").toUpperCase();
   return s === "RECRUITING" || s === "ACTIVE_NOT_RECRUITING";
@@ -52,11 +48,6 @@ export default function SiteRankingPanel() {
     return ranking.filter((r) => isLiveActiveStatus(r.status));
   }, [ranking]);
 
-  // Per-site outreach draft state — see backend pipeline/outreachDraft.ts.
-  // IMPORTANT: this only ever generates draft text; it never sends an email.
-  // ClinicalTrials.gov does not reliably disclose a real per-facility
-  // contact, so there is no live email address to send to — the contact
-  // shown is a clearly-labeled SYNTHETIC placeholder, not a real inbox.
   const [openDraftSiteId, setOpenDraftSiteId] = useState<string | null>(null);
   const [draftLoadingSiteId, setDraftLoadingSiteId] = useState<string | null>(
     null,
@@ -66,12 +57,10 @@ export default function SiteRankingPanel() {
 
   async function draftOutreachFor(row: RankingRow) {
     if (openDraftSiteId === row.siteId) {
-      // Already open — treat the button as a toggle/close.
       setOpenDraftSiteId(null);
       return;
     }
     if (drafts[row.siteId]) {
-      // Already drafted this site once — just reopen it, no refetch.
       setOpenDraftSiteId(row.siteId);
       return;
     }
@@ -108,8 +97,8 @@ export default function SiteRankingPanel() {
   }
 
   return (
-    <div className="card">
-      <div className="predict-head">
+    <div className="card" style={{ display: "flex", flexDirection: "column" }}>
+      <div className="predict-head" style={{ flexShrink: 0 }}>
         <div className="predict-head-top">
           <div className="predict-head-text">
             <span className="tag">Stage 7 Output</span>
@@ -122,9 +111,13 @@ export default function SiteRankingPanel() {
           </div>
         </div>
       </div>
-      {draftError && <p className="error-text">{draftError}</p>}
-      <div className="card-scroll-body">
-        <div className="table-scroll">
+      {draftError && <p className="error-text" style={{ flexShrink: 0 }}>{draftError}</p>}
+      
+      <div 
+        className="card-scroll-body" 
+        style={{ display: "flex", flexDirection: "column", overflow: "hidden", paddingRight: 0, marginRight: 0 }}
+      >
+        <div className="table-scroll" style={{ flex: 1, overflowY: "auto", minHeight: 0, paddingRight: 10 }}>
           <table>
             <thead>
               <tr>
@@ -221,7 +214,7 @@ export default function SiteRankingPanel() {
                 </tr>
                 {openDraftSiteId === r.siteId && drafts[r.siteId] && (
                   <tr>
-                    <td colSpan={9} style={{ background: "#f7f8fb" }}>
+                    <td colSpan={9} style={{ background: "var(--bg)" }}>
                       <div style={{ padding: "10px 4px" }}>
                         <div
                           style={{

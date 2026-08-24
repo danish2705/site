@@ -49,12 +49,10 @@ export interface PipelineState {
   progressPct: number;
   pipelineDone: boolean;
 
-  /** Availability guard for the guided workflow nav (WorkflowNav) and WizardNextLink — same rules the old 5-step wizardStepAvailable used, just extended to cover the 3 Site Map pages (always available, same as before when they were an always-reachable tab). "Predict Region with AI" is no longer a workflow step — it's a modal opened from the sidebar, not gated by this function. */
   workflowStepAvailable: (step: WorkflowStep) => boolean;
 
   handleSubmit: (e: FormEvent<HTMLFormElement>) => Promise<void>;
 
-  // Saved runs
   saveLabel: string;
   setSaveLabel: (label: string) => void;
   saving: boolean;
@@ -107,23 +105,14 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
   const canSave = !running && !!ranking && ranking.length > 0;
 
   function workflowStepAvailable(step: WorkflowStep): boolean {
-    // The 3 Site Map pages have no hard prerequisite — same as before,
-    // when the map was an always-reachable tab (it degrades gracefully
-    // with no indication picked yet).
+    // site-map-global removed from the availability check
     if (
-      step === "site-map-global" ||
       step === "site-map-details" ||
       step === "site-combination"
     ) {
       return true;
     }
-    // Live ClinicalTrials.gov lookup keyed only off the indication — doesn't
-    // depend on the pipeline having run.
     if (step === "competing") return !!form.indication;
-    // Reachable as soon as the pipeline is running (not only once its data
-    // has arrived) so the nav can be clicked mid-run — the page itself
-    // shows a loading state for whichever of these 3 stages hasn't
-    // completed yet, rather than being unreachable until it has.
     if (step === "risk") return !!riskAssessment || running;
     if (step === "ranking") return !!ranking || running;
     return !!finalResult || running;
@@ -202,9 +191,6 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
     fetchMeta()
       .then((data) => {
         setMeta(data);
-        // metaWarning means indications fell back to a static list because
-        // the live ClinicalTrials.gov vocabulary lookup returned nothing —
-        // surface it (non-blocking; the fallback list keeps the form usable).
         if (data.metaWarning) setError(data.metaWarning);
       })
       .catch((err: Error) =>
@@ -217,12 +203,6 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
   ).length;
   const progressPct = Math.round((completedCount / STAGE_LIST.length) * 100);
   const pipelineDone = completedCount === STAGE_LIST.length;
-  // Region options are no longer indication-specific — every region/country
-  // in data/regionMap.ts (backend) applies to every indication now, so the
-  // old indication-equality filter (which relied on Region_Data being
-  // per-indication) is removed. `meta.regionOptions` entries carry a "*"
-  // wildcard `indication` field for backward compatibility with the
-  // RegionOption type, but nothing filters on it anymore.
   const regionOptions = useMemo(() => meta?.regionOptions ?? [], [meta]);
 
   async function handleSubmit(e: FormEvent<HTMLFormElement>) {
@@ -238,10 +218,9 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
     setLlmInfo(null);
     setError(null);
     setRunning(true);
-    // Auto-navigate to the workflow pages as soon as Run Analysis is
-    // clicked — lands on Site Map (Global) first, per request, while the
-    // backend pipeline keeps streaming stage updates in the background.
-    setRoute("site-map-global");
+    
+    // Redirects straight to site-map-details now
+    setRoute("site-map-details");
 
     try {
       const res = await streamRun(form);
@@ -279,11 +258,6 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
             if (payload.stage === 8 && payload.llm) setLlmInfo(payload.llm);
             if (payload.stage === 6 && payload.status === "complete") {
               setRiskAssessment(payload.data as RiskAssessmentRow[]);
-              // No forced navigation to the Risk Register page here — the
-              // user lands on Site Map (Global) when the run starts and
-              // stays wherever they are; the nav bar's "complete" badge and
-              // WizardNextLink both surface that this step is now ready
-              // without yanking them off whatever page they're looking at.
             }
             if (payload.stage === 7 && payload.status === "complete") {
               setRanking(payload.data as RankingRow[]);
@@ -300,10 +274,6 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
       setError((err as Error).message);
     } finally {
       setRunning(false);
-      // No redirect-on-failure needed: the user is already on Site Map
-      // (Global) (navigated there at the start of this run) and the error
-      // banner above the page surfaces the failure without yanking them
-      // anywhere else.
     }
   }
 

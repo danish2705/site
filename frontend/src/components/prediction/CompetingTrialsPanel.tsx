@@ -9,7 +9,6 @@ export default function CompetingTrialsPanel({
   selectedCountries = [],
 }: {
   indication: string;
-  /** Countries pulled from the trial form's already-selected regions — same convention as SiteMapView. Empty = only "All countries" is offered. */
   selectedCountries?: string[];
 }) {
   const [country, setCountry] = useState("");
@@ -59,12 +58,6 @@ export default function CompetingTrialsPanel({
   }, [indication, countryResolved]);
 
   const facilities = data?.facilities ?? [];
-
-  // Requirement: only show trials updated within the last RECENT_YEARS years
-  // — the raw ClinicalTrials.gov result includes everything on record for
-  // this indication going back decades, which is too much history to be
-  // useful here. Rows with no parseable "Last Updated" date are excluded
-  // rather than assumed-recent, since we have no evidence either way.
   const RECENT_YEARS = 3;
   const recentFacilities = useMemo(() => {
     const cutoff = new Date();
@@ -77,13 +70,6 @@ export default function CompetingTrialsPanel({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [facilities]);
 
-  // Groups the same real, disclosed OverallStatus values statusBand already
-  // color-codes into the three buckets the Status filter offers — kept
-  // separate from statusBand because that function groups RECRUITING and
-  // COMPLETED together (both read as "healthy," so both get the same green
-  // color), while this filter needs to tell them apart. "Other" (not
-  // silently hidden — always selectable) covers TERMINATED/WITHDRAWN/
-  // SUSPENDED and any unrecognized/null status.
   function statusGroupFor(status: string | null): "completed" | "active" | "other" {
     const s = (status ?? "").toUpperCase();
     if (s === "COMPLETED") return "completed";
@@ -98,14 +84,6 @@ export default function CompetingTrialsPanel({
     return "other";
   }
 
-  // KPI tile: count of individual SITES (trial/site rows) currently in an
-  // active/competing status, not distinct trials — a single multi-site trial
-  // (one NCT ID) can occupy several sites, and each of those is separate
-  // competition for patients at that site. Derived from recentFacilities
-  // (already deduped to the same last-RECENT_YEARS window as the table)
-  // rather than the backend's activeCompetingTrials (a distinct-trial count
-  // from ClinicalTrials.gov's countTotal), so the KPI always matches what's
-  // actually in the table below it.
   const activeCompetingSites = useMemo(
     () => recentFacilities.filter((f) => statusGroupFor(f.status) === "active").length,
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -134,19 +112,6 @@ export default function CompetingTrialsPanel({
       .join(" ");
   }
 
-  // Colors each trial's status the same way the Risk Register colors its
-  // risk levels — reusing the same .badge/--low/--med/--high/--no-data
-  // classes/tokens, instead of the flat neutral .chip this table used
-  // before, so a status carries the same at-a-glance visual weight here as
-  // a risk rating does there. RECRUITING reads as "healthy" (green);
-  // COMPLETED gets its own distinct blue ("info") rather than sharing
-  // green with Recruiting, since "still enrolling" and "already finished"
-  // are different states worth telling apart at a glance;
-  // ACTIVE_NOT_RECRUITING/NOT_YET_RECRUITING/ENROLLING_BY_INVITATION read as
-  // an in-between/caution state (amber); the stopped-for-cause statuses
-  // (TERMINATED/WITHDRAWN/SUSPENDED) as high (red); anything else
-  // (null/unrecognized) falls back to the same grey "no-data" treatment
-  // used for an unassessed risk record.
   function statusBand(
     status: string | null,
   ): "low" | "medium" | "high" | "info" | "no-data" {
@@ -165,8 +130,8 @@ export default function CompetingTrialsPanel({
   }
 
   return (
-    <div className="card">
-      <div className="predict-head">
+    <div className="card" style={{ display: "flex", flexDirection: "column" }}>
+      <div className="predict-head" style={{ flexShrink: 0 }}>
         <div className="predict-head-top">
           <div className="predict-head-text">
             <span className="predict-title">Ongoing Trials</span>
@@ -203,148 +168,153 @@ export default function CompetingTrialsPanel({
         </div>
       </div>
 
-      <div className="card-scroll-body">
-      {error && <p className="error-text">{error}</p>}
+      <div 
+        className="card-scroll-body"
+        style={{ display: "flex", flexDirection: "column", overflow: "hidden", paddingRight: 0, marginRight: 0 }}
+      >
+        {error && <p className="error-text" style={{ flexShrink: 0 }}>{error}</p>}
 
-      {loading && !data && <StageLoader label="Loading ongoing trials…" />}
+        {loading && !data && <StageLoader label="Loading ongoing trials…" />}
 
-      {data?.warnings.map((w, i) => (
-        <p key={i} className="warning-text">
-          {w}
-        </p>
-      ))}
+        {data?.warnings.map((w, i) => (
+          <p key={i} className="warning-text" style={{ flexShrink: 0 }}>
+            {w}
+          </p>
+        ))}
 
-      {data && (
-        <>
-          <div className="final-grid" style={{ marginTop: 4, marginBottom: 12 }}>
-            <div className="item">
-              <div className="k">Active / competing sites</div>
-              <div className="v">{activeCompetingSites.toLocaleString()}</div>
+        {data && (
+          <>
+            <div style={{ flexShrink: 0, paddingRight: 10 }}>
+              <div className="final-grid" style={{ marginTop: 4, marginBottom: 12 }}>
+                <div className="item">
+                  <div className="k">Active / competing sites</div>
+                  <div className="v">{activeCompetingSites.toLocaleString()}</div>
+                </div>
+                <div className="item">
+                  <div className="k">Trial/site rows found (last {RECENT_YEARS} yrs)</div>
+                  <div className="v">{recentFacilities.length.toLocaleString()}</div>
+                </div>
+              </div>
+
+              <div className="map-controls">
+                <input
+                  type="search"
+                  className="map-search-input"
+                  placeholder="Search trial, site, city, or country…"
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                />
+                <select
+                  value={statusFilter}
+                  onChange={(e) =>
+                    setStatusFilter(
+                      e.target.value as "all" | "completed" | "active" | "other",
+                    )
+                  }
+                  title="Filter rows by trial status"
+                >
+                  <option value="all">All statuses</option>
+                  <option value="active">Active (Recruiting, etc.)</option>
+                  <option value="completed">Completed</option>
+                  <option value="other">
+                    Other (Terminated/Withdrawn/Suspended/Unknown)
+                  </option>
+                </select>
+                <span className="map-table-count">
+                  {filtered.length.toLocaleString()} of{" "}
+                  {recentFacilities.length.toLocaleString()} row(s)
+                </span>
+              </div>
             </div>
-            <div className="item">
-              <div className="k">Trial/site rows found (last {RECENT_YEARS} yrs)</div>
-              <div className="v">{recentFacilities.length.toLocaleString()}</div>
-            </div>
-          </div>
 
-          <div className="map-controls">
-            <input
-              type="search"
-              className="map-search-input"
-              placeholder="Search trial, site, city, or country…"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-            />
-            <select
-              value={statusFilter}
-              onChange={(e) =>
-                setStatusFilter(
-                  e.target.value as "all" | "completed" | "active" | "other",
-                )
-              }
-              title="Filter rows by trial status"
-            >
-              <option value="all">All statuses</option>
-              <option value="active">Active (Recruiting, etc.)</option>
-              <option value="completed">Completed</option>
-              <option value="other">
-                Other (Terminated/Withdrawn/Suspended/Unknown)
-              </option>
-            </select>
-            <span className="map-table-count">
-              {filtered.length.toLocaleString()} of{" "}
-              {recentFacilities.length.toLocaleString()} row(s)
-            </span>
-          </div>
-
-          <div className="table-scroll">
-            <table className="competing-trials-table">
-              <colgroup>
-                <col style={{ width: "20%" }} />
-                <col style={{ width: "20%" }} />
-                <col style={{ width: "20%" }} />
-                <col style={{ width: "20%" }} />
-                <col style={{ width: "20%" }} />
-              </colgroup>
-              <thead>
-                <tr>
-                  <th>Trial</th>
-                  <th>Status</th>
-                  <th>Last Updated</th>
-                  <th>Site</th>
-                  <th>Disease</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filtered.map((f, i) => {
-                  const location = [f.city, f.state, f.country]
-                    .filter(Boolean)
-                    .join(", ");
-                  return (
-                    <tr key={`${f.nctId}-${i}`}>
-                      <td
-                        title={f.briefTitle ?? undefined}
-                        style={{
-                          overflow: "hidden",
-                          textOverflow: "ellipsis",
-                          whiteSpace: "nowrap",
-                        }}
-                      >
-                        <a
-                          href={`https://clinicaltrials.gov/study/${f.nctId}`}
-                          target="_blank"
-                          rel="noreferrer"
+            <div className="table-scroll" style={{ flex: 1, overflowY: "auto", minHeight: 0, paddingRight: 10 }}>
+              <table className="competing-trials-table">
+                <colgroup>
+                  <col style={{ width: "20%" }} />
+                  <col style={{ width: "20%" }} />
+                  <col style={{ width: "20%" }} />
+                  <col style={{ width: "20%" }} />
+                  <col style={{ width: "20%" }} />
+                </colgroup>
+                <thead>
+                  <tr>
+                    <th>Trial</th>
+                    <th>Status</th>
+                    <th>Last Updated</th>
+                    <th>Site</th>
+                    <th>Disease</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filtered.map((f, i) => {
+                    const location = [f.city, f.state, f.country]
+                      .filter(Boolean)
+                      .join(", ");
+                    return (
+                      <tr key={`${f.nctId}-${i}`}>
+                        <td
+                          title={f.briefTitle ?? undefined}
+                          style={{
+                            overflow: "hidden",
+                            textOverflow: "ellipsis",
+                            whiteSpace: "nowrap",
+                          }}
                         >
-                          {f.briefTitle || f.nctId || "—"}
-                        </a>
-                        {f.briefTitle && f.nctId && (
-                          <div className="site-id">{f.nctId}</div>
-                        )}
-                      </td>
-                      <td>
-                        <span className={`badge ${statusBand(f.status)}`}>
-                          {statusLabel(f.status)}
-                        </span>
-                      </td>
-                      <td>{f.lastUpdatePostDate || "—"}</td>
-                      <td
-                        style={{
-                          overflow: "hidden",
-                          textOverflow: "ellipsis",
-                          whiteSpace: "nowrap",
-                        }}
-                        title={f.facility || location || undefined}
-                      >
-                        {f.facility || location || "—"}
-                      </td>
-                      <td
-                        style={{
-                          overflow: "hidden",
-                          textOverflow: "ellipsis",
-                          whiteSpace: "nowrap",
-                        }}
-                      >
-                        {data.indication}
+                          <a
+                            href={`https://clinicaltrials.gov/study/${f.nctId}`}
+                            target="_blank"
+                            rel="noreferrer"
+                          >
+                            {f.briefTitle || f.nctId || "—"}
+                          </a>
+                          {f.briefTitle && f.nctId && (
+                            <div className="site-id">{f.nctId}</div>
+                          )}
+                        </td>
+                        <td>
+                          <span className={`badge ${statusBand(f.status)}`}>
+                            {statusLabel(f.status)}
+                          </span>
+                        </td>
+                        <td>{f.lastUpdatePostDate || "—"}</td>
+                        <td
+                          style={{
+                            overflow: "hidden",
+                            textOverflow: "ellipsis",
+                            whiteSpace: "nowrap",
+                          }}
+                          title={f.facility || location || undefined}
+                        >
+                          {f.facility || location || "—"}
+                        </td>
+                        <td
+                          style={{
+                            overflow: "hidden",
+                            textOverflow: "ellipsis",
+                            whiteSpace: "nowrap",
+                          }}
+                        >
+                          {data.indication}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                  {filtered.length === 0 && (
+                    <tr>
+                      <td colSpan={5} className="predict-placeholder">
+                        {facilities.length === 0
+                          ? "No trials found on ClinicalTrials.gov for this indication."
+                          : search.trim()
+                            ? `No rows match "${search}".`
+                            : "No rows match the selected status filter."}
                       </td>
                     </tr>
-                  );
-                })}
-                {filtered.length === 0 && (
-                  <tr>
-                    <td colSpan={5} className="predict-placeholder">
-                      {facilities.length === 0
-                        ? "No trials found on ClinicalTrials.gov for this indication."
-                        : search.trim()
-                          ? `No rows match "${search}".`
-                          : "No rows match the selected status filter."}
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-        </>
-      )}
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </>
+        )}
       </div>
       <WizardNextLink />
     </div>

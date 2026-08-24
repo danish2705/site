@@ -41,6 +41,12 @@ export default function HistoryModal({ onClose }: { onClose: () => void }) {
     }
   }, []);
 
+  const thStyle: React.CSSProperties = {
+    backgroundColor: "var(--accent-soft)",
+    color: "var(--accent-dark)",
+    fontWeight: 800,
+  };
+
   return (
     <>
       <div className="run-modal-backdrop" onClick={onClose}>
@@ -49,11 +55,11 @@ export default function HistoryModal({ onClose }: { onClose: () => void }) {
           onClick={(e) => e.stopPropagation()}
           role="dialog"
           aria-modal="true"
+          style={{ width: "min(1500px, 98vw)", display: "flex", flexDirection: "column", overflow: "hidden" }}
         >
-          <div className="run-modal-head">
+          <div className="run-modal-head" style={{ flexShrink: 0 }}>
             <div>
               <h2>Saved Runs</h2>
-              <p className="muted">Every run you've saved, newest first.</p>
             </div>
             <div className="run-modal-head-actions">
               <button
@@ -78,35 +84,42 @@ export default function HistoryModal({ onClose }: { onClose: () => void }) {
           </div>
 
           {saveMessage && !canSave && (
-            <p className="save-message error">{saveMessage}</p>
+            <p className="save-message error" style={{ flexShrink: 0 }}>{saveMessage}</p>
           )}
           {openRunError && (
-            <p className="save-message error">
+            <p className="save-message error" style={{ flexShrink: 0 }}>
               Couldn't open that run: {openRunError}
             </p>
           )}
 
+          {!savedRuns && loadingRuns && (
+            <div className="stage-loader" style={{ minHeight: "400px" }}>
+              <div className="stage-loader-spinner" />
+              <div className="stage-loader-text">Loading saved runs...</div>
+            </div>
+          )}
+
           {savedRuns && savedRuns.length === 0 && (
-            <p className="empty-note">
+            <p className="empty-note" style={{ minHeight: "200px", flexShrink: 0 }}>
               No saved runs yet. Run the pipeline, then use Save run on the
               Recommendation step.
             </p>
           )}
 
           {savedRuns && savedRuns.length > 0 && (
-            <div className="table-scroll saved-runs-scroll">
+            <div className="table-scroll saved-runs-scroll" style={{ flex: 1, overflowY: "auto", minHeight: 0 }}>
               <table>
                 <thead>
                   <tr>
-                    <th>Saved</th>
-                    <th>Label</th>
-                    <th>Indication</th>
-                    <th>Region</th>
-                    <th>Recommended</th>
-                    <th>Score</th>
-                    <th>Sites</th>
-                    <th>Action</th>
-                    <th>Share</th>
+                    <th style={thStyle}>Saved</th>
+                    <th style={thStyle}>Label</th>
+                    <th style={thStyle}>Indication</th>
+                    <th style={thStyle}>Region</th>
+                    <th style={thStyle}>Recommended</th>
+                    <th style={thStyle}>Score</th>
+                    <th style={thStyle}>Sites</th>
+                    <th style={thStyle}>Action</th>
+                    <th style={thStyle}>Share</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -168,10 +181,11 @@ export default function HistoryModal({ onClose }: { onClose: () => void }) {
               }}
             >
               <div
-                className="run-modal"
+                className="run-modal run-modal-wide"
                 onClick={(e) => e.stopPropagation()}
                 role="dialog"
                 aria-modal="true"
+                style={{ width: "min(1500px, 98vw)" }}
               >
                 <div className="run-modal-head">
                   <div>

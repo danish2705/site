@@ -2,17 +2,6 @@ import { WORKFLOW_STEPS } from "../../constants/workflow";
 import { useRoute } from "../../context/RouteContext";
 import { usePipeline } from "../../hooks/usePipeline";
 
-/**
- * Persistent top-of-page workflow navigation — the guided workflow
- * requested in place of ad-hoc wizard steps + duplicated Site Map tabs.
- * "Predict Region with AI" is deliberately not part of this nav — it's a
- * modal now, opened from the sidebar. Every item here maps to an existing
- * page; nothing here is new business content, just a way to jump straight
- * to any reachable step, see which ones are done, and go back/forward
- * without losing state (the underlying pages/contexts stay mounted for the
- * life of the app — see App.tsx). Rendered as a vertical tick-icon-above-
- * label layout per the requested design (never label-beside-icon).
- */
 export default function WorkflowNav() {
   const { route, setRoute, visited } = useRoute();
   const { workflowStepAvailable, riskAssessment, ranking, finalResult } =
@@ -25,10 +14,15 @@ export default function WorkflowNav() {
     return visited.has(stepKey);
   }
 
+  // Filter out the global map so it completely disappears from the stepper
+  const activeSteps = WORKFLOW_STEPS.filter(
+    (step) => step.key !== "site-map-global"
+  );
+
   return (
     <nav className="workflow-nav" aria-label="Guided workflow">
       <ol className="workflow-nav-list">
-        {WORKFLOW_STEPS.map((step, i) => {
+        {activeSteps.map((step, i) => {
           const available = workflowStepAvailable(step.key);
           const active = route === step.key;
           const complete = isComplete(step.key) && !active;

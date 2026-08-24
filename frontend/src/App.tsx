@@ -54,11 +54,24 @@ function Dashboard() {
                 : "Collapse Analysis Parameters"
             }
           >
-            {sidebarCollapsed ? "›" : "‹"}
+            {/* Show a mini spinner on the toggle button itself if running */}
+            {running ? (
+              <span 
+                className="spinner" 
+                style={{ width: "13px", height: "13px", borderWidth: "2px" }} 
+              />
+            ) : sidebarCollapsed ? (
+              "›"
+            ) : (
+              "‹"
+            )}
           </button>
           <div className="sidebar-shell-clip">
             <div className="sidebar-shell-inner">
-              <Sidebar onOpenPredictModal={() => setPredictModalOpen(true)} />
+              <Sidebar 
+                onOpenPredictModal={() => setPredictModalOpen(true)} 
+                onCollapse={() => setSidebarCollapsed(true)} 
+              />
             </div>
           </div>
         </div>
@@ -75,7 +88,24 @@ function Dashboard() {
             </div>
           )}
 
-          <div className="wizard-panel">
+          <div className="wizard-panel" style={{ position: "relative" }}>
+            {/* Global Pipeline Loading Overlay */}
+            {running && (
+              <div 
+                className="stage-loader"
+                style={{
+                  position: "absolute",
+                  inset: 0,
+                  zIndex: 50,
+                  backgroundColor: "var(--bg)",
+                  borderRadius: "var(--radius)",
+                }}
+              >
+                <div className="stage-loader-spinner" />
+                <div className="stage-loader-text">Running analysis pipeline...</div>
+              </div>
+            )}
+
             {route === "site-map-global" && <SiteMapGlobalPage />}
             {route === "site-map-details" && <SiteMapDetailsPage />}
             {route === "site-combination" && <SiteCombinationPlannerPage />}
