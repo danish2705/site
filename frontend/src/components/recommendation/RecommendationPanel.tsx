@@ -88,7 +88,7 @@ export default function RecommendationPanel() {
   return (
     <div className="card">
       <div className="pipeline-card-head">
-        <span className="tag">Stage 8 Output</span>
+        <span className="tag"></span>
         <div style={{ display: "flex", gap: 8 }}>
           <button
             type="button"

@@ -65,13 +65,20 @@ export default function SiteMapDetailsPage() {
     downloadCsv(sitesToCsv(sortedSites), filename);
   }
 
+  // Highlighted column header styling matching the app's accent theme
+  const thStyle: React.CSSProperties = {
+    backgroundColor: "var(--accent-soft)",
+    color: "var(--accent-dark)",
+    fontWeight: 800,
+    position: "sticky",
+    top: 0,
+    zIndex: 2,
+  };
+
   return (
     <div className="card" style={{ display: "flex", flexDirection: "column" }}>
       <div className="predict-head" style={{ flexShrink: 0 }}>
         <div className="predict-head-top">
-          <div className="predict-head-text">
-            <span className="predict-title">Site Map Details</span>
-          </div>
         </div>
       </div>
 
@@ -224,19 +231,19 @@ export default function SiteMapDetailsPage() {
                   <tr>
                     <th
                       title="Check to compare combined catchment across sites"
-                      style={{ padding: "8px 4px" }}
+                      style={{ ...thStyle, padding: "8px 4px" }}
                     ></th>
-                    <th className="sortable" onClick={() => toggleSort("site")}>
+                    <th className="sortable" style={thStyle} onClick={() => toggleSort("site")}>
                       Site{sortArrow("site")}
                     </th>
-                    <th className="sortable" onClick={() => toggleSort("location")}>
+                    <th className="sortable" style={thStyle} onClick={() => toggleSort("location")}>
                       Location{sortArrow("location")}
                     </th>
-                    <th className="sortable" onClick={() => toggleSort("gross")}>
+                    <th className="sortable" style={thStyle} onClick={() => toggleSort("gross")}>
                       Gross Eligible{sortArrow("gross")}
                     </th>
                     <th
-                      style={{ position: "relative", overflow: "visible" }}
+                      style={{ ...thStyle, position: "sticky", overflow: "visible" }}
                       title={
                         excludeEnrolled
                           ? "Eligible patients minus an estimated already-enrolled-elsewhere share"
@@ -407,13 +414,13 @@ export default function SiteMapDetailsPage() {
                         </div>
                       )}
                     </th>
-                    <th title="Available x this site's own synthetic consent/conversion rate — 100 eligible patients doesn't mean 100 enrolled">
+                    <th style={thStyle} title="Available x this site's own synthetic consent/conversion rate — 100 eligible patients doesn't mean 100 enrolled">
                       Expected Recruitment
                     </th>
-                    <th title="Illustrative split of Net Available — not real claims data">
+                    <th style={thStyle} title="Illustrative split of Net Available — not real claims data">
                       Segments (illustrative)
                     </th>
-                    <th className="sortable" onClick={() => toggleSort("risk")}>
+                    <th className="sortable" style={thStyle} onClick={() => toggleSort("risk")}>
                       Risk{sortArrow("risk")}
                     </th>
                   </tr>

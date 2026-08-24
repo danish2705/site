@@ -8,34 +8,37 @@ export default function RiskRegisterTable({
   if (records.length === 0) {
     return <p className="muted">No risk records for this site.</p>;
   }
+
+  // Special highlighted header styling consistent with the app's accent theme
+  const thStyle: React.CSSProperties = {
+    backgroundColor: "var(--accent-soft)",
+    color: "var(--accent-dark)",
+    fontWeight: 800,
+    position: "sticky",
+    top: 0,
+    zIndex: 2,
+  };
+
   return (
-    <div className="table-scroll">
+    <div 
+      className="table-scroll" 
+      style={{ maxHeight: "360px", overflowY: "auto" }}
+    >
       <table>
         <thead>
           <tr>
-            <th>Risk ID</th>
-            <th>Category</th>
-            <th>Description</th>
-            <th>Likelihood</th>
-            <th>Impact</th>
-            <th>Overall</th>
-            <th>Owner</th>
+            <th style={thStyle}>Risk ID</th>
+            <th style={thStyle}>Category</th>
+            <th style={thStyle}>Description</th>
+            <th style={thStyle}>Likelihood</th>
+            <th style={thStyle}>Impact</th>
+            <th style={thStyle}>Overall</th>
+            <th style={thStyle}>Owner</th>
           </tr>
         </thead>
         <tbody>
           {records.map((r) => {
-            // The "no data" placeholder (liveRiskAssessment.ts) always sets
-            // Likelihood/Impact/Overall to "Low" so it fits the RiskLevel
-            // type, but that would look identical to a genuinely assessed
-            // Low-rated record. Category "Data Availability" only ever
-            // comes from that one placeholder, so it's a safe, deterministic
-            // way to flag it for a distinct "Unassessed" badge instead.
             const isNoData = r.category === "Data Availability";
-            // A record with both Likelihood and Impact at Low reflects no
-            // real signal found for this category (e.g. no competing
-            // trials nearby, no overdue results) — distinct from a "Low"
-            // rating that still came from an actual observed signal. Shown
-            // as "No Risk" with the same green treatment as Low.
             const isNoRisk =
               !isNoData && r.likelihood === "Low" && r.impact === "Low";
             return (

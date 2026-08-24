@@ -2384,3 +2384,97 @@ html.dark th {
   background: var(--bg) !important;
   box-shadow: 0 1px 0 var(--line);
 }
+
+/* ==========================================================================
+   Global Dropdown & Search Input Standardization
+   ========================================================================== */
+
+select,
+input[type="search"],
+input[type="text"],
+.map-controls select,
+.map-controls input,
+.map-search-input {
+  height: 38px !important;
+  padding: 8px 12px !important;
+  font-size: 13.5px !important;
+  font-family: inherit !important;
+  font-weight: 500 !important;
+  color: var(--ink) !important;
+  background-color: var(--card) !important;
+  border: 1px solid var(--line) !important;
+  border-radius: 8px !important;
+  outline: none !important;
+  box-sizing: border-box !important;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+select:hover,
+input[type="search"]:hover,
+input[type="text"]:hover {
+  border-color: var(--accent);
+}
+
+select:focus,
+input[type="search"]:focus,
+input[type="text"]:focus {
+  border-color: var(--accent) !important;
+  box-shadow: 0 0 0 3px var(--accent-soft) !important;
+}
+
+/* Ensure disabled dropdowns/inputs maintain readable styling */
+select:disabled,
+input:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  background-color: var(--bg) !important;
+}
+
+/* ==========================================================================
+   Custom Dropdown & Native Select Styling
+   ========================================================================== */
+
+select {
+  appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  background-color: var(--card) !important;
+  color: var(--ink) !important;
+  border: 1px solid var(--line) !important;
+  border-radius: 8px !important;
+  padding: 8px 36px 8px 12px !important;
+  font-family: inherit !important;
+  font-size: 13.5px !important;
+  font-weight: 500 !important;
+  line-height: 1.4 !important;
+  cursor: pointer;
+  outline: none !important;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%235f6579' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 10px center;
+  background-size: 16px;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+select:hover {
+  border-color: var(--accent);
+}
+
+select:focus {
+  border-color: var(--accent) !important;
+  box-shadow: 0 0 0 3px var(--accent-soft) !important;
+}
+
+/* Dropdown option styling */
+select option {
+  background-color: var(--card);
+  color: var(--ink);
+  padding: 10px 12px;
+  font-size: 13.5px;
+}
+
+select option:checked,
+select option:hover {
+  background-color: var(--accent-soft) !important;
+  color: var(--accent-dark) !important;
+}

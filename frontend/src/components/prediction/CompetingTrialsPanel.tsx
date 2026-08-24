@@ -26,7 +26,6 @@ export default function CompetingTrialsPanel({
     } else if (!selectedCountries.includes(country)) {
       setCountry(selectedCountries[0]);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedCountries]);
 
   const countryResolved = selectedCountries.length === 0 || country !== "";
@@ -54,7 +53,6 @@ export default function CompetingTrialsPanel({
     if (autoSearchedRef.current || !indication || !countryResolved) return;
     autoSearchedRef.current = true;
     runSearch();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [indication, countryResolved]);
 
   const facilities = data?.facilities ?? [];
@@ -67,7 +65,6 @@ export default function CompetingTrialsPanel({
       const d = new Date(f.lastUpdatePostDate);
       return !isNaN(d.getTime()) && d >= cutoff;
     });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [facilities]);
 
   function statusGroupFor(status: string | null): "completed" | "active" | "other" {
@@ -86,7 +83,6 @@ export default function CompetingTrialsPanel({
 
   const activeCompetingSites = useMemo(
     () => recentFacilities.filter((f) => statusGroupFor(f.status) === "active").length,
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     [recentFacilities],
   );
 
@@ -129,43 +125,55 @@ export default function CompetingTrialsPanel({
     return "no-data";
   }
 
+  // Accent-themed highlighted table header style
+  const thStyle: React.CSSProperties = {
+    backgroundColor: "var(--accent-soft)",
+    color: "var(--accent-dark)",
+    fontWeight: 800,
+    position: "sticky",
+    top: 0,
+    zIndex: 2,
+  };
+
   return (
     <div className="card" style={{ display: "flex", flexDirection: "column" }}>
-      <div className="predict-head" style={{ flexShrink: 0 }}>
-        <div className="predict-head-top">
-          <div className="predict-head-text">
-            <span className="predict-title">Ongoing Trials</span>
-          </div>
-          <div className="predict-head-actions">
-            {selectedCountries.length > 0 && (
-              <select
-                value={country}
-                onChange={(e) => setCountry(e.target.value)}
-              >
-                <option value="">All selected countries</option>
-                {selectedCountries.map((c) => (
-                  <option key={c} value={c}>
-                    {c}
-                  </option>
-                ))}
-              </select>
-            )}
-            <button
-              type="button"
-              className="predict-btn"
-              onClick={runSearch}
-              disabled={loading || !indication}
+      {/* Country selection & Search button aligned consistently at the top left */}
+      <div className="map-controls" style={{ alignItems: "flex-end", flexShrink: 0 }}>
+        <label className="map-field">
+          <span>Country</span>
+          {selectedCountries.length > 0 ? (
+            <select
+              value={country}
+              onChange={(e) => setCountry(e.target.value)}
             >
-              {loading ? (
-                <>
-                  <span className="spinner" /> Searching…
-                </>
-              ) : (
-                "Search"
-              )}
-            </button>
-          </div>
-        </div>
+              <option value="">All selected countries</option>
+              {selectedCountries.map((c) => (
+                <option key={c} value={c}>
+                  {c}
+                </option>
+              ))}
+            </select>
+          ) : (
+            <select value="" disabled>
+              <option value="">All countries</option>
+            </select>
+          )}
+        </label>
+        <button
+          type="button"
+          className="predict-btn"
+          onClick={runSearch}
+          disabled={loading || !indication}
+          style={{ height: "37px" }}
+        >
+          {loading ? (
+            <>
+              <span className="spinner" /> Searching…
+            </>
+          ) : (
+            "Search"
+          )}
+        </button>
       </div>
 
       <div 
@@ -238,11 +246,11 @@ export default function CompetingTrialsPanel({
                 </colgroup>
                 <thead>
                   <tr>
-                    <th>Trial</th>
-                    <th>Status</th>
-                    <th>Last Updated</th>
-                    <th>Site</th>
-                    <th>Disease</th>
+                    <th style={thStyle}>Trial</th>
+                    <th style={thStyle}>Status</th>
+                    <th style={thStyle}>Last Updated</th>
+                    <th style={thStyle}>Site</th>
+                    <th style={thStyle}>Disease</th>
                   </tr>
                 </thead>
                 <tbody>

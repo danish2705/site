@@ -1,25 +1,41 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { usePipeline } from "../../hooks/usePipeline";
 import RiskAssessmentAccordion from "./RiskAssessmentAccordion";
 import WizardNextLink from "../ui/WizardNextLink";
 import StageLoader from "../ui/StageLoader";
 
-// Only show sites that are currently Recruiting or Active (Not Recruiting) —
-// Completed/Terminated/Withdrawn/Suspended/unknown-status sites aren't useful
-// candidates here, and there's no longer a status dropdown for the user to
-// toggle this themselves (removed per request — the filter wasn't needed).
-function isLiveActiveStatus(status: string | null): boolean {
+function statusGroupFor(status: string | null): "completed" | "active" | "other" {
   const s = (status ?? "").toUpperCase();
-  return s === "RECRUITING" || s === "ACTIVE_NOT_RECRUITING";
+  if (s === "COMPLETED") return "completed";
+  if (
+    s === "RECRUITING" ||
+    s === "ACTIVE_NOT_RECRUITING" ||
+    s === "NOT_YET_RECRUITING" ||
+    s === "ENROLLING_BY_INVITATION"
+  ) {
+    return "active";
+  }
+  return "other";
 }
 
 export default function RiskAssessmentPanel() {
   const { riskAssessment, finalResult, running } = usePipeline();
+  const [statusFilter, setStatusFilter] = useState<
+    "all" | "completed" | "active" | "other" | "recruiting"
+  >("recruiting");
 
   const filteredRows = useMemo(() => {
     if (!riskAssessment) return [];
-    return riskAssessment.filter((r) => isLiveActiveStatus(r.status));
-  }, [riskAssessment]);
+    if (statusFilter === "all") return riskAssessment;
+    if (statusFilter === "recruiting") {
+      return riskAssessment.filter(
+        (r) => (r.status ?? "").toUpperCase() === "RECRUITING"
+      );
+    }
+    return riskAssessment.filter(
+      (r) => statusGroupFor(r.status) === statusFilter
+    );
+  }, [riskAssessment, statusFilter]);
 
   if (!riskAssessment) {
     if (running) {
@@ -36,10 +52,31 @@ export default function RiskAssessmentPanel() {
     <div className="card">
       <div className="predict-head">
         <div className="predict-head-top">
-          <div className="predict-head-text">
-            <span className="tag">Stage 6 Output</span>
-          </div>
-          <div className="predict-head-actions">
+          <div className="predict-head-text"></div>
+          <div 
+            className="predict-head-actions" 
+            style={{ display: "flex", alignItems: "center", gap: "12px", marginLeft: "auto" }}
+          >
+            <select
+              value={statusFilter}
+              onChange={(e) =>
+                setStatusFilter(
+                  e.target.value as
+                    | "all"
+                    | "completed"
+                    | "active"
+                    | "other"
+                    | "recruiting"
+                )
+              }
+              title="Filter rows by trial status"
+            >
+              <option value="all">All statuses</option>
+              <option value="recruiting">Recruiting</option>
+              <option value="active">Active (Recruiting, etc.)</option>
+              <option value="completed">Completed</option>
+              <option value="other">Other / Suspended</option>
+            </select>
             <span className="map-table-count">
               {filteredRows.length.toLocaleString()} of{" "}
               {riskAssessment.length.toLocaleString()} site(s)

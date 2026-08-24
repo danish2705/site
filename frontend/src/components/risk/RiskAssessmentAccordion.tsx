@@ -176,12 +176,12 @@ export default function RiskAssessmentAccordion({
                     could distort the Overall Risk badge with a fabricated rating).
                     This applies to every site equally, so it's shown here as plain
                     text rather than as a scored row. */}
-                <p className="compliance-disclaimer">
+                {/* <p className="compliance-disclaimer">
                   Note: Compliance / GCP inspection history is not available from any
                   public source for these facilities. Verify current compliance status
                   directly with the CRO or site monitor before relying on this
                   assessment for a site activation decision.
-                </p>
+                </p> */}
               </div>
             )}
           </div>

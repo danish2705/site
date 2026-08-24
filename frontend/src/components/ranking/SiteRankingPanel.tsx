@@ -6,9 +6,18 @@ import StageLoader from "../ui/StageLoader";
 import { fetchOutreachDraft } from "../../services/siteCombination.service";
 import type { OutreachDraft, RankingRow } from "../../types";
 
-function isLiveActiveStatus(status: string | null): boolean {
+function statusGroupFor(status: string | null): "completed" | "active" | "other" {
   const s = (status ?? "").toUpperCase();
-  return s === "RECRUITING" || s === "ACTIVE_NOT_RECRUITING";
+  if (s === "COMPLETED") return "completed";
+  if (
+    s === "RECRUITING" ||
+    s === "ACTIVE_NOT_RECRUITING" ||
+    s === "NOT_YET_RECRUITING" ||
+    s === "ENROLLING_BY_INVITATION"
+  ) {
+    return "active";
+  }
+  return "other";
 }
 
 function statusLabel(status: string | null): string {
@@ -42,11 +51,20 @@ function statusBand(
 
 export default function SiteRankingPanel() {
   const { ranking, form, running } = usePipeline();
+  const [statusFilter, setStatusFilter] = useState<
+    "all" | "completed" | "active" | "other" | "recruiting"
+  >("recruiting");
 
   const filteredRanking = useMemo(() => {
     if (!ranking) return [];
-    return ranking.filter((r) => isLiveActiveStatus(r.status));
-  }, [ranking]);
+    if (statusFilter === "all") return ranking;
+    if (statusFilter === "recruiting") {
+      return ranking.filter(
+        (r) => (r.status ?? "").toUpperCase() === "RECRUITING"
+      );
+    }
+    return ranking.filter((r) => statusGroupFor(r.status) === statusFilter);
+  }, [ranking, statusFilter]);
 
   const [openDraftSiteId, setOpenDraftSiteId] = useState<string | null>(null);
   const [draftLoadingSiteId, setDraftLoadingSiteId] = useState<string | null>(
@@ -96,14 +114,45 @@ export default function SiteRankingPanel() {
     return null;
   }
 
+  // Accent-themed highlighted table header style
+  const thStyle: React.CSSProperties = {
+    backgroundColor: "var(--accent-soft)",
+    color: "var(--accent-dark)",
+    fontWeight: 800,
+    position: "sticky",
+    top: 0,
+    zIndex: 2,
+  };
+
   return (
     <div className="card" style={{ display: "flex", flexDirection: "column" }}>
       <div className="predict-head" style={{ flexShrink: 0 }}>
         <div className="predict-head-top">
-          <div className="predict-head-text">
-            <span className="tag">Stage 7 Output</span>
-          </div>
-          <div className="predict-head-actions">
+          <div className="predict-head-text"></div>
+          <div 
+            className="predict-head-actions" 
+            style={{ display: "flex", alignItems: "center", gap: "12px", marginLeft: "auto" }}
+          >
+            <select
+              value={statusFilter}
+              onChange={(e) =>
+                setStatusFilter(
+                  e.target.value as
+                    | "all"
+                    | "completed"
+                    | "active"
+                    | "other"
+                    | "recruiting"
+                )
+              }
+              title="Filter rows by trial status"
+            >
+              <option value="all">All statuses</option>
+              <option value="recruiting">Recruiting</option>
+              <option value="active">Active (Recruiting, etc.)</option>
+              <option value="completed">Completed</option>
+              <option value="other">Other / Suspended</option>
+            </select>
             <span className="map-table-count">
               {filteredRanking.length.toLocaleString()} of{" "}
               {ranking.length.toLocaleString()} site(s)
@@ -121,17 +170,17 @@ export default function SiteRankingPanel() {
           <table>
             <thead>
               <tr>
-                <th>Rank</th>
-                <th>Site</th>
-                <th>Region</th>
-                <th>Score</th>
-                <th>Breakdown</th>
-                <th>Protocol fit</th>
-                <th>Risk</th>
-                <th title="Live ClinicalTrials.gov status for this site.">
+                <th style={thStyle}>Rank</th>
+                <th style={thStyle}>Site</th>
+                <th style={thStyle}>Region</th>
+                <th style={thStyle}>Score</th>
+                <th style={thStyle}>Breakdown</th>
+                <th style={thStyle}>Protocol fit</th>
+                <th style={thStyle}>Risk</th>
+                <th style={thStyle} title="Live ClinicalTrials.gov status for this site.">
                   Status
                 </th>
-                <th title="Draft-only outreach text — no real contact email exists for these sites, and this app never actually sends anything.">
+                <th style={thStyle} title="Draft-only outreach text — no real contact email exists for these sites, and this app never actually sends anything.">
                   Outreach
                 </th>
               </tr>
@@ -140,7 +189,7 @@ export default function SiteRankingPanel() {
               {filteredRanking.length === 0 && (
                 <tr>
                   <td colSpan={9} className="predict-placeholder">
-                    No Recruiting or Active (Not Recruiting) sites found.
+                    No sites match the selected status filter.
                   </td>
                 </tr>
               )}

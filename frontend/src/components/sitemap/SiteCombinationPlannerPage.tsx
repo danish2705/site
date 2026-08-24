@@ -14,11 +14,6 @@ export default function SiteCombinationPlannerPage() {
   if (!country) {
     return (
       <div className="card">
-        <div className="predict-head-top">
-          <div className="predict-head-text">
-            <span className="predict-title">Site Combination Planner</span>
-          </div>
-        </div>
         <p className="predict-placeholder">
           {data
             ? "No country resolved for the current search — pick a region/country in Step 1 (or apply an AI prediction), then revisit this page."
