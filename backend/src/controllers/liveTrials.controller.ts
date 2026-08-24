@@ -26,6 +26,24 @@ export async function getLiveTrialLandscape(
 ): Promise<void> {
   const indication = String(req.query.indication || "").trim();
   const country = req.query.country ? String(req.query.country).trim() : "";
+  // Accepts either repeated ?ageGroups=A&ageGroups=B (Express gives an
+  // array) or a single comma-separated ?ageGroups=A,B — either way ends up
+  // as a clean string[], empty when not provided (all ages). Same real
+  // StdAge eligibility filter Risk Register/Ranking/Site Map already apply
+  // (see pipeline/liveCandidateSites.ts, pipeline/liveMapData.ts) — applied
+  // here too so the Ongoing Trials tab doesn't show a trial as "live
+  // competition" that isn't actually eligible for the age group you're
+  // running this trial for.
+  const ageGroupsRaw = req.query.ageGroups;
+  const ageGroups = (
+    Array.isArray(ageGroupsRaw)
+      ? ageGroupsRaw.map((v) => String(v))
+      : typeof ageGroupsRaw === "string" && ageGroupsRaw.length > 0
+        ? ageGroupsRaw.split(",")
+        : []
+  )
+    .map((g) => g.trim())
+    .filter(Boolean);
 
   if (!indication) {
     throw badRequest('Query param "indication" is required.');
@@ -38,6 +56,7 @@ export async function getLiveTrialLandscape(
       getActiveCompetingTrialsCount(indication, country),
       getFacilitiesForCondition(indication, {
         country: country || undefined,
+        ageGroups,
       }),
       getCompletedTrialBenchmarks(indication),
     ]);

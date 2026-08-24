@@ -1,16 +1,20 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { LiveTrialLandscapeResponse } from "../../types";
 import { fetchLiveTrialLandscape } from "../../services/liveTrials.service";
+import { usePipeline } from "../../hooks/usePipeline";
 import WizardNextLink from "../ui/WizardNextLink";
 import StageLoader from "../ui/StageLoader";
 
 export default function CompetingTrialsPanel({
   indication,
   selectedCountries = [],
+  ageGroups = [],
 }: {
   indication: string;
   /** Countries pulled from the trial form's already-selected regions — same convention as SiteMapView. Empty = only "All countries" is offered. */
   selectedCountries?: string[];
+  /** The trial form's selected Age Group(s) — same real StdAge eligibility filter Risk Register/Ranking/Site Map already apply. Applied here too so a trial that isn't actually age-eligible for this run doesn't show up as "live competition." Empty = all ages, no filtering. */
+  ageGroups?: string[];
 }) {
   const [country, setCountry] = useState("");
   const [data, setData] = useState<LiveTrialLandscapeResponse | null>(null);
@@ -26,6 +30,8 @@ export default function CompetingTrialsPanel({
     | "completed"
     | "other";
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("recruiting");
+  const { setOngoingTrialSites, analyzeOngoingTrialSites, analyzing } =
+    usePipeline();
 
   useEffect(() => {
     if (selectedCountries.length === 0) {
@@ -47,6 +53,7 @@ export default function CompetingTrialsPanel({
       const res = await fetchLiveTrialLandscape({
         indication,
         country: country || undefined,
+        ageGroups,
       });
       setData(res);
     } catch (err) {
@@ -82,6 +89,17 @@ export default function CompetingTrialsPanel({
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [facilities]);
+
+  // Hands this exact, already-reviewed live site list to PipelineContext so
+  // "Send to Risk Assessment & Ranking" below (and analyzeOngoingTrialSites)
+  // analyzes THESE rows — not a second, independent ClinicalTrials.gov
+  // fetch. Uses the full 3-year-recency window (not the transient
+  // statusFilter view below), since the status dropdown is just a lens for
+  // browsing, not a hard exclusion for what counts as a candidate site.
+  useEffect(() => {
+    if (recentFacilities.length > 0) setOngoingTrialSites(recentFacilities);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [recentFacilities]);
 
   // Groups each real, disclosed OverallStatus value into the buckets the
   // Status filter offers. Recruiting / Not Yet Recruiting / Active Not
@@ -219,6 +237,21 @@ export default function CompetingTrialsPanel({
                 </>
               ) : (
                 "Search"
+              )}
+            </button>
+            <button
+              type="button"
+              className="btn-primary"
+              onClick={analyzeOngoingTrialSites}
+              disabled={analyzing || recentFacilities.length === 0}
+              title="Runs Risk Register/Ranking against exactly the sites currently listed below"
+            >
+              {analyzing ? (
+                <>
+                  <span className="spinner" /> Analyzing…
+                </>
+              ) : (
+                "Send to Risk Assessment & Ranking →"
               )}
             </button>
           </div>

@@ -13,7 +13,7 @@ const STATUS_OPTIONS: { value: LiveStatusFilter; label: string }[] = [
 ];
 
 export default function RiskAssessmentPanel() {
-  const { riskAssessment, finalResult, running } = usePipeline();
+  const { riskAssessment, finalResult, running, analyzing } = usePipeline();
   // Default to Recruiting per request — the strongest, currently-live signal.
   // Only these three statuses are offered; Completed/Terminated/Withdrawn/
   // Suspended/unknown-status sites aren't useful candidates here.
@@ -27,14 +27,24 @@ export default function RiskAssessmentPanel() {
   }, [riskAssessment, statusFilter]);
 
   if (!riskAssessment) {
-    if (running) {
+    if (running || analyzing) {
       return (
         <div className="card">
           <StageLoader label="Loading risk register…" />
         </div>
       );
     }
-    return null;
+    // Stage 4-8 no longer auto-populate this from a fresh CT.gov fetch of
+    // their own — they only run once the user sends a reviewed site list
+    // from Ongoing Trials (see PipelineContext's analyzeOngoingTrialSites).
+    return (
+      <div className="card">
+        <p className="predict-placeholder">
+          No risk data yet — search Ongoing Trials and click "Send to Risk
+          Assessment &amp; Ranking" to populate this.
+        </p>
+      </div>
+    );
   }
 
   return (

@@ -83,6 +83,7 @@ function Dashboard() {
               <CompetingTrialsPanel
                 indication={form.indication}
                 selectedCountries={countriesFromRegionKeys(form.regions)}
+                ageGroups={form.ageGroups}
               />
             )}
             {route === "risk" && <RiskAssessmentPanel />}

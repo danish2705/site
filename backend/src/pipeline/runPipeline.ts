@@ -6,12 +6,16 @@ import {
   type LiveCandidateSite,
 } from "./liveCandidateSites.js";
 import { buildLiveRiskRecords } from "./liveRiskAssessment.js";
-import { buildLiveTrialRequirement } from "./liveRequirements.js";
+import {
+  buildLiveTrialRequirement,
+  type LiveTrialRequirementRow,
+} from "./liveRequirements.js";
 import { buildLiveRegionRow } from "./liveRegionMetrics.js";
 import { resolveSpecialty } from "./liveIndications.js";
 import { REGION_DEFINITIONS } from "../data/regionMap.js";
 import { mapWithConcurrency } from "../utils/concurrency.js";
 import { config } from "../config.js";
+import type { LiveFacility } from "../services/ctgov.client.js";
 import type {
   PipelineInput,
   SendFn,
@@ -23,6 +27,7 @@ import type {
   RiskDriver,
   RiskExplanation,
   SiteRow,
+  RegionRow,
   TrialRequirementRow,
   RequirementCheck,
 } from "../types.js";
@@ -267,10 +272,26 @@ export const STAGE_NAMES: Record<number, string> = {
   8: "Final Recommendation",
 };
 
-export async function runPipeline(
+export interface Stage1to3Result {
+  indication: string;
+  specialty: string;
+  requirement: LiveTrialRequirementRow;
+  topRegion: RegionRow;
+  estimatedPatients: number;
+  ageGroups?: string[];
+}
+
+/**
+ * Stages 1-3: parse the trial's requirements, pick the best region/country,
+ * and estimate the eligible patient population there. Split out from the
+ * original single runPipeline() so a caller can review/replace what happens
+ * next (Stage 4's candidate-site list) before continuing — see
+ * runSiteAnalysis() below, which picks up exactly where this leaves off.
+ */
+export async function runPipelineStages1to3(
   input: PipelineInput,
   send: SendFn,
-): Promise<void> {
+): Promise<Stage1to3Result> {
   const { indication, phase, ageGroups } = input;
   // Sanitize once at the entry — see toPositiveNumberOrUndefined above —
   // so a blank form field ("") never reaches the requirement builder or the
@@ -439,6 +460,48 @@ export async function runPipeline(
         : ""),
   });
 
+  return { indication, specialty, requirement, topRegion, estimatedPatients, ageGroups };
+}
+
+export interface RunSiteAnalysisParams {
+  input: PipelineInput;
+  indication: string;
+  specialty: string;
+  requirement: LiveTrialRequirementRow;
+  topRegion: RegionRow;
+  estimatedPatients: number;
+  ageGroups?: string[];
+  /**
+   * Real ClinicalTrials.gov facility rows to analyze — when provided (e.g.
+   * exactly what the user reviewed on the Ongoing Trials tab), Stage 4 uses
+   * this list instead of re-querying ClinicalTrials.gov itself. See
+   * buildLiveCandidateSites's `facilities` param.
+   */
+  facilities?: LiveFacility[];
+}
+
+/**
+ * Stages 4-8: build/score candidate sites, assess risk, rank, and recommend.
+ * Picks up from runPipelineStages1to3()'s result. Kept as a separate
+ * function (rather than inlined in runPipeline()) so /api/site-analysis can
+ * call it directly with a caller-supplied `facilities` list — see
+ * controllers/siteAnalysis.controller.ts.
+ */
+export async function runSiteAnalysis(
+  params: RunSiteAnalysisParams,
+  send: SendFn,
+): Promise<void> {
+  const {
+    input,
+    indication,
+    specialty,
+    requirement,
+    topRegion,
+    estimatedPatients,
+    ageGroups,
+    facilities,
+  } = params;
+
   send("stage", { stage: 4, name: STAGE_NAMES[4], status: "in-progress" });
   // Candidate sites are sourced live from ClinicalTrials.gov only — the
   // Excel Candidate_Sites sheet is intentionally not used here.
@@ -452,6 +515,7 @@ export async function runPipeline(
       regulatoryWeeks: topRegion["Regulatory Approval Time (weeks)"],
       regionCompetingTrials: topRegion["Active Competing Trials"],
       avgCostPerPatient: topRegion["Avg Cost per Patient (USD)"],
+      facilities,
       // Real fix: this used to only affect Stage 1's text label (see the
       // requirement["Age Group"] detail string above) — the actual
       // candidate sites feeding Stages 4-7 (Ongoing Trials, Risk Register,
@@ -750,4 +814,21 @@ export async function runPipeline(
       text: recommendation.text,
     },
   });
+}
+
+/**
+ * One-shot entry point used by POST /api/run: runs Stages 1-3 then
+ * immediately continues into Stages 4-8 with a self-fetched candidate-site
+ * list (no `facilities` override) — this is the original, unchanged
+ * end-to-end behavior. A caller that wants Stage 4 to analyze a specific,
+ * already-reviewed set of live sites (e.g. from the Ongoing Trials tab)
+ * should call runPipelineStages1to3() and runSiteAnalysis() directly instead
+ * — see controllers/siteAnalysis.controller.ts.
+ */
+export async function runPipeline(
+  input: PipelineInput,
+  send: SendFn,
+): Promise<void> {
+  const stage1to3 = await runPipelineStages1to3(input, send);
+  await runSiteAnalysis({ input, ...stage1to3 }, send);
 }

@@ -348,6 +348,17 @@ export interface BuildLiveCandidateSitesParams {
   maxSites?: number;
   /** Trial form's selected Age Group label(s) — see services/ctgov.client.ts's studyAgeGroups and data/ageDemographics.ts. Empty/absent = all ages, no filtering. */
   ageGroups?: string[];
+  /**
+   * Real ClinicalTrials.gov facility rows the caller already has on hand —
+   * e.g. exactly the sites a user reviewed on the Ongoing Trials tab
+   * (GET /api/live-trials), forwarded here so Risk Register/Ranking analyze
+   * THAT set instead of this function silently re-querying ClinicalTrials.gov
+   * on its own and potentially landing on a different list of sites. When
+   * omitted/empty, falls back to the original behavior of fetching the pool
+   * itself (used by the one-shot /api/run flow, which has no prior Ongoing
+   * Trials selection to reuse).
+   */
+  facilities?: LiveFacility[];
 }
 
 export async function buildLiveCandidateSites(
@@ -355,34 +366,41 @@ export async function buildLiveCandidateSites(
 ): Promise<LiveCandidateSite[]> {
   const maxSites = params.maxSites ?? 40;
 
-  const rawFacilities = await getFacilitiesForCondition(params.indication, {
-    country: params.country,
-    // Fetch a substantially larger raw pool than we'll actually keep
-    // (maxSites, after dedupe+balanced-status-selection below) — a small
-    // multiplier here meant a page dominated by one status could exhaust
-    // itself before ever reaching enough of another status to keep the
-    // 3-way filter balanced.
-    pageSize: Math.max(maxSites * 6, 200),
-    // Real filter: only sites from trials whose disclosed StdAge eligibility
-    // includes the selected group(s) — same mechanism as the Site Map tab
-    // (pipeline/liveMapData.ts). Left OFF the competing-pool fetch further
-    // below (deliberately): "how many other trials compete for the same
-    // pool of staff/patients here" is still a meaningful signal even when
-    // those competing trials have a different age scope than THIS trial.
-    ageGroups: params.ageGroups,
-    // Restrict the raw pull itself to live/active statuses (Risk Register
-    // and Ranking only ever show Recruiting / Active Not Recruiting sites —
-    // see RiskAssessmentPanel.tsx / SiteRankingPanel.tsx). Without this, the
-    // fixed-size page above can fill up with Completed/Terminated studies
-    // before ever reaching a Recruiting one, so a trial that's clearly
-    // Recruiting on the Ongoing Trials tab could otherwise never make it
-    // into the candidate pool here at all.
-    statuses: config.competingTrials.statuses,
-  });
+  const rawFacilities =
+    params.facilities && params.facilities.length > 0
+      ? params.facilities
+      : await getFacilitiesForCondition(params.indication, {
+          country: params.country,
+          // Fetch a substantially larger raw pool than we'll actually keep
+          // (maxSites, after dedupe+balanced-status-selection below) — a small
+          // multiplier here meant a page dominated by one status could exhaust
+          // itself before ever reaching enough of another status to keep the
+          // 3-way filter balanced.
+          pageSize: Math.max(maxSites * 6, 200),
+          // Real filter: only sites from trials whose disclosed StdAge eligibility
+          // includes the selected group(s) — same mechanism as the Site Map tab
+          // (pipeline/liveMapData.ts). Left OFF the competing-pool fetch further
+          // below (deliberately): "how many other trials compete for the same
+          // pool of staff/patients here" is still a meaningful signal even when
+          // those competing trials have a different age scope than THIS trial.
+          ageGroups: params.ageGroups,
+          // Restrict the raw pull itself to live/active statuses (Risk Register
+          // and Ranking only ever show Recruiting / Active Not Recruiting sites —
+          // see RiskAssessmentPanel.tsx / SiteRankingPanel.tsx). Without this, the
+          // fixed-size page above can fill up with Completed/Terminated studies
+          // before ever reaching a Recruiting one, so a trial that's clearly
+          // Recruiting on the Ongoing Trials tab could otherwise never make it
+          // into the candidate pool here at all.
+          statuses: config.competingTrials.statuses,
+        });
   // Split the limited maxSites slots as evenly as possible across
   // RECRUITING / NOT_YET_RECRUITING / ACTIVE_NOT_RECRUITING — see
   // selectBalancedByStatus's doc comment for why a strict "best status
-  // wins" ordering isn't used here.
+  // wins" ordering isn't used here. Applies even when `params.facilities`
+  // was supplied directly (e.g. from the Ongoing Trials tab) — maxSites is
+  // still a real cost cap (one LLM call per site), so a caller-provided list
+  // larger than that cap is balanced/trimmed the same way a self-fetched
+  // pool would be, not silently truncated from one end.
   const facilities = selectBalancedByStatus(
     dedupeFacilities(rawFacilities),
     maxSites,

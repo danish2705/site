@@ -44,7 +44,7 @@ function statusBand(
 }
 
 export default function SiteRankingPanel() {
-  const { ranking, form, running } = usePipeline();
+  const { ranking, form, running, analyzing } = usePipeline();
   // Default to Recruiting per request — the strongest, currently-live
   // signal. Only these three statuses are offered.
   const [statusFilter, setStatusFilter] = useState<LiveStatusFilter>("RECRUITING");
@@ -106,14 +106,21 @@ export default function SiteRankingPanel() {
   }
 
   if (!ranking) {
-    if (running) {
+    if (running || analyzing) {
       return (
         <div className="card">
           <StageLoader label="Loading site ranking…" />
         </div>
       );
     }
-    return null;
+    return (
+      <div className="card">
+        <p className="predict-placeholder">
+          No ranking yet — search Ongoing Trials and click "Send to Risk
+          Assessment &amp; Ranking" to populate this.
+        </p>
+      </div>
+    );
   }
 
   return (

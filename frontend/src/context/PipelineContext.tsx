@@ -16,13 +16,62 @@ import type {
   RiskAssessmentRow,
   FinalResult,
   StageEventPayload,
+  LiveFacilityRow,
 } from "../types";
 import { STAGE_LIST } from "../constants/pipeline";
 import type { WorkflowStep } from "../constants/workflow";
 import { fetchMeta } from "../services/meta.service";
-import { streamRun } from "../services/pipeline.service";
+import { streamRun, streamSiteAnalysis } from "../services/pipeline.service";
 import { createRun, getRun, listRuns } from "../services/runs.service";
 import { useRoute } from "./RouteContext";
+
+/** The top-scoring region/country Stage 2 resolved — just enough to call
+ * /api/site-analysis later (see analyzeOngoingTrialSites below). */
+interface TopRegionInfo {
+  region: string;
+  country: string;
+}
+
+/**
+ * Shared SSE "stage"/"error" event reader for both the initial /api/run
+ * stream and the later /api/site-analysis stream — both endpoints emit the
+ * identical event format (see backend's postRun/postSiteAnalysis). Calls
+ * `onStage` for every "stage" event and `onError` for an "error" event.
+ */
+async function consumeStageStream(
+  res: Response,
+  onStage: (payload: StageEventPayload) => void,
+  onError: (message: string) => void,
+): Promise<void> {
+  if (!res.body) {
+    throw new Error("Streaming not supported by this browser/response.");
+  }
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    const chunks = buffer.split("\n\n");
+    buffer = chunks.pop() ?? "";
+    for (const chunk of chunks) {
+      let eventName = "message";
+      let dataStr = "";
+      for (const line of chunk.split("\n")) {
+        if (line.startsWith("event:")) eventName = line.slice(6).trim();
+        else if (line.startsWith("data:")) dataStr += line.slice(5).trim();
+      }
+      if (!dataStr) continue;
+      const payload = JSON.parse(dataStr) as StageEventPayload & {
+        message?: string;
+      };
+      if (eventName === "stage") onStage(payload);
+      else if (eventName === "error") onError(payload.message ?? "Unknown error");
+    }
+  }
+}
 
 function emptyStages(): StagesMap {
   const obj: StagesMap = {};
@@ -44,6 +93,14 @@ export interface PipelineState {
   ranking: RankingRow[] | null;
   riskAssessment: RiskAssessmentRow[] | null;
   error: string | null;
+
+  /** The live ClinicalTrials.gov rows currently loaded on the Ongoing Trials tab — set by CompetingTrialsPanel after each search, consumed by analyzeOngoingTrialSites. */
+  ongoingTrialSites: LiveFacilityRow[] | null;
+  setOngoingTrialSites: (sites: LiveFacilityRow[]) => void;
+  /** True while Stages 4-8 are running against ongoingTrialSites (POST /api/site-analysis) — distinct from `running`, which covers the initial Stages 1-3 run. */
+  analyzing: boolean;
+  /** Sends ongoingTrialSites to Risk Register/Ranking for analysis — see services/pipeline.service.ts's streamSiteAnalysis. */
+  analyzeOngoingTrialSites: () => Promise<void>;
 
   completedCount: number;
   progressPct: number;
@@ -93,6 +150,11 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
     RiskAssessmentRow[] | null
   >(null);
   const [error, setError] = useState<string | null>(null);
+  const [ongoingTrialSites, setOngoingTrialSites] = useState<
+    LiveFacilityRow[] | null
+  >(null);
+  const [analyzing, setAnalyzing] = useState(false);
+  const [topRegion, setTopRegion] = useState<TopRegionInfo | null>(null);
   const { setRoute } = useRoute();
 
   const [saveLabel, setSaveLabel] = useState("");
@@ -124,9 +186,9 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
     // has arrived) so the nav can be clicked mid-run — the page itself
     // shows a loading state for whichever of these 3 stages hasn't
     // completed yet, rather than being unreachable until it has.
-    if (step === "risk") return !!riskAssessment || running;
-    if (step === "ranking") return !!ranking || running;
-    return !!finalResult || running;
+    if (step === "risk") return !!riskAssessment || running || analyzing;
+    if (step === "ranking") return !!ranking || running || analyzing;
+    return !!finalResult || running || analyzing;
   }
 
   async function handleSave(): Promise<boolean> {
@@ -245,57 +307,43 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
 
     try {
       const res = await streamRun(form);
-      const reader = res.body!.getReader();
-      const decoder = new TextDecoder();
-      let buffer = "";
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        buffer += decoder.decode(value, { stream: true });
-        const chunks = buffer.split("\n\n");
-        buffer = chunks.pop() ?? ""; 
-        for (const chunk of chunks) {
-          let eventName = "message";
-          let dataStr = "";
-          for (const line of chunk.split("\n")) {
-            if (line.startsWith("event:")) eventName = line.slice(6).trim();
-            else if (line.startsWith("data:")) dataStr += line.slice(5).trim();
+      await consumeStageStream(
+        res,
+        (payload) => {
+          setStages((prev) => ({
+            ...prev,
+            [payload.stage]: {
+              status: payload.status,
+              detail: payload.detail ?? prev[payload.stage]?.detail ?? null,
+              data: payload.data ?? prev[payload.stage]?.data ?? null,
+            },
+          }));
+          if (payload.stage === 2 && payload.status === "complete") {
+            // First entry of Stage 2's ranked-regions list is the one Stage 3
+            // onward actually used (topRegion in runPipeline.ts) — stashed
+            // here so analyzeOngoingTrialSites() can send the same
+            // region/country to /api/site-analysis later.
+            const top = (payload.data as { region: string; country: string }[])?.[0];
+            if (top) setTopRegion({ region: top.region, country: top.country });
           }
-          if (!dataStr) continue;
-          const payload = JSON.parse(dataStr) as StageEventPayload & {
-            message?: string;
-          };
-
-          if (eventName === "stage") {
-            setStages((prev) => ({
-              ...prev,
-              [payload.stage]: {
-                status: payload.status,
-                detail: payload.detail ?? prev[payload.stage]?.detail ?? null,
-                data: payload.data ?? prev[payload.stage]?.data ?? null,
-              },
-            }));
-            if (payload.stage === 8 && payload.llm) setLlmInfo(payload.llm);
-            if (payload.stage === 6 && payload.status === "complete") {
-              setRiskAssessment(payload.data as RiskAssessmentRow[]);
-              // No forced navigation to the Risk Register page here — the
-              // user lands on Site Map (Global) when the run starts and
-              // stays wherever they are; the nav bar's "complete" badge and
-              // WizardNextLink both surface that this step is now ready
-              // without yanking them off whatever page they're looking at.
-            }
-            if (payload.stage === 7 && payload.status === "complete") {
-              setRanking(payload.data as RankingRow[]);
-            }
-            if (payload.stage === 8 && payload.status === "complete") {
-              setFinalResult(payload.data as FinalResult);
-            }
-          } else if (eventName === "error") {
-            setError(payload.message ?? "Unknown error");
+          if (payload.stage === 8 && payload.llm) setLlmInfo(payload.llm);
+          if (payload.stage === 6 && payload.status === "complete") {
+            setRiskAssessment(payload.data as RiskAssessmentRow[]);
+            // No forced navigation to the Risk Register page here — the
+            // user lands on Site Map (Global) when the run starts and
+            // stays wherever they are; the nav bar's "complete" badge and
+            // WizardNextLink both surface that this step is now ready
+            // without yanking them off whatever page they're looking at.
           }
-        }
-      }
+          if (payload.stage === 7 && payload.status === "complete") {
+            setRanking(payload.data as RankingRow[]);
+          }
+          if (payload.stage === 8 && payload.status === "complete") {
+            setFinalResult(payload.data as FinalResult);
+          }
+        },
+        (message) => setError(message),
+      );
     } catch (err) {
       setError((err as Error).message);
     } finally {
@@ -304,6 +352,72 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
       // (Global) (navigated there at the start of this run) and the error
       // banner above the page surfaces the failure without yanking them
       // anywhere else.
+    }
+  }
+
+  /**
+   * Sends whatever's currently loaded on the Ongoing Trials tab
+   * (ongoingTrialSites) to the backend to run Stages 4-8 against — see
+   * services/pipeline.service.ts's streamSiteAnalysis. Overwrites
+   * riskAssessment/ranking/finalResult with the result, same as Stage
+   * 6/7/8 of the initial run do, so Risk Register/Ranking always reflect
+   * whichever site set was analyzed most recently.
+   */
+  async function analyzeOngoingTrialSites(): Promise<void> {
+    if (!ongoingTrialSites || ongoingTrialSites.length === 0) {
+      setError("Search Ongoing Trials first — there are no live sites to analyze yet.");
+      return;
+    }
+    if (!topRegion) {
+      setError("Run the initial analysis first so a region/country is selected.");
+      return;
+    }
+    setAnalyzing(true);
+    setError(null);
+    setRanking(null);
+    setRiskAssessment(null);
+    setFinalResult(null);
+
+    try {
+      const res = await streamSiteAnalysis({
+        indication: form.indication,
+        phase: form.phase || undefined,
+        sampleSize: form.sampleSize,
+        durationMonths: form.durationMonths,
+        budgetTier: form.budgetTier || undefined,
+        ageGroups: form.ageGroups,
+        region: topRegion.region,
+        country: topRegion.country,
+        facilities: ongoingTrialSites,
+      });
+      await consumeStageStream(
+        res,
+        (payload) => {
+          setStages((prev) => ({
+            ...prev,
+            [payload.stage]: {
+              status: payload.status,
+              detail: payload.detail ?? prev[payload.stage]?.detail ?? null,
+              data: payload.data ?? prev[payload.stage]?.data ?? null,
+            },
+          }));
+          if (payload.stage === 8 && payload.llm) setLlmInfo(payload.llm);
+          if (payload.stage === 6 && payload.status === "complete") {
+            setRiskAssessment(payload.data as RiskAssessmentRow[]);
+          }
+          if (payload.stage === 7 && payload.status === "complete") {
+            setRanking(payload.data as RankingRow[]);
+          }
+          if (payload.stage === 8 && payload.status === "complete") {
+            setFinalResult(payload.data as FinalResult);
+          }
+        },
+        (message) => setError(message),
+      );
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setAnalyzing(false);
     }
   }
 
@@ -319,6 +433,10 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
     ranking,
     riskAssessment,
     error,
+    ongoingTrialSites,
+    setOngoingTrialSites,
+    analyzing,
+    analyzeOngoingTrialSites,
     completedCount,
     progressPct,
     pipelineDone,
