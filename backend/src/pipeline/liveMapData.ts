@@ -156,6 +156,21 @@ export interface BuildLiveSiteMapParams {
   ageGroups?: string[];
 }
 
+// Only these three statuses represent a site that could still be recruited
+// into THIS trial (a site not yet started, or one actively enrolling) — the
+// same "real" tier set Risk Register/Ranking restrict to (see
+// liveCandidateSites.ts's CANDIDATE_STATUS_TIERS; kept as a separate local
+// copy per this codebase's existing per-component convention). Previously
+// this fetch applied no status filter at all, so the map plotted every
+// status ClinicalTrials.gov returned — including COMPLETED/TERMINATED/
+// WITHDRAWN/SUSPENDED sites that have nothing to do with where you'd
+// actually place this trial.
+const MAP_STATUS_TIERS = [
+  "RECRUITING",
+  "NOT_YET_RECRUITING",
+  "ACTIVE_NOT_RECRUITING",
+];
+
 export async function buildLiveSiteMapData(
   params: BuildLiveSiteMapParams,
 ): Promise<LiveMapResponse> {
@@ -168,12 +183,23 @@ export async function buildLiveSiteMapData(
 
   const rawFacilities = await getFacilitiesForCondition(params.indication, {
     country: params.country || undefined,
-    pageSize: maxSites * 2,
+    // Bumped alongside adding the status filter below: restricting to 3
+    // statuses server-side (via ClinicalTrials.gov's own filter.overallStatus)
+    // means a shallow page can now come back thin or empty even when plenty
+    // of matching sites exist deeper in the real result set — the same class
+    // of bug already fixed for Ongoing Trials/Risk Register (see
+    // liveTrials.controller.ts and liveCandidateSites.ts). Matches the
+    // Math.max(maxSites * 6, 200) depth those already use.
+    pageSize: Math.max(maxSites * 6, 200),
     // Real filter on which studies/facilities come back at all — see
     // ctgov.client.ts's studyAgeGroups for exactly what this does and
     // how it differs from the population-share scaling further down this
     // function.
     ageGroups: params.ageGroups,
+    // Restrict the map to sites that are actually still recruitable for this
+    // trial (Recruiting / Not Yet Recruiting / Active Not Recruiting) —
+    // matches Risk Register/Ranking's own status scope, per user request.
+    statuses: MAP_STATUS_TIERS,
   });
   const facilities = dedupeFacilities(rawFacilities).slice(0, maxSites);
 

@@ -127,10 +127,7 @@ export default function SiteRankingPanel() {
     <div className="card">
       <div className="predict-head">
         <div className="predict-head-top">
-          <div className="predict-head-text">
-            <span className="tag">Stage 7 Output</span>
-          </div>
-          <div className="predict-head-actions">
+          <div className="predict-head-actions" style={{ marginLeft: "auto" }}>
             <select
               value={statusFilter}
               onChange={(e) =>

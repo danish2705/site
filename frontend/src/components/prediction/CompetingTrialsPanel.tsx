@@ -30,12 +30,7 @@ export default function CompetingTrialsPanel({
     | "completed"
     | "other";
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("recruiting");
-  const {
-    setOngoingTrialSites,
-    analyzeOngoingTrialSites,
-    analyzing,
-    hasTopRegion,
-  } = usePipeline();
+  const { setOngoingTrialSites } = usePipeline();
 
   useEffect(() => {
     if (selectedCountries.length === 0) {
@@ -212,10 +207,11 @@ export default function CompetingTrialsPanel({
     <div className="card">
       <div className="predict-head">
         <div className="predict-head-top">
-          <div className="predict-head-text">
-            <span className="predict-title">Ongoing Trials</span>
-          </div>
-          <div className="predict-head-actions">
+          {/* predict-head-top is justify-content:space-between, which relied
+              on the (now-removed) title occupying the "left" slot to push
+              this to the right — margin-left:auto keeps that same
+              right-aligned position with only one child left in the row. */}
+          <div className="predict-head-actions" style={{ marginLeft: "auto" }}>
             {selectedCountries.length > 0 && (
               <select
                 value={country}
@@ -243,37 +239,11 @@ export default function CompetingTrialsPanel({
                 "Search"
               )}
             </button>
-            <button
-              type="button"
-              className="btn-primary"
-              onClick={analyzeOngoingTrialSites}
-              disabled={analyzing || recentFacilities.length === 0 || !hasTopRegion}
-              title={
-                !hasTopRegion
-                  ? "Run Analysis first (sidebar) so a region/country is selected"
-                  : "Runs Risk Register/Ranking against exactly the sites currently listed below"
-              }
-            >
-              {analyzing ? (
-                <>
-                  <span className="spinner" /> Analyzing…
-                </>
-              ) : (
-                "Send to Risk Assessment & Ranking →"
-              )}
-            </button>
           </div>
         </div>
       </div>
 
       <div className="card-scroll-body">
-      {!hasTopRegion && (
-        <p className="warning-text">
-          Click "Run Analysis" in the sidebar first — Risk Assessment &amp;
-          Ranking need the region/country it resolves. You can still browse
-          live trials below in the meantime.
-        </p>
-      )}
       {error && <p className="error-text">{error}</p>}
 
       {loading && !data && <StageLoader label="Loading ongoing trials…" />}

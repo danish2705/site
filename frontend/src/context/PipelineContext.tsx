@@ -22,8 +22,24 @@ import { STAGE_LIST } from "../constants/pipeline";
 import type { WorkflowStep } from "../constants/workflow";
 import { fetchMeta } from "../services/meta.service";
 import { streamRun, streamSiteAnalysis } from "../services/pipeline.service";
+import { fetchLiveTrialLandscape } from "../services/liveTrials.service";
 import { createRun, getRun, listRuns } from "../services/runs.service";
 import { useRoute } from "./RouteContext";
+
+/** Same last-3-years recency window CompetingTrialsPanel applies to its own
+ * table — reused here so a country picked directly from Risk Register goes
+ * through the identical "not too much stale history" filter instead of a
+ * second, looser definition of "recent." */
+function filterRecentFacilities(facilities: LiveFacilityRow[]): LiveFacilityRow[] {
+  const RECENT_YEARS = 3;
+  const cutoff = new Date();
+  cutoff.setFullYear(cutoff.getFullYear() - RECENT_YEARS);
+  return facilities.filter((f) => {
+    if (!f.lastUpdatePostDate) return false;
+    const d = new Date(f.lastUpdatePostDate);
+    return !isNaN(d.getTime()) && d >= cutoff;
+  });
+}
 
 /** The top-scoring region/country Stage 2 resolved — just enough to call
  * /api/site-analysis later (see analyzeOngoingTrialSites below). */
@@ -103,6 +119,8 @@ export interface PipelineState {
   analyzeOngoingTrialSites: () => Promise<void>;
   /** True once Stage 2 of Run Analysis has resolved a region/country — analyzeOngoingTrialSites needs this, so CompetingTrialsPanel uses it to keep "Send to Risk Assessment & Ranking" disabled (and to explain why) until Run Analysis has actually run. */
   hasTopRegion: boolean;
+  /** Risk Register's own Country picker: fetches a fresh live facility list for `country` itself (same live-trials call Ongoing Trials makes), then sends it straight to Stages 4-8 — the whole "search + analyze" round-trip in one action, so Risk Register/Ranking can be re-run for any country in the trial's selected regions without going through the Ongoing Trials tab at all. */
+  analyzeForCountry: (country: string) => Promise<void>;
 
   completedCount: number;
   progressPct: number;
@@ -426,6 +444,91 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
     }
   }
 
+  /**
+   * Risk Register's Country dropdown: fetches a fresh live facility list for
+   * this specific country (the same /api/live-trials call Ongoing Trials
+   * makes) and immediately sends it on to Stages 4-8, all in one action —
+   * so picking a different country directly on Risk Register re-runs the
+   * whole "find sites -> analyze them" round-trip for that country, without
+   * needing to visit Ongoing Trials first. Also updates ongoingTrialSites/
+   * topRegion so the two stay in sync if the user does visit that tab next.
+   */
+  async function analyzeForCountry(country: string): Promise<void> {
+    if (!form.indication) {
+      setError("Select an indication before analyzing a country.");
+      return;
+    }
+    // Best-effort region label: reuse whichever region the sidebar's own
+    // Region/Country list already associates with this country (falls back
+    // to the country name itself — the backend only uses this for
+    // display/prevalence lookups, not as a strict key).
+    const regionMatch = regionOptions.find((r) => r.country === country);
+    const region = regionMatch?.region ?? country;
+
+    setAnalyzing(true);
+    setError(null);
+    setRanking(null);
+    setRiskAssessment(null);
+    setFinalResult(null);
+
+    try {
+      const landscape = await fetchLiveTrialLandscape({
+        indication: form.indication,
+        country,
+        ageGroups: form.ageGroups,
+      });
+      const facilities = filterRecentFacilities(landscape.facilities);
+      if (facilities.length === 0) {
+        setError(
+          `No live ClinicalTrials.gov sites found for "${form.indication}" in ${country} (within the last 3 years).`,
+        );
+        return;
+      }
+      setOngoingTrialSites(facilities);
+      setTopRegion({ region, country });
+
+      const res = await streamSiteAnalysis({
+        indication: form.indication,
+        phase: form.phase || undefined,
+        sampleSize: form.sampleSize,
+        durationMonths: form.durationMonths,
+        budgetTier: form.budgetTier || undefined,
+        ageGroups: form.ageGroups,
+        region,
+        country,
+        facilities,
+      });
+      await consumeStageStream(
+        res,
+        (payload) => {
+          setStages((prev) => ({
+            ...prev,
+            [payload.stage]: {
+              status: payload.status,
+              detail: payload.detail ?? prev[payload.stage]?.detail ?? null,
+              data: payload.data ?? prev[payload.stage]?.data ?? null,
+            },
+          }));
+          if (payload.stage === 8 && payload.llm) setLlmInfo(payload.llm);
+          if (payload.stage === 6 && payload.status === "complete") {
+            setRiskAssessment(payload.data as RiskAssessmentRow[]);
+          }
+          if (payload.stage === 7 && payload.status === "complete") {
+            setRanking(payload.data as RankingRow[]);
+          }
+          if (payload.stage === 8 && payload.status === "complete") {
+            setFinalResult(payload.data as FinalResult);
+          }
+        },
+        (message) => setError(message),
+      );
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setAnalyzing(false);
+    }
+  }
+
   const value: PipelineState = {
     meta,
     form,
@@ -443,6 +546,7 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
     analyzing,
     analyzeOngoingTrialSites,
     hasTopRegion: !!topRegion,
+    analyzeForCountry,
     completedCount,
     progressPct,
     pipelineDone,

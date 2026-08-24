@@ -72,14 +72,6 @@ export default function SiteMapDetailsPage() {
 
   return (
     <div className="card">
-      <div className="predict-head">
-        <div className="predict-head-top">
-          <div className="predict-head-text">
-            <span className="predict-title">Site Map Details</span>
-          </div>
-        </div>
-      </div>
-
       <div className="card-scroll-body">
         {error && <p className="error-text">{error}</p>}
 
@@ -90,16 +82,6 @@ export default function SiteMapDetailsPage() {
             No search yet — run a search from the Site Map (Global) page to
             populate this table.
           </p>
-        )}
-
-        {data && data.warnings.length > 0 && (
-          <div className="map-warnings">
-            {data.warnings.map((w, i) => (
-              <p key={i} className="warning-text">
-                {w}
-              </p>
-            ))}
-          </div>
         )}
 
         {data && allSites.length > 0 && (

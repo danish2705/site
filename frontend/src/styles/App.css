@@ -200,14 +200,58 @@ body {
   background: var(--bg);
   color: var(--ink);
 }
+.user-menu-wrap {
+  position: relative;
+  flex-shrink: 0;
+}
 .user-chip {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 8px;
   padding: 5px 10px 5px 5px;
   border-radius: 20px;
   border: 1px solid var(--line);
+  background: #fff;
+  font-family: inherit;
+  cursor: pointer;
   flex-shrink: 0;
+}
+.user-chip:hover {
+  background: var(--bg);
+}
+.user-menu-dropdown {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  min-width: 160px;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  box-shadow: 0 10px 28px rgba(15, 23, 42, 0.14);
+  padding: 6px;
+  z-index: 50;
+}
+.user-menu-item {
+  position: relative;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 9px 10px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  font-family: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--ink);
+  cursor: pointer;
+  text-align: left;
+}
+.user-menu-item:hover {
+  background: var(--bg);
 }
 .user-avatar {
   width: 26px;
@@ -394,8 +438,8 @@ body {
 .field-block {
   display: flex;
   flex-direction: column;
-  gap: 5px;
-  margin-bottom: 10px;
+  gap: 6px;
+  margin-bottom: 22px;
 }
 .field-label {
   font-size: 11.5px;
@@ -403,6 +447,10 @@ body {
   color: var(--sub);
   text-transform: uppercase;
   letter-spacing: 0.03em;
+}
+.field-required {
+  color: #e5342b;
+  font-weight: 700;
 }
 .field-label-row {
   display: flex;
@@ -1201,6 +1249,9 @@ tbody tr:hover {
   gap: 8px;
   flex-shrink: 0;
 }
+.predict-head + .card-scroll-body {
+  margin-top: 16px;
+}
 .predict-head-top {
   display: flex;
   align-items: flex-start;
@@ -1233,6 +1284,23 @@ tbody tr:hover {
   align-items: center;
   gap: 10px;
   flex-shrink: 0;
+}
+/* Bare <select>/<input> elements dropped directly into these toolbars (e.g.
+   Ongoing Trials' Country/Status dropdowns) otherwise fall back to the
+   browser's own default control height, which sits visibly shorter than
+   .predict-btn's 10px 18px padding — this brings them up to the same
+   height/border/radius so the whole row lines up. */
+.predict-head-actions select,
+.map-controls select,
+.map-controls input:not(.map-search-input) {
+  font-family: inherit;
+  font-size: 13.5px;
+  font-weight: 500;
+  color: var(--ink);
+  padding: 9px 12px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: #fff;
 }
 .predict-btn {
   display: inline-flex;
@@ -1964,6 +2032,13 @@ tr.row-pick td {
   border-radius: 10px;
   background: var(--bg);
 }
+.map-search-btn {
+  /* .map-field stacks a label line above its <select> (see .map-field's
+     gap:5px + the label span's own line-height) — this button has no label
+     line above it, so without this offset it sits flush with the "COUNTRY"
+     text instead of level with the dropdown box itself. */
+  margin-top: 20px;
+}
 .map-field {
   display: flex;
   flex-direction: column;
@@ -2155,10 +2230,10 @@ tr.row-pick td {
   flex: 1 1 260px;
   max-width: 320px;
   font-family: inherit;
-  font-size: 13px;
-  padding: 7px 10px;
+  font-size: 13.5px;
+  padding: 9px 12px;
   border: 1px solid var(--line);
-  border-radius: 8px;
+  border-radius: 9px;
   background: #fff;
   color: var(--ink);
 }
@@ -2250,16 +2325,34 @@ tr.pinned-row {
 .workflow-nav-list {
   display: flex;
   align-items: flex-start;
-  justify-content: space-between;
+  justify-content: flex-start;
   list-style: none;
   margin: 0;
   padding: 0;
   min-width: max-content;
-  gap: 4px;
+  gap: 0;
 }
 .workflow-nav-item-wrap {
   display: flex;
   flex-shrink: 0;
+}
+/* Thin connecting line between each step's circle, so the row reads as one
+   continuous progress track rather than disconnected icons. Sits at the
+   circle's vertical center: the button's 8px top padding plus half the
+   26px .workflow-nav-index circle = 21px down from the button's top edge.
+   flex:1 lets it stretch to fill whatever gap sits between two items at
+   the current width, min-width keeps a visible line even in a cramped
+   layout. */
+.workflow-nav-connector {
+  flex: 1 1 16px;
+  min-width: 12px;
+  height: 2px;
+  /* var(--line) (#e6e8f0) is too close to the card's white background to
+     read at 1-2px — this needs to be visibly darker than an ordinary
+     hairline border to actually show up as a connecting track. */
+  background: #c3c8d9;
+  margin-top: 20px;
+  align-self: flex-start;
 }
 /* Vertical layout per the requested design: tick/number icon on top,
    label directly below it — never side-by-side with the icon. */
@@ -2283,11 +2376,18 @@ tr.pinned-row {
   transition: background 0.15s ease, color 0.15s ease;
 }
 .workflow-nav-item:hover:not(:disabled) {
-  background: var(--bg);
+  /* No background on the whole button (that read as a stray square box
+     behind the icon+label) — the hover feedback lives on the circle
+     itself instead, via the ring below. */
   color: var(--ink);
 }
+.workflow-nav-item:hover:not(:disabled) .workflow-nav-index {
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
 .workflow-nav-item.active {
-  background: var(--accent-soft);
+  /* No background pill here on purpose — it visually cut the connector
+     line running behind this item. The filled accent circle + accent text
+     color below are enough to mark the active step. */
   color: var(--accent-dark);
 }
 .workflow-nav-item.complete .workflow-nav-index {
@@ -2317,6 +2417,22 @@ tr.pinned-row {
 }
 .workflow-nav-label {
   line-height: 1.25;
+}
+/* Distinguishes the leading "Predict Region with AI" action from the
+   numbered workflow steps beside it — it opens a modal, not a page, so it
+   gets its own accent-filled look instead of the plain numbered-circle
+   treatment (and a small divider to visually separate it from step 1). */
+.workflow-nav-item--predict {
+  /* No divider border here on purpose — it read as a separate boxed-off
+     section instead of part of the same connected step row. */
+}
+.workflow-nav-item--predict .workflow-nav-index {
+  background: var(--accent);
+  color: #fff;
+  font-size: 14px;
+}
+.workflow-nav-item--predict:hover:not(:disabled) .workflow-nav-index {
+  background: var(--accent-dark);
 }
 
 /* Smooth page transition when switching between workflow steps — purely

@@ -162,11 +162,6 @@ export default function SiteCombinationPlanner({
 
   return (
     <div className="card">
-      <div className="predict-head-top">
-        <div className="predict-head-text">
-          <span className="predict-title">Site Combination Planner</span>
-        </div>
-      </div>
       <div className="card-scroll-body">
       <div className="map-controls">
         <label className="map-field">
@@ -184,7 +179,7 @@ export default function SiteCombinationPlanner({
         </label>
         <button
           type="button"
-          className="predict-btn"
+          className="predict-btn map-search-btn"
           onClick={() => run()}
           disabled={loading || !target}
         >
@@ -206,12 +201,6 @@ export default function SiteCombinationPlanner({
 
       {result && (
         <>
-          <p
-            className="section-hint"
-            style={{ fontStyle: "italic", marginTop: 10 }}
-          >
-            {result.method}
-          </p>
           {result.warnings.map((w, i) => (
             <p key={i} className="warning-text">
               {w}

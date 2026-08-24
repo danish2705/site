@@ -60,13 +60,6 @@ export async function buildLiveRegionRow(
       regulatoryWeeks = estimate.fields.regulatoryApprovalWeeks ?? 0;
       avgCostPerPatient = estimate.fields.avgCostPerPatientUsd ?? 0;
       regionMetricsSource = "llm-estimated";
-      console.log(
-        `[liveRegionMetrics] ${params.region}, ${params.country}, "${params.indication}" -> ` +
-          `prevalencePer100k=${estimate.fields.prevalencePer100k}, ` +
-          `regulatoryApprovalWeeks=${estimate.fields.regulatoryApprovalWeeks}, ` +
-          `avgCostPerPatientUsd=${estimate.fields.avgCostPerPatientUsd} ` +
-          `(rationale: ${estimate.rationale})`,
-      );
       if (estimate.fields.prevalencePer100k === null) {
         metricsWarning = `${params.region}, ${params.country}: LLM returned prevalencePer100k=null for "${params.indication}" (it estimated the other fields but said it had no basis for prevalence) — Gross Eligible/Available/Expected Recruitment are all shown as 0 for every site in this country as a direct result.`;
       }

@@ -290,30 +290,6 @@ export default function SiteMapGlobalPage() {
 
   return (
     <div className="card">
-      <div className="predict-head">
-        <div className="predict-head-top">
-          <div className="predict-head-text">
-            <span className="predict-title">Site Map (Global)</span>
-          </div>
-          <div className="predict-head-actions">
-            <button
-              type="button"
-              className="predict-btn"
-              onClick={runSearch}
-              disabled={loading || !indication}
-            >
-              {loading ? (
-                <>
-                  <span className="spinner" /> Searching…
-                </>
-              ) : (
-                "Search"
-              )}
-            </button>
-          </div>
-        </div>
-      </div>
-
       <div className="map-controls">
         <label
           className="map-field"
@@ -340,6 +316,20 @@ export default function SiteMapGlobalPage() {
             </>
           )}
         </label>
+        <button
+          type="button"
+          className="predict-btn map-search-btn"
+          onClick={runSearch}
+          disabled={loading || !indication}
+        >
+          {loading ? (
+            <>
+              <span className="spinner" /> Searching…
+            </>
+          ) : (
+            "Search"
+          )}
+        </button>
       </div>
 
       <div className="card-scroll-body">
@@ -352,16 +342,6 @@ export default function SiteMapGlobalPage() {
             No search yet — hit Search to plot real trial sites for this
             indication worldwide, without changing your left-hand filters.
           </p>
-        )}
-
-        {data && data.warnings.length > 0 && (
-          <div className="map-warnings">
-            {data.warnings.map((w, i) => (
-              <p key={i} className="warning-text">
-                {w}
-              </p>
-            ))}
-          </div>
         )}
 
         {/* Always visible (not conditionally hidden) — creating the Leaflet

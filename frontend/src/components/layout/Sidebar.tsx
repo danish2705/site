@@ -5,11 +5,7 @@ const PHASES = ["Phase I", "Phase II", "Phase III", "Phase IV"];
 const BUDGETS = ["Low", "Mid", "High"];
 const AGE_GROUPS = ["Child (0–17)", "Adult (18–64)", "Older Adult (65+)"];
 
-export default function Sidebar({
-  onOpenPredictModal,
-}: {
-  onOpenPredictModal: () => void;
-}) {
+export default function Sidebar() {
   const { meta, form, setForm, regionOptions, running, handleSubmit } =
     usePipeline();
 
@@ -36,7 +32,9 @@ export default function Sidebar({
 
         <div className="sidebar-form-scroll">
           <label className="field-block">
-            <span className="field-label">Indication</span>
+            <span className="field-label">
+              Indication <span className="field-required">*</span>
+            </span>
             <select
               value={form.indication}
               onChange={(e) =>
@@ -72,9 +70,6 @@ export default function Sidebar({
                 </button>
               ))}
             </div>
-            <span className="field-hint">
-              Optional — uses the indication's standard phase if left unset.
-            </span>
           </label>
 
           <label className="field-block">
@@ -102,10 +97,6 @@ export default function Sidebar({
                 );
               })}
             </div>
-            <span className="field-hint">
-              Optional — select every age group eligible for this trial; leave
-              unset to include all ages.
-            </span>
           </label>
 
           <label className="field-block">
@@ -123,28 +114,10 @@ export default function Sidebar({
                 })
               }
             />
-            <span className="field-hint">
-              Optional — uses the indication's target sample size if left blank.
-            </span>
           </label>
 
           <label className="field-block">
-            <span className="field-label-row">
-              <span className="field-label">Region / Country</span>
-              <button
-                type="button"
-                className="predict-btn predict-btn-sm"
-                onClick={onOpenPredictModal}
-                disabled={!meta || !form.indication || running}
-                title={
-                  !form.indication
-                    ? "Select an indication first"
-                    : "Let AI propose a region/country based on the trial requirements"
-                }
-              >
-                Predict Region with AI
-              </button>
-            </span>
+            <span className="field-label">Region / Country</span>
             <RegionMultiSelect
               options={regionOptions}
               selected={form.regions}
@@ -168,9 +141,6 @@ export default function Sidebar({
                 })
               }
             />
-            <span className="field-hint">
-              Optional — uses the indication's standard duration if left blank.
-            </span>
           </label>
 
           <label className="field-block">
@@ -188,10 +158,6 @@ export default function Sidebar({
                 </option>
               ))}
             </select>
-            <span className="field-hint">
-              Optional — uses the indication's standard budget tier if left
-              unset.
-            </span>
           </label>
         </div>
 

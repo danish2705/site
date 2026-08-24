@@ -1,30 +1,3 @@
-/**
- * Bulk SYNTHETIC patient-catchment dataset used to answer "how many patients
- * live within N miles of this trial site" for the Site Map feature.
- *
- * WHY SYNTHETIC: no live, public API publishes real population figures (let
- * alone disease-specific patient counts) at postal/zip-code granularity for
- * arbitrary countries. The planning conversation this feature was scoped
- * from explicitly pointed at "synthetic data" for this exact number rather
- * than pretending a live source exists — so this file generates a large,
- * deterministic synthetic dataset instead. Every record is tagged
- * `populationSource: "synthetic"` all the way through to the API response
- * and the frontend caveats — it is never presented as real Census/claims
- * data.
- *
- * Two different kinds of fact are mixed here, deliberately kept distinct:
- *  - COUNTRY_BOUNDING_BOXES' lat/lng ranges are REAL, publicly known
- *    geography — used only to keep synthetic points inside plausible
- *    territory for each country.
- *  - Every point's exact position and population WITHIN that box is
- *    FABRICATED (seeded-random), standing in for data we don't have.
- *
- * Generation is deterministic (seeded off country name + index), so the
- * same country produces the same synthetic catchment points across
- * requests and process restarts, rather than different numbers every time
- * someone searches.
- */
-
 export interface SyntheticPostalRegion {
   id: string;
   country: string;
@@ -41,9 +14,6 @@ interface CountryBoundingBox {
   maxLng: number;
 }
 
-// Real, approximate country bounding boxes (public geography) — mirrors the
-// countries in data/regionMap.ts so the Site Map can cover the same global
-// footprint the rest of the app already supports.
 const COUNTRY_BOUNDING_BOXES: CountryBoundingBox[] = [
   {
     country: "United States",
@@ -191,18 +161,6 @@ interface CityAnchor {
   tier: "mega" | "large" | "mid";
 }
 
-// Real, publicly known major-city coordinates (approximate city-center
-// points — not survey-precise, but real named places, unlike everything
-// else in this file). WHY THIS EXISTS: the random point scatter below has
-// no relationship to real geography — without this table, a real megacity
-// could randomly end up with zero nearby high-population synthetic points
-// (showing an implausibly small patient count right next to it) purely by
-// chance, while an empty rural stretch could randomly get the big one
-// instead. Anchoring a handful of each country's highest-population points
-// at real major cities fixes that mismatch. The POPULATION figure attached
-// to each anchor below is still a synthetic estimate (no live source exists
-// for real disease-relevant population by postal area) — only the
-// city's existence and approximate location are real.
 const CITY_ANCHORS: Record<string, CityAnchor[]> = {
   "United States": [
     { name: "New York", lat: 40.71, lng: -74.01, tier: "mega" },

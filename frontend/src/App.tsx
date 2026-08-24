@@ -68,7 +68,7 @@ function Dashboard() {
           </button>
           <div className="sidebar-shell-clip">
             <div className="sidebar-shell-inner">
-              <Sidebar onOpenPredictModal={() => setPredictModalOpen(true)} />
+              <Sidebar />
             </div>
           </div>
         </div>
@@ -77,7 +77,7 @@ function Dashboard() {
           {/* Sits above the right-side page card only — not above the
               sidebar's input form — since the workflow steps describe the
               analysis output on this side, not the input parameters. */}
-          <WorkflowNav />
+          <WorkflowNav onOpenPredictModal={() => setPredictModalOpen(true)} />
 
           {error && (
             <div className="shell-error">
