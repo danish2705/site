@@ -98,6 +98,20 @@ export default function CompetingTrialsPanel({
     return "other";
   }
 
+  // KPI tile: count of individual SITES (trial/site rows) currently in an
+  // active/competing status, not distinct trials — a single multi-site trial
+  // (one NCT ID) can occupy several sites, and each of those is separate
+  // competition for patients at that site. Derived from recentFacilities
+  // (already deduped to the same last-RECENT_YEARS window as the table)
+  // rather than the backend's activeCompetingTrials (a distinct-trial count
+  // from ClinicalTrials.gov's countTotal), so the KPI always matches what's
+  // actually in the table below it.
+  const activeCompetingSites = useMemo(
+    () => recentFacilities.filter((f) => statusGroupFor(f.status) === "active").length,
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [recentFacilities],
+  );
+
   const statusFiltered =
     statusFilter === "all"
       ? recentFacilities
@@ -204,12 +218,8 @@ export default function CompetingTrialsPanel({
         <>
           <div className="final-grid" style={{ marginTop: 4, marginBottom: 12 }}>
             <div className="item">
-              <div className="k">Active / competing trials</div>
-              <div className="v">
-                {data.activeCompetingTrials !== null
-                  ? data.activeCompetingTrials.toLocaleString()
-                  : "N/A"}
-              </div>
+              <div className="k">Active / competing sites</div>
+              <div className="v">{activeCompetingSites.toLocaleString()}</div>
             </div>
             <div className="item">
               <div className="k">Trial/site rows found (last {RECENT_YEARS} yrs)</div>

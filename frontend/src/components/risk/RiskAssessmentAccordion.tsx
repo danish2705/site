@@ -105,7 +105,11 @@ export default function RiskAssessmentAccordion({
   }, [rows, expanded]);
 
   if (orderedRows.length === 0) {
-    return <p className="predict-placeholder">No sites match the selected status filter.</p>;
+    return (
+      <p className="predict-placeholder">
+        No Recruiting or Active (Not Recruiting) sites found.
+      </p>
+    );
   }
 
   return (

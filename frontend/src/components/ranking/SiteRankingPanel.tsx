@@ -6,22 +6,13 @@ import StageLoader from "../ui/StageLoader";
 import { fetchOutreachDraft } from "../../services/siteCombination.service";
 import type { OutreachDraft, RankingRow } from "../../types";
 
-// Same status grouping/label/color treatment as the Ongoing Trials and Risk
-// Register pages (see CompetingTrialsPanel.tsx / RiskAssessmentAccordion.tsx)
-// — kept as a local copy per this codebase's existing per-component
-// convention.
-function statusGroupFor(status: string | null): "completed" | "active" | "other" {
+// Only show sites that are currently Recruiting or Active (Not Recruiting) —
+// Completed/Terminated/Withdrawn/Suspended/unknown-status sites aren't useful
+// candidates here, and there's no longer a status dropdown for the user to
+// toggle this themselves (removed per request — the filter wasn't needed).
+function isLiveActiveStatus(status: string | null): boolean {
   const s = (status ?? "").toUpperCase();
-  if (s === "COMPLETED") return "completed";
-  if (
-    s === "RECRUITING" ||
-    s === "ACTIVE_NOT_RECRUITING" ||
-    s === "NOT_YET_RECRUITING" ||
-    s === "ENROLLING_BY_INVITATION"
-  ) {
-    return "active";
-  }
-  return "other";
+  return s === "RECRUITING" || s === "ACTIVE_NOT_RECRUITING";
 }
 
 function statusLabel(status: string | null): string {
@@ -55,15 +46,11 @@ function statusBand(
 
 export default function SiteRankingPanel() {
   const { ranking, form, running } = usePipeline();
-  const [statusFilter, setStatusFilter] = useState<
-    "all" | "completed" | "active" | "other"
-  >("all");
 
   const filteredRanking = useMemo(() => {
     if (!ranking) return [];
-    if (statusFilter === "all") return ranking;
-    return ranking.filter((r) => statusGroupFor(r.status) === statusFilter);
-  }, [ranking, statusFilter]);
+    return ranking.filter((r) => isLiveActiveStatus(r.status));
+  }, [ranking]);
 
   // Per-site outreach draft state — see backend pipeline/outreachDraft.ts.
   // IMPORTANT: this only ever generates draft text; it never sends an email.
@@ -128,22 +115,6 @@ export default function SiteRankingPanel() {
             <span className="tag">Stage 7 Output</span>
           </div>
           <div className="predict-head-actions">
-            <select
-              value={statusFilter}
-              onChange={(e) =>
-                setStatusFilter(
-                  e.target.value as "all" | "completed" | "active" | "other",
-                )
-              }
-              title="Filter sites by trial status"
-            >
-              <option value="all">All statuses</option>
-              <option value="active">Active (Recruiting, etc.)</option>
-              <option value="completed">Completed</option>
-              <option value="other">
-                Other (Terminated/Withdrawn/Suspended/Unknown)
-              </option>
-            </select>
             <span className="map-table-count">
               {filteredRanking.length.toLocaleString()} of{" "}
               {ranking.length.toLocaleString()} site(s)
@@ -176,7 +147,7 @@ export default function SiteRankingPanel() {
               {filteredRanking.length === 0 && (
                 <tr>
                   <td colSpan={9} className="predict-placeholder">
-                    No sites match the selected status filter.
+                    No Recruiting or Active (Not Recruiting) sites found.
                   </td>
                 </tr>
               )}

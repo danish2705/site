@@ -1,39 +1,25 @@
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import { usePipeline } from "../../hooks/usePipeline";
 import RiskAssessmentAccordion from "./RiskAssessmentAccordion";
 import WizardNextLink from "../ui/WizardNextLink";
 import StageLoader from "../ui/StageLoader";
 
-// Groups the same real, disclosed statuses the Ongoing Trials page groups
-// (see CompetingTrialsPanel.tsx's statusGroupFor) — kept as a local copy per
-// this codebase's existing per-component convention.
-function statusGroupFor(status: string | null): "completed" | "active" | "other" {
+// Only show sites that are currently Recruiting or Active (Not Recruiting) —
+// Completed/Terminated/Withdrawn/Suspended/unknown-status sites aren't useful
+// candidates here, and there's no longer a status dropdown for the user to
+// toggle this themselves (removed per request — the filter wasn't needed).
+function isLiveActiveStatus(status: string | null): boolean {
   const s = (status ?? "").toUpperCase();
-  if (s === "COMPLETED") return "completed";
-  if (
-    s === "RECRUITING" ||
-    s === "ACTIVE_NOT_RECRUITING" ||
-    s === "NOT_YET_RECRUITING" ||
-    s === "ENROLLING_BY_INVITATION"
-  ) {
-    return "active";
-  }
-  return "other";
+  return s === "RECRUITING" || s === "ACTIVE_NOT_RECRUITING";
 }
 
 export default function RiskAssessmentPanel() {
   const { riskAssessment, finalResult, running } = usePipeline();
-  const [statusFilter, setStatusFilter] = useState<
-    "all" | "completed" | "active" | "other"
-  >("all");
 
   const filteredRows = useMemo(() => {
     if (!riskAssessment) return [];
-    if (statusFilter === "all") return riskAssessment;
-    return riskAssessment.filter(
-      (r) => statusGroupFor(r.status) === statusFilter,
-    );
-  }, [riskAssessment, statusFilter]);
+    return riskAssessment.filter((r) => isLiveActiveStatus(r.status));
+  }, [riskAssessment]);
 
   if (!riskAssessment) {
     if (running) {
@@ -54,22 +40,6 @@ export default function RiskAssessmentPanel() {
             <span className="tag">Stage 6 Output</span>
           </div>
           <div className="predict-head-actions">
-            <select
-              value={statusFilter}
-              onChange={(e) =>
-                setStatusFilter(
-                  e.target.value as "all" | "completed" | "active" | "other",
-                )
-              }
-              title="Filter sites by trial status"
-            >
-              <option value="all">All statuses</option>
-              <option value="active">Active (Recruiting, etc.)</option>
-              <option value="completed">Completed</option>
-              <option value="other">
-                Other (Terminated/Withdrawn/Suspended/Unknown)
-              </option>
-            </select>
             <span className="map-table-count">
               {filteredRows.length.toLocaleString()} of{" "}
               {riskAssessment.length.toLocaleString()} site(s)

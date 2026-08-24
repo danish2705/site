@@ -281,22 +281,14 @@ export default function SiteCombinationPlanner({
                         : "N/A"}
                     </div>
                   </div>
-                  <div className="item">
-                    <div className="k">Portfolio risk</div>
-                    <div className="v">
-                      {s.portfolioRiskScore !== null
-                        ? `${s.portfolioRiskScore.toLocaleString()}`
-                        : "N/A"}
-                    </div>
-                  </div>
                 </div>
                 <div className="table-scroll" style={{ marginTop: 8 }}>
                   <table>
                     <thead>
                       <tr>
                         <th>Site</th>
-                        <th>Patients taken</th>
                         <th>Available</th>
+                        <th>Patients taken</th>
                         <th>Risk</th>
                         <th>Est. cost</th>
                       </tr>
@@ -305,10 +297,10 @@ export default function SiteCombinationPlanner({
                       {s.sites.map((site) => (
                         <tr key={site.siteId}>
                           <td>{site.siteName}</td>
-                          <td>{site.patientsTaken.toLocaleString()}</td>
                           <td>
                             {site.recruitablePatientsAvailable.toLocaleString()}
                           </td>
+                          <td>{site.patientsTaken.toLocaleString()}</td>
                           <td>
                             {site.riskScore !== null
                               ? `${site.riskScore}/100`
