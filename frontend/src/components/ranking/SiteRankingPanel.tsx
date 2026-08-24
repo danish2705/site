@@ -6,14 +6,13 @@ import StageLoader from "../ui/StageLoader";
 import { fetchOutreachDraft } from "../../services/siteCombination.service";
 import type { OutreachDraft, RankingRow } from "../../types";
 
-// Only show sites that are currently Recruiting or Active (Not Recruiting) —
-// Completed/Terminated/Withdrawn/Suspended/unknown-status sites aren't useful
-// candidates here, and there's no longer a status dropdown for the user to
-// toggle this themselves (removed per request — the filter wasn't needed).
-function isLiveActiveStatus(status: string | null): boolean {
-  const s = (status ?? "").toUpperCase();
-  return s === "RECRUITING" || s === "ACTIVE_NOT_RECRUITING";
-}
+type LiveStatusFilter = "RECRUITING" | "NOT_YET_RECRUITING" | "ACTIVE_NOT_RECRUITING";
+
+const STATUS_OPTIONS: { value: LiveStatusFilter; label: string }[] = [
+  { value: "RECRUITING", label: "Recruiting" },
+  { value: "NOT_YET_RECRUITING", label: "Not Yet Recruiting" },
+  { value: "ACTIVE_NOT_RECRUITING", label: "Active, Not Recruiting" },
+];
 
 function statusLabel(status: string | null): string {
   if (!status) return "Unknown";
@@ -46,11 +45,21 @@ function statusBand(
 
 export default function SiteRankingPanel() {
   const { ranking, form, running } = usePipeline();
+  // Default to Recruiting per request — the strongest, currently-live
+  // signal. Only these three statuses are offered.
+  const [statusFilter, setStatusFilter] = useState<LiveStatusFilter>("RECRUITING");
 
   const filteredRanking = useMemo(() => {
     if (!ranking) return [];
-    return ranking.filter((r) => isLiveActiveStatus(r.status));
-  }, [ranking]);
+    // ranking already arrives sorted best-to-worst (backend Stage 7); filter
+    // by the selected status then re-derive rank 1..N from what's LEFT,
+    // rather than keeping each site's original overall-pool rank — so
+    // switching the filter always shows a clean 1..N ranking of exactly the
+    // sites currently visible, not gaps from sites that got filtered out.
+    return ranking
+      .filter((r) => (r.status ?? "").toUpperCase() === statusFilter)
+      .map((r, i) => ({ ...r, rank: i + 1 }));
+  }, [ranking, statusFilter]);
 
   // Per-site outreach draft state — see backend pipeline/outreachDraft.ts.
   // IMPORTANT: this only ever generates draft text; it never sends an email.
@@ -115,6 +124,19 @@ export default function SiteRankingPanel() {
             <span className="tag">Stage 7 Output</span>
           </div>
           <div className="predict-head-actions">
+            <select
+              value={statusFilter}
+              onChange={(e) =>
+                setStatusFilter(e.target.value as LiveStatusFilter)
+              }
+              title="Filter sites by trial status"
+            >
+              {STATUS_OPTIONS.map((opt) => (
+                <option key={opt.value} value={opt.value}>
+                  {opt.label}
+                </option>
+              ))}
+            </select>
             <span className="map-table-count">
               {filteredRanking.length.toLocaleString()} of{" "}
               {ranking.length.toLocaleString()} site(s)
@@ -147,7 +169,7 @@ export default function SiteRankingPanel() {
               {filteredRanking.length === 0 && (
                 <tr>
                   <td colSpan={9} className="predict-placeholder">
-                    No Recruiting or Active (Not Recruiting) sites found.
+                    No sites match the selected status filter.
                   </td>
                 </tr>
               )}

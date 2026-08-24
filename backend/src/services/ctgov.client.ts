@@ -388,12 +388,31 @@ function studyAgeGroups(
 
 export async function getFacilitiesForCondition(
   condition: string,
-  opts: { country?: string; pageSize?: number; ageGroups?: string[] } = {},
+  opts: {
+    country?: string;
+    pageSize?: number;
+    ageGroups?: string[];
+    /**
+     * Restrict the live query itself to these OverallStatus values (e.g.
+     * config.competingTrials.statuses) via ClinicalTrials.gov's own
+     * filter.overallStatus param, rather than fetching an unfiltered page and
+     * filtering client-side afterward. Matters for a caller that only wants
+     * live/active trials as candidates (buildLiveCandidateSites): without
+     * this, a fixed-size page of raw, unfiltered rows can fill up with
+     * Completed/Terminated studies before ever reaching a Recruiting one,
+     * even though ClinicalTrials.gov has plenty of matching Recruiting
+     * facilities for the same condition/country. Omit for a caller that
+     * intentionally wants every status (e.g. the Ongoing Trials panel, which
+     * offers its own status filter over the full, unfiltered result set).
+     */
+    statuses?: string[];
+  } = {},
 ): Promise<LiveFacility[]> {
   if (!config.ctgov.enabled) return [];
   const pageSize = opts.pageSize ?? 30;
   const ageKey = (opts.ageGroups ?? []).slice().sort().join(",").toLowerCase();
-  const cacheKey = `facilities:${condition.toLowerCase()}|${(opts.country ?? "").toLowerCase()}|${pageSize}|${ageKey}`;
+  const statusKey = (opts.statuses ?? []).slice().sort().join(",").toUpperCase();
+  const cacheKey = `facilities:${condition.toLowerCase()}|${(opts.country ?? "").toLowerCase()}|${pageSize}|${ageKey}|${statusKey}`;
   const cached = getCached<LiveFacility[]>(cacheKey);
   if (cached !== undefined) return cached;
 
@@ -414,7 +433,10 @@ export async function getFacilitiesForCondition(
   const url =
     `${BASE_URL}/studies?query.cond=${encodeURIComponent(condition)}` +
     `&fields=${fields}&pageSize=${pageSize}` +
-    (opts.country ? `&query.locn=${encodeURIComponent(opts.country)}` : "");
+    (opts.country ? `&query.locn=${encodeURIComponent(opts.country)}` : "") +
+    (opts.statuses && opts.statuses.length > 0
+      ? `&filter.overallStatus=${encodeURIComponent(opts.statuses.join(","))}`
+      : "");
 
   const selectedAges = selectedStdAgeValues(opts.ageGroups);
 

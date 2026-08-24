@@ -1,25 +1,30 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { usePipeline } from "../../hooks/usePipeline";
 import RiskAssessmentAccordion from "./RiskAssessmentAccordion";
 import WizardNextLink from "../ui/WizardNextLink";
 import StageLoader from "../ui/StageLoader";
 
-// Only show sites that are currently Recruiting or Active (Not Recruiting) —
-// Completed/Terminated/Withdrawn/Suspended/unknown-status sites aren't useful
-// candidates here, and there's no longer a status dropdown for the user to
-// toggle this themselves (removed per request — the filter wasn't needed).
-function isLiveActiveStatus(status: string | null): boolean {
-  const s = (status ?? "").toUpperCase();
-  return s === "RECRUITING" || s === "ACTIVE_NOT_RECRUITING";
-}
+type LiveStatusFilter = "RECRUITING" | "NOT_YET_RECRUITING" | "ACTIVE_NOT_RECRUITING";
+
+const STATUS_OPTIONS: { value: LiveStatusFilter; label: string }[] = [
+  { value: "RECRUITING", label: "Recruiting" },
+  { value: "NOT_YET_RECRUITING", label: "Not Yet Recruiting" },
+  { value: "ACTIVE_NOT_RECRUITING", label: "Active, Not Recruiting" },
+];
 
 export default function RiskAssessmentPanel() {
   const { riskAssessment, finalResult, running } = usePipeline();
+  // Default to Recruiting per request — the strongest, currently-live signal.
+  // Only these three statuses are offered; Completed/Terminated/Withdrawn/
+  // Suspended/unknown-status sites aren't useful candidates here.
+  const [statusFilter, setStatusFilter] = useState<LiveStatusFilter>("RECRUITING");
 
   const filteredRows = useMemo(() => {
     if (!riskAssessment) return [];
-    return riskAssessment.filter((r) => isLiveActiveStatus(r.status));
-  }, [riskAssessment]);
+    return riskAssessment.filter(
+      (r) => (r.status ?? "").toUpperCase() === statusFilter,
+    );
+  }, [riskAssessment, statusFilter]);
 
   if (!riskAssessment) {
     if (running) {
@@ -40,6 +45,19 @@ export default function RiskAssessmentPanel() {
             <span className="tag">Stage 6 Output</span>
           </div>
           <div className="predict-head-actions">
+            <select
+              value={statusFilter}
+              onChange={(e) =>
+                setStatusFilter(e.target.value as LiveStatusFilter)
+              }
+              title="Filter sites by trial status"
+            >
+              {STATUS_OPTIONS.map((opt) => (
+                <option key={opt.value} value={opt.value}>
+                  {opt.label}
+                </option>
+              ))}
+            </select>
             <span className="map-table-count">
               {filteredRows.length.toLocaleString()} of{" "}
               {riskAssessment.length.toLocaleString()} site(s)

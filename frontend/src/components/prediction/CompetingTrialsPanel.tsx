@@ -17,9 +17,15 @@ export default function CompetingTrialsPanel({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState<
-    "all" | "completed" | "active" | "other"
-  >("all");
+  type StatusFilter =
+    | "all"
+    | "recruiting"
+    | "not_yet_recruiting"
+    | "active_not_recruiting"
+    | "enrolling_by_invitation"
+    | "completed"
+    | "other";
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>("recruiting");
 
   useEffect(() => {
     if (selectedCountries.length === 0) {
@@ -77,29 +83,42 @@ export default function CompetingTrialsPanel({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [facilities]);
 
-  // Groups the same real, disclosed OverallStatus values statusBand already
-  // color-codes into the three buckets the Status filter offers — kept
-  // separate from statusBand because that function groups RECRUITING and
-  // COMPLETED together (both read as "healthy," so both get the same green
-  // color), while this filter needs to tell them apart. "Other" (not
-  // silently hidden — always selectable) covers TERMINATED/WITHDRAWN/
-  // SUSPENDED and any unrecognized/null status.
-  function statusGroupFor(status: string | null): "completed" | "active" | "other" {
+  // Groups each real, disclosed OverallStatus value into the buckets the
+  // Status filter offers. Recruiting / Not Yet Recruiting / Active Not
+  // Recruiting / Enrolling By Invitation are kept as four SEPARATE buckets
+  // (rather than one combined "active" bucket) so the filter can show each
+  // status on its own — these are meaningfully different competitive
+  // signals (currently enrolling vs. about to vs. no longer taking new
+  // patients), not interchangeable. "Other" (not silently hidden — always
+  // selectable) covers TERMINATED/WITHDRAWN/SUSPENDED and any
+  // unrecognized/null status.
+  function statusGroupFor(
+    status: string | null,
+  ):
+    | "completed"
+    | "recruiting"
+    | "not_yet_recruiting"
+    | "active_not_recruiting"
+    | "enrolling_by_invitation"
+    | "other" {
     const s = (status ?? "").toUpperCase();
     if (s === "COMPLETED") return "completed";
-    if (
-      s === "RECRUITING" ||
-      s === "ACTIVE_NOT_RECRUITING" ||
-      s === "NOT_YET_RECRUITING" ||
-      s === "ENROLLING_BY_INVITATION"
-    ) {
-      return "active";
-    }
+    if (s === "RECRUITING") return "recruiting";
+    if (s === "NOT_YET_RECRUITING") return "not_yet_recruiting";
+    if (s === "ACTIVE_NOT_RECRUITING") return "active_not_recruiting";
+    if (s === "ENROLLING_BY_INVITATION") return "enrolling_by_invitation";
     return "other";
   }
 
-  // KPI tile: count of individual SITES (trial/site rows) currently in an
-  // active/competing status, not distinct trials — a single multi-site trial
+  const LIVE_STATUS_GROUPS = [
+    "recruiting",
+    "not_yet_recruiting",
+    "active_not_recruiting",
+    "enrolling_by_invitation",
+  ];
+
+  // KPI tile: count of individual SITES (trial/site rows) currently in any
+  // live/competing status, not distinct trials — a single multi-site trial
   // (one NCT ID) can occupy several sites, and each of those is separate
   // competition for patients at that site. Derived from recentFacilities
   // (already deduped to the same last-RECENT_YEARS window as the table)
@@ -107,7 +126,10 @@ export default function CompetingTrialsPanel({
   // from ClinicalTrials.gov's countTotal), so the KPI always matches what's
   // actually in the table below it.
   const activeCompetingSites = useMemo(
-    () => recentFacilities.filter((f) => statusGroupFor(f.status) === "active").length,
+    () =>
+      recentFacilities.filter((f) =>
+        LIVE_STATUS_GROUPS.includes(statusGroupFor(f.status)),
+      ).length,
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [recentFacilities],
   );
@@ -237,15 +259,18 @@ export default function CompetingTrialsPanel({
             />
             <select
               value={statusFilter}
-              onChange={(e) =>
-                setStatusFilter(
-                  e.target.value as "all" | "completed" | "active" | "other",
-                )
-              }
+              onChange={(e) => setStatusFilter(e.target.value as StatusFilter)}
               title="Filter rows by trial status"
             >
               <option value="all">All statuses</option>
-              <option value="active">Active (Recruiting, etc.)</option>
+              <option value="recruiting">Recruiting</option>
+              <option value="not_yet_recruiting">Not Yet Recruiting</option>
+              <option value="active_not_recruiting">
+                Active, Not Recruiting
+              </option>
+              <option value="enrolling_by_invitation">
+                Enrolling By Invitation
+              </option>
               <option value="completed">Completed</option>
               <option value="other">
                 Other (Terminated/Withdrawn/Suspended/Unknown)

@@ -660,14 +660,17 @@ export async function runPipeline(
   });
 
   send("stage", { stage: 7, name: STAGE_NAMES[7], status: "in-progress" });
-  const ranked = [...withRisk]
-    .sort((a, b) => {
-      const aOk = a.requirementChecks.every((c) => c.pass);
-      const bOk = b.requirementChecks.every((c) => c.pass);
-      if (aOk !== bOk) return aOk ? -1 : 1;
-      return b.scored.score - a.scored.score;
-    })
-    .slice(0, 10);
+  // Every scored candidate is ranked and returned — no top-N cap. The
+  // Ranking page shows "X of Y site(s)" against the full candidate pool
+  // (see runPipeline Stage 6's data), so silently dropping everyone past
+  // rank 10 would make that count misleading and hide real candidates the
+  // user asked to see.
+  const ranked = [...withRisk].sort((a, b) => {
+    const aOk = a.requirementChecks.every((c) => c.pass);
+    const bOk = b.requirementChecks.every((c) => c.pass);
+    if (aOk !== bOk) return aOk ? -1 : 1;
+    return b.scored.score - a.scored.score;
+  });
   await sleep(STEP_DELAY_MS);
   send("stage", {
     stage: 7,

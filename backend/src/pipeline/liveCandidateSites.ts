@@ -280,6 +280,62 @@ function dedupeFacilities(facilities: LiveFacility[]): LiveFacility[] {
   return out;
 }
 
+/**
+ * The three statuses the Risk Register / Ranking status filter actually
+ * offers (see RiskAssessmentPanel.tsx / SiteRankingPanel.tsx) — kept as a
+ * local copy per this codebase's existing per-component convention.
+ */
+const CANDIDATE_STATUS_TIERS = [
+  "RECRUITING",
+  "NOT_YET_RECRUITING",
+  "ACTIVE_NOT_RECRUITING",
+];
+
+/**
+ * Picks up to maxSites facilities, split as evenly as possible across
+ * RECRUITING / NOT_YET_RECRUITING / ACTIVE_NOT_RECRUITING (round-robin, one
+ * from each tier in turn) rather than taking whichever status happens to
+ * fill up first. A strict "best status wins" ordering was tried first and
+ * overshot: when a condition/country combo has 40+ real RECRUITING
+ * facilities, taking the single highest-priority status first fills every
+ * slot with RECRUITING and leaves NONE of the other two statuses
+ * represented at all — which defeats the point of a 3-way status filter
+ * that a user can actually switch between. Round-robin instead guarantees
+ * every status with real data gets a fair share of the limited slots
+ * (falling back to whatever's left once a tier runs dry). A status outside
+ * these three (e.g. ENROLLING_BY_INVITATION, still fetched because it's in
+ * config.competingTrials.statuses) is deprioritized last since none of the
+ * three UI filter options can ever surface it.
+ */
+function selectBalancedByStatus(
+  facilities: LiveFacility[],
+  maxSites: number,
+): LiveFacility[] {
+  const buckets = CANDIDATE_STATUS_TIERS.map((tier) =>
+    facilities.filter((f) => (f.status ?? "").toUpperCase() === tier),
+  );
+  buckets.push(
+    facilities.filter(
+      (f) => !CANDIDATE_STATUS_TIERS.includes((f.status ?? "").toUpperCase()),
+    ),
+  );
+
+  const result: LiveFacility[] = [];
+  let tookAny = true;
+  while (result.length < maxSites && tookAny) {
+    tookAny = false;
+    for (const bucket of buckets) {
+      if (result.length >= maxSites) break;
+      const next = bucket.shift();
+      if (next) {
+        result.push(next);
+        tookAny = true;
+      }
+    }
+  }
+  return result;
+}
+
 export interface BuildLiveCandidateSitesParams {
   indication: string;
   specialty: string;
@@ -301,7 +357,12 @@ export async function buildLiveCandidateSites(
 
   const rawFacilities = await getFacilitiesForCondition(params.indication, {
     country: params.country,
-    pageSize: maxSites * 2, // fetch a few extra since some rows lack a facility name
+    // Fetch a substantially larger raw pool than we'll actually keep
+    // (maxSites, after dedupe+balanced-status-selection below) — a small
+    // multiplier here meant a page dominated by one status could exhaust
+    // itself before ever reaching enough of another status to keep the
+    // 3-way filter balanced.
+    pageSize: Math.max(maxSites * 6, 200),
     // Real filter: only sites from trials whose disclosed StdAge eligibility
     // includes the selected group(s) — same mechanism as the Site Map tab
     // (pipeline/liveMapData.ts). Left OFF the competing-pool fetch further
@@ -309,8 +370,23 @@ export async function buildLiveCandidateSites(
     // pool of staff/patients here" is still a meaningful signal even when
     // those competing trials have a different age scope than THIS trial.
     ageGroups: params.ageGroups,
+    // Restrict the raw pull itself to live/active statuses (Risk Register
+    // and Ranking only ever show Recruiting / Active Not Recruiting sites —
+    // see RiskAssessmentPanel.tsx / SiteRankingPanel.tsx). Without this, the
+    // fixed-size page above can fill up with Completed/Terminated studies
+    // before ever reaching a Recruiting one, so a trial that's clearly
+    // Recruiting on the Ongoing Trials tab could otherwise never make it
+    // into the candidate pool here at all.
+    statuses: config.competingTrials.statuses,
   });
-  const facilities = dedupeFacilities(rawFacilities).slice(0, maxSites);
+  // Split the limited maxSites slots as evenly as possible across
+  // RECRUITING / NOT_YET_RECRUITING / ACTIVE_NOT_RECRUITING — see
+  // selectBalancedByStatus's doc comment for why a strict "best status
+  // wins" ordering isn't used here.
+  const facilities = selectBalancedByStatus(
+    dedupeFacilities(rawFacilities),
+    maxSites,
+  );
   if (facilities.length === 0) return [];
 
   const { configured: llmConfigured } = llmStatus();
