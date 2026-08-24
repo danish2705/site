@@ -27,8 +27,18 @@ function Dashboard() {
   // main-panel layout can react to it — no form/filter state moves, so
   // collapsing/expanding never touches any entered values.
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-  const { form, meta, running, error, setForm } = usePipeline();
-  const { route } = useRoute();
+  const { form, meta, running, error, setForm, workflowStepAvailable } =
+    usePipeline();
+  const { route, setRoute } = useRoute();
+  // Gates a step's real content behind workflowStepAvailable() — closes the
+  // gap where WorkflowNav disabling the nav button only stops NEW clicks:
+  // this app's router is plain location.hash (see RouteContext.tsx), so
+  // typing a step's hash directly, using the browser's Back/Forward
+  // buttons, or simply already being on a page before its prerequisite was
+  // met, all bypassed the nav-level check entirely and rendered the real
+  // panel (and let it fetch/POST) regardless. Rendering the lock state here
+  // instead enforces the same rule no matter how the route got set.
+  const locked = !workflowStepAvailable(route);
 
   return (
     <div className="app-shell">
@@ -76,19 +86,37 @@ function Dashboard() {
           )}
 
           <div className="wizard-panel">
-            {route === "site-map-global" && <SiteMapGlobalPage />}
-            {route === "site-map-details" && <SiteMapDetailsPage />}
-            {route === "site-combination" && <SiteCombinationPlannerPage />}
-            {route === "competing" && (
-              <CompetingTrialsPanel
-                indication={form.indication}
-                selectedCountries={countriesFromRegionKeys(form.regions)}
-                ageGroups={form.ageGroups}
-              />
+            {locked ? (
+              <div className="card">
+                <p className="predict-placeholder">
+                  This step isn't available yet — click "Run Analysis" in the
+                  sidebar first.
+                </p>
+                <button
+                  type="button"
+                  className="btn-secondary"
+                  onClick={() => setRoute("site-map-global")}
+                >
+                  ← Back to Site Map
+                </button>
+              </div>
+            ) : (
+              <>
+                {route === "site-map-global" && <SiteMapGlobalPage />}
+                {route === "site-map-details" && <SiteMapDetailsPage />}
+                {route === "site-combination" && <SiteCombinationPlannerPage />}
+                {route === "competing" && (
+                  <CompetingTrialsPanel
+                    indication={form.indication}
+                    selectedCountries={countriesFromRegionKeys(form.regions)}
+                    ageGroups={form.ageGroups}
+                  />
+                )}
+                {route === "risk" && <RiskAssessmentPanel />}
+                {route === "ranking" && <SiteRankingPanel />}
+                {route === "recommendation" && <RecommendationPanel />}
+              </>
             )}
-            {route === "risk" && <RiskAssessmentPanel />}
-            {route === "ranking" && <SiteRankingPanel />}
-            {route === "recommendation" && <RecommendationPanel />}
           </div>
         </main>
       </div>

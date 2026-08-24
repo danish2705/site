@@ -30,8 +30,12 @@ export default function CompetingTrialsPanel({
     | "completed"
     | "other";
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("recruiting");
-  const { setOngoingTrialSites, analyzeOngoingTrialSites, analyzing } =
-    usePipeline();
+  const {
+    setOngoingTrialSites,
+    analyzeOngoingTrialSites,
+    analyzing,
+    hasTopRegion,
+  } = usePipeline();
 
   useEffect(() => {
     if (selectedCountries.length === 0) {
@@ -243,8 +247,12 @@ export default function CompetingTrialsPanel({
               type="button"
               className="btn-primary"
               onClick={analyzeOngoingTrialSites}
-              disabled={analyzing || recentFacilities.length === 0}
-              title="Runs Risk Register/Ranking against exactly the sites currently listed below"
+              disabled={analyzing || recentFacilities.length === 0 || !hasTopRegion}
+              title={
+                !hasTopRegion
+                  ? "Run Analysis first (sidebar) so a region/country is selected"
+                  : "Runs Risk Register/Ranking against exactly the sites currently listed below"
+              }
             >
               {analyzing ? (
                 <>
@@ -259,6 +267,13 @@ export default function CompetingTrialsPanel({
       </div>
 
       <div className="card-scroll-body">
+      {!hasTopRegion && (
+        <p className="warning-text">
+          Click "Run Analysis" in the sidebar first — Risk Assessment &amp;
+          Ranking need the region/country it resolves. You can still browse
+          live trials below in the meantime.
+        </p>
+      )}
       {error && <p className="error-text">{error}</p>}
 
       {loading && !data && <StageLoader label="Loading ongoing trials…" />}

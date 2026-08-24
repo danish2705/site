@@ -101,6 +101,8 @@ export interface PipelineState {
   analyzing: boolean;
   /** Sends ongoingTrialSites to Risk Register/Ranking for analysis — see services/pipeline.service.ts's streamSiteAnalysis. */
   analyzeOngoingTrialSites: () => Promise<void>;
+  /** True once Stage 2 of Run Analysis has resolved a region/country — analyzeOngoingTrialSites needs this, so CompetingTrialsPanel uses it to keep "Send to Risk Assessment & Ranking" disabled (and to explain why) until Run Analysis has actually run. */
+  hasTopRegion: boolean;
 
   completedCount: number;
   progressPct: number;
@@ -179,9 +181,12 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
     ) {
       return true;
     }
-    // Live ClinicalTrials.gov lookup keyed only off the indication — doesn't
-    // depend on the pipeline having run.
-    if (step === "competing") return !!form.indication;
+    // Ongoing Trials feeds Risk Register/Ranking now (see
+    // analyzeOngoingTrialSites), which needs the region/country Run
+    // Analysis resolves at Stage 2 — so this step (and its "Send to Risk
+    // Assessment & Ranking" action) isn't reachable just from picking an
+    // indication anymore; Run Analysis has to have actually been run.
+    if (step === "competing") return !!topRegion || running || analyzing;
     // Reachable as soon as the pipeline is running (not only once its data
     // has arrived) so the nav can be clicked mid-run — the page itself
     // shows a loading state for whichever of these 3 stages hasn't
@@ -437,6 +442,7 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
     setOngoingTrialSites,
     analyzing,
     analyzeOngoingTrialSites,
+    hasTopRegion: !!topRegion,
     completedCount,
     progressPct,
     pipelineDone,

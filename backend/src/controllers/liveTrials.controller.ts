@@ -57,6 +57,20 @@ export async function getLiveTrialLandscape(
       getFacilitiesForCondition(indication, {
         country: country || undefined,
         ageGroups,
+        // Without an explicit pageSize this falls back to
+        // getFacilitiesForCondition's default of 30 raw studies — a small,
+        // arbitrarily-ordered slice of everything ClinicalTrials.gov has on
+        // file for this condition/country. A status like NOT_YET_RECRUITING
+        // can easily be completely absent from that shallow a pull even
+        // when plenty of matching sites exist further down the real result
+        // set — which is exactly why this tab could show "0 rows" for a
+        // status filter while Risk Register/Ranking (built from a much
+        // deeper pull — see pipeline/liveCandidateSites.ts) showed dozens.
+        // Pulling the same deep, representative pool here means what this
+        // tab displays is what actually gets sent on to Risk Register/
+        // Ranking (see CompetingTrialsPanel's "Send to Risk Assessment &
+        // Ranking"), not a shallower, less representative preview of it.
+        pageSize: 200,
       }),
       getCompletedTrialBenchmarks(indication),
     ]);

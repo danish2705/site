@@ -311,20 +311,28 @@ function selectBalancedByStatus(
   facilities: LiveFacility[],
   maxSites: number,
 ): LiveFacility[] {
-  const buckets = CANDIDATE_STATUS_TIERS.map((tier) =>
+  const realBuckets = CANDIDATE_STATUS_TIERS.map((tier) =>
     facilities.filter((f) => (f.status ?? "").toUpperCase() === tier),
   );
-  buckets.push(
-    facilities.filter(
-      (f) => !CANDIDATE_STATUS_TIERS.includes((f.status ?? "").toUpperCase()),
-    ),
+  // Anything outside the three real tiers (ENROLLING_BY_INVITATION,
+  // COMPLETED, TERMINATED, WITHDRAWN, SUSPENDED, unrecognized/null) — none
+  // of these are selectable in Risk Register/Ranking's own status filter
+  // (RiskAssessmentPanel.tsx / SiteRankingPanel.tsx only offer Recruiting /
+  // Not Yet Recruiting / Active Not Recruiting), so a site landing here is
+  // effectively invisible once analyzed. Kept separate from the round-robin
+  // below (previously round-robinned as an equal 4th bucket, which meant up
+  // to 1/4 of the maxSites budget silently went to sites the UI could never
+  // filter to — e.g. 10 of a 40-site cap, matching only the 3 real tiers'
+  // ~10 each).
+  const otherBucket = facilities.filter(
+    (f) => !CANDIDATE_STATUS_TIERS.includes((f.status ?? "").toUpperCase()),
   );
 
   const result: LiveFacility[] = [];
   let tookAny = true;
   while (result.length < maxSites && tookAny) {
     tookAny = false;
-    for (const bucket of buckets) {
+    for (const bucket of realBuckets) {
       if (result.length >= maxSites) break;
       const next = bucket.shift();
       if (next) {
@@ -332,6 +340,13 @@ function selectBalancedByStatus(
         tookAny = true;
       }
     }
+  }
+  // Only once the three real, filterable tiers are exhausted (not enough
+  // real-status facilities to reach maxSites) do we fall back to filling
+  // remaining slots from `otherBucket` — real, currently-relevant statuses
+  // get full priority for the limited budget.
+  while (result.length < maxSites && otherBucket.length > 0) {
+    result.push(otherBucket.shift() as LiveFacility);
   }
   return result;
 }
