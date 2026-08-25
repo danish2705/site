@@ -61,7 +61,6 @@ export default function SiteCombinationPlanner({
   country,
   selectedCountries,
   onCountryChange,
-  onSearchCountry,
   countrySearchLoading,
   sites,
   defaultTargetEnrollment,
@@ -73,9 +72,9 @@ export default function SiteCombinationPlanner({
   selectedCountries?: string[];
   /** Switches which country's sites this planner (and the shared Site Map data) is scoped to. */
   onCountryChange?: (country: string) => void;
-  /** Re-fetches the site list for whichever country is currently selected — same search Site Map (Global)/Details trigger. */
+  /** Optional — accepted for callers that still pass it; no longer used here since the search now runs automatically on country change (see useIndependentSiteSearch) instead of needing a manual trigger. */
   onSearchCountry?: () => void;
-  /** True while onSearchCountry's fetch is in flight. */
+  /** True while the country search is in flight (still used for the loading overlay). */
   countrySearchLoading?: boolean;
   /** Optional — accepted for callers that still pass it; no longer used here since outreach-draft generation was removed. */
   phase?: string;
@@ -196,19 +195,10 @@ export default function SiteCombinationPlanner({
               <Select
                 value={country}
                 onChange={(v) => onCountryChange?.(v)}
+                disabled={!!countrySearchLoading}
                 options={selectedCountries.map((c) => ({ value: c, label: c }))}
               />
             </label>
-            {/* No spinner/"Searching..." swap here — the centered overlay
-                above is the one loading indicator for this action. */}
-            <button
-              type="button"
-              className="predict-btn map-search-btn"
-              onClick={() => onSearchCountry?.()}
-              disabled={!!countrySearchLoading || !indication}
-            >
-              Search
-            </button>
           </>
         ) : (
           <span className="map-field-note">

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { LiveTrialLandscapeResponse } from "../../types";
 import { fetchLiveTrialLandscape } from "../../services/liveTrials.service";
 import { usePipeline } from "../../hooks/usePipeline";
@@ -44,16 +44,15 @@ export default function CompetingTrialsPanel({
   }, [selectedCountries]);
 
   const countryResolved = selectedCountries.length === 0 || country !== "";
-  const autoSearchedRef = useRef(false);
 
-  async function runSearch() {
+  async function runSearch(forCountry: string) {
     if (!indication) return;
     setLoading(true);
     setError(null);
     try {
       const res = await fetchLiveTrialLandscape({
         indication,
-        country: country || undefined,
+        country: forCountry || undefined,
         ageGroups,
       });
       setData(res);
@@ -65,12 +64,17 @@ export default function CompetingTrialsPanel({
     }
   }
 
+  // Searches automatically — on first load once the indication/default
+  // country resolve, and again every time the country dropdown changes —
+  // instead of requiring a manual "Search" click each time. Clears the
+  // previous country's rows first so the table shows its loading skeleton
+  // instead of leaving stale rows on screen while the new country loads.
   useEffect(() => {
-    if (autoSearchedRef.current || !indication || !countryResolved) return;
-    autoSearchedRef.current = true;
-    runSearch();
+    if (!indication || !countryResolved) return;
+    setData(null);
+    runSearch(country);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [indication, countryResolved]);
+  }, [indication, country, countryResolved]);
 
   const facilities = data?.facilities ?? [];
 
@@ -229,30 +233,19 @@ export default function CompetingTrialsPanel({
     <div className="card">
       <div className="predict-head">
         <div className="predict-head-top">
-          {/* Country picker + Search kept on the left (predict-head-top's
-              default flex start alignment) per request. */}
+          {/* Country picker kept on the left (predict-head-top's default
+              flex start alignment) per request. Picking a country here
+              searches automatically — no separate Search button. */}
           <div className="predict-head-actions">
             {selectedCountries.length > 0 && (
               <Select
                 value={country}
                 onChange={setCountry}
+                disabled={loading}
                 options={selectedCountries.map((c) => ({ value: c, label: c }))}
               />
             )}
-            <button
-              type="button"
-              className="predict-btn"
-              onClick={runSearch}
-              disabled={loading || !indication}
-            >
-              {loading ? (
-                <>
-                  <span className="spinner" /> Searching…
-                </>
-              ) : (
-                "Search"
-              )}
-            </button>
+            {loading && <span className="spinner" />}
           </div>
         </div>
       </div>
@@ -340,12 +333,16 @@ export default function CompetingTrialsPanel({
 
           <div className="table-scroll">
             <table className="competing-trials-table">
+              {/* Equal 20% columns left a big blank gap in Status/Last
+                  Updated (short content) while Trial/Site got truncated
+                  (long content) — weighted instead so each column's width
+                  roughly matches what it actually holds. */}
               <colgroup>
-                <col style={{ width: "20%" }} />
-                <col style={{ width: "20%" }} />
-                <col style={{ width: "20%" }} />
-                <col style={{ width: "20%" }} />
-                <col style={{ width: "20%" }} />
+                <col style={{ width: "32%" }} />
+                <col style={{ width: "12%" }} />
+                <col style={{ width: "13%" }} />
+                <col style={{ width: "24%" }} />
+                <col style={{ width: "19%" }} />
               </colgroup>
               <thead>
                 <tr>

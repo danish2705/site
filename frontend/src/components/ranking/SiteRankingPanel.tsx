@@ -2,12 +2,11 @@ import { Fragment, useEffect, useMemo, useState } from "react";
 import { usePipeline } from "../../hooks/usePipeline";
 import ScoreBreakdown from "./ScoreBreakdown";
 import WizardNextLink from "../ui/WizardNextLink";
-import TableSkeleton from "../ui/TableSkeleton";
+import StageLoader from "../ui/StageLoader";
 import Select from "../ui/Select";
 import { fetchOutreachDraft } from "../../services/siteCombination.service";
 import OutreachDraftModal from "../ui/OutreachDraftModal";
 import { MailIcon } from "../ui/Icons";
-import { countriesFromRegionKeys } from "../../utils/region";
 import type { OutreachDraft, RankingRow } from "../../types";
 import EmptyState from "../ui/EmptyState";
 
@@ -49,34 +48,58 @@ function statusBand(
 }
 
 export default function SiteRankingPanel() {
-  const { ranking, form, running, analyzing, analyzeForCountry } = usePipeline();
+  const {
+    form,
+    running,
+    analyzing,
+    topRegion,
+    selectedCountries,
+    analysisCache,
+    prefetchingCountries,
+    countryErrors,
+    analyzeForCountry,
+  } = usePipeline();
   // Default to Recruiting per request — the strongest, currently-live
   // signal. Only these three statuses are offered.
   const [statusFilter, setStatusFilter] = useState<LiveStatusFilter>("RECRUITING");
-  // Country picker — same idea as Risk Register's: picking a country here
-  // fetches its live sites and re-runs Stages 4-8 (Risk Register, Ranking,
-  // Final Recommendation) against just that country, so ranking can be
-  // checked country-by-country without leaving this page.
-  const selectedCountries = countriesFromRegionKeys(form.regions);
-  const [analysisCountry, setAnalysisCountry] = useState("");
 
-  // Default the picker to the first selected country (same convention as
-  // Ongoing Trials' country picker) so it shows an actual country instead
-  // of sitting on the "Select country to analyze…" placeholder — this is
-  // purely a display default, it does not call analyzeForCountry itself.
+  // Country picker — deliberately LOCAL to this page, not shared with Risk
+  // Register/Final Recommendation: those each keep their own selection
+  // too. All three still read from the same PipelineContext analysisCache/
+  // prefetchingCountries, so switching country here is instant once that
+  // country has been analyzed, and only triggers a fresh fetch when it's
+  // genuinely not there yet.
+  const [pageCountry, setPageCountry] = useState("");
+
   useEffect(() => {
+    if (running) return;
+    if (!topRegion) return;
     if (selectedCountries.length === 0) {
-      if (analysisCountry) setAnalysisCountry("");
-    } else if (!selectedCountries.includes(analysisCountry)) {
-      setAnalysisCountry(selectedCountries[0]);
+      if (pageCountry) setPageCountry("");
+      return;
+    }
+    if (!selectedCountries.includes(pageCountry)) {
+      setPageCountry(
+        selectedCountries.includes(topRegion.country)
+          ? topRegion.country
+          : selectedCountries[0],
+      );
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedCountries.join("|")]);
+  }, [selectedCountries.join("|"), topRegion, running]);
 
-  function handleCountryChange(country: string) {
-    setAnalysisCountry(country);
-    if (country) analyzeForCountry(country);
-  }
+  useEffect(() => {
+    if (!pageCountry) return;
+    if (analysisCache[pageCountry]) return;
+    if (prefetchingCountries.has(pageCountry)) return;
+    analyzeForCountry(pageCountry, { background: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pageCountry, analysisCache, prefetchingCountries]);
+
+  const cached = pageCountry ? analysisCache[pageCountry] : undefined;
+  const ranking = cached?.ranking ?? null;
+  const pageLoading =
+    !!pageCountry && !cached && (running || analyzing || prefetchingCountries.has(pageCountry));
 
   const filteredRanking = useMemo(() => {
     if (!ranking) return [];
@@ -134,19 +157,64 @@ export default function SiteRankingPanel() {
     }
   }
 
+  const countryPicker = selectedCountries.length > 0 && (
+    <div className="predict-head-actions">
+      <Select
+        value={pageCountry}
+        onChange={setPageCountry}
+        placeholder="Select country to analyze…"
+        options={selectedCountries.map((c) => ({ value: c, label: c }))}
+      />
+    </div>
+  );
+
   if (!ranking) {
-    if (running || analyzing) {
+    if (pageLoading) {
+      // Keep the card shell (country/status dropdowns, footer nav) in place
+      // and only swap the middle scroll body for a centered loader — a bare
+      // full-card loader here blanks out the dropdowns and nav buttons
+      // while a country's ranking is loading.
       return (
         <div className="card">
-          <TableSkeleton columns={9} rows={7} label="Loading site ranking…" />
+          <div className="predict-head">
+            <div className="predict-head-top">
+              {countryPicker}
+              <div className="predict-head-actions" style={{ marginLeft: "auto" }}>
+                <Select
+                  className="status-filter-select"
+                  value={statusFilter}
+                  onChange={(v) => setStatusFilter(v as LiveStatusFilter)}
+                  data-tooltip="Filter sites by trial status"
+                  options={STATUS_OPTIONS.map((opt) => ({
+                    value: opt.value,
+                    label: opt.label,
+                  }))}
+                />
+              </div>
+            </div>
+          </div>
+          <div
+            className="card-scroll-body ranking-scroll-body"
+            style={{ display: "flex", alignItems: "center", justifyContent: "center" }}
+          >
+            <StageLoader label="Loading site ranking…" />
+          </div>
+          <WizardNextLink />
         </div>
       );
     }
     return (
       <div className="card">
+        {countryPicker && <div className="map-controls">{countryPicker}</div>}
         <EmptyState
-          title="No ranking yet"
-          detail='Search Ongoing Trials and click "Send to Risk Assessment & Ranking" to populate this.'
+          title={countryErrors[pageCountry] ? "No live sites found" : "No ranking yet"}
+          detail={
+            countryErrors[pageCountry]
+              ? countryErrors[pageCountry]
+              : selectedCountries.length > 0
+                ? "Pick a country above to fetch its live sites and run Risk Register/Ranking."
+                : "Pick a region/country in Step 1, then select a country above to populate this."
+          }
         />
       </div>
     );
@@ -156,17 +224,7 @@ export default function SiteRankingPanel() {
     <div className="card">
       <div className="predict-head">
         <div className="predict-head-top">
-          {selectedCountries.length > 0 && (
-            <div className="predict-head-actions">
-              <Select
-                value={analysisCountry}
-                onChange={handleCountryChange}
-                disabled={analyzing}
-                placeholder="Select country to analyze…"
-                options={selectedCountries.map((c) => ({ value: c, label: c }))}
-              />
-            </div>
-          )}
+          {countryPicker}
           <div className="predict-head-actions" style={{ marginLeft: "auto" }}>
             <Select
               className="status-filter-select"

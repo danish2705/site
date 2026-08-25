@@ -31,15 +31,31 @@ export default function Tooltip({
   style?: CSSProperties;
 }) {
   const [open, setOpen] = useState(false);
-  const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
+  const [pos, setPos] = useState<{
+    top: number;
+    left: number;
+    flip: boolean;
+  } | null>(null);
   const ref = useRef<HTMLElement>(null);
+
+  // Below a certain distance from the top of the viewport (a row near the
+  // top of a scrolled card, right under the wizard nav) there isn't enough
+  // room to fit the bubble above the trigger — it was rendering partly off
+  // the top of the screen / behind the nav bar instead of actually being
+  // visible. Flip to showing it below the trigger when that's the case.
+  const FLIP_THRESHOLD = 48;
 
   function show() {
     if (!text) return;
     const el = ref.current;
     if (!el) return;
     const rect = el.getBoundingClientRect();
-    setPos({ top: rect.top - 8, left: rect.left + rect.width / 2 });
+    const flip = rect.top < FLIP_THRESHOLD;
+    setPos({
+      top: flip ? rect.bottom + 8 : rect.top - 8,
+      left: rect.left + rect.width / 2,
+      flip,
+    });
     setOpen(true);
   }
   function hide() {
@@ -69,7 +85,9 @@ export default function Tooltip({
               position: "fixed",
               top: pos.top,
               left: pos.left,
-              transform: "translate(-50%, -100%)",
+              transform: pos.flip
+                ? "translate(-50%, 0)"
+                : "translate(-50%, -100%)",
             }}
           >
             {text}

@@ -27,7 +27,6 @@ export default function SiteMapDetailsPage() {
     country,
     setCountry,
     selectedCountries,
-    runSearch,
     data,
     loading,
     error,
@@ -114,6 +113,7 @@ export default function SiteMapDetailsPage() {
             <Select
               value={country}
               onChange={setCountry}
+              disabled={loading}
               options={selectedCountries.map((c) => ({ value: c, label: c }))}
             />
           ) : (
@@ -126,19 +126,6 @@ export default function SiteMapDetailsPage() {
             </>
           )}
         </label>
-        {/* No spinner/"Searching..." swap on this button — the centered
-            overlay below is the one loading indicator for this action, so
-            showing a second, independently-spinning one here just reads as
-            two different things happening. Still disabled while loading. */}
-        <button
-          type="button"
-          className="predict-btn map-search-btn"
-          onClick={runSearch}
-          disabled={loading || !indication}
-        >
-          Search
-        </button>
-
         {/* Kept in the same row as the Country control above (instead of a
             separate toolbar row further down) so "pick a country -> search
             -> export" reads as one continuous bar. Only shown once there's

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import type { RiskAssessmentRow } from "../../types";
 import RiskRegisterTable from "./RiskRegisterTable";
 import EmptyState from "../ui/EmptyState";
+import Tooltip from "../ui/Tooltip";
 
 function isAllNoRisk(r: RiskAssessmentRow): boolean {
   return (
@@ -132,39 +133,32 @@ export default function RiskAssessmentAccordion({
               </span>
               <span className="risk-accordion-region">{r.region}</span>
               <span className="risk-accordion-status">
-                <span
-                  className={`badge ${statusBand(r.status)}`}
-                  data-tooltip="Live ClinicalTrials.gov status for this site."
-                >
+                <span className={`badge ${statusBand(r.status)}`}>
                   {statusLabel(r.status)}
                 </span>
               </span>
               <span className="risk-accordion-badge-col">
                 {r.riskDataUnavailable ? (
-                  <span className="badge no-data" data-tooltip={overallRiskTooltip(r)}>
-                    Unassessed
-                  </span>
+                  <Tooltip text={overallRiskTooltip(r)}>
+                    <span className="badge no-data">Unassessed</span>
+                  </Tooltip>
                 ) : isAllNoRisk(r) ? (
-                  <span className="badge no-risk" data-tooltip={overallRiskTooltip(r)}>
-                    No Risk
-                  </span>
+                  <Tooltip text={overallRiskTooltip(r)}>
+                    <span className="badge no-risk">No Risk</span>
+                  </Tooltip>
                 ) : (
-                  <span
-                    className={`badge ${r.overallRisk.toLowerCase()}`}
-                    data-tooltip={overallRiskTooltip(r)}
-                  >
-                    {r.overallRisk} Risk
-                  </span>
+                  <Tooltip text={overallRiskTooltip(r)}>
+                    <span className={`badge ${r.overallRisk.toLowerCase()}`}>
+                      {r.overallRisk} Risk
+                    </span>
+                  </Tooltip>
                 )}
               </span>
-              <span
-                className="risk-accordion-counts"
-                data-tooltip={overallRiskTooltip(r)}
-              >
+              <Tooltip text={overallRiskTooltip(r)} className="risk-accordion-counts">
                 {r.riskDataUnavailable
                   ? "unassessed"
                   : `${r.highRiskCount} high · ${r.mediumRiskCount} medium`}
-              </span>
+              </Tooltip>
               <span className="risk-accordion-caret">{isOpen ? "−" : "+"}</span>
             </button>
             <div className={`risk-accordion-body-wrap${isOpen ? " open" : ""}`}>

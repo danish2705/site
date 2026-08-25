@@ -145,7 +145,6 @@ export default function SiteMapGlobalPage() {
     data,
     loading,
     error,
-    runSearch,
     allSites,
   } = useIndependentSiteSearch();
   // Local to this page only — Site Map Details no longer shares state with
@@ -303,6 +302,7 @@ export default function SiteMapGlobalPage() {
             <Select
               value={country}
               onChange={setCountry}
+              disabled={loading}
               options={selectedCountries.map((c) => ({ value: c, label: c }))}
             />
           ) : (
@@ -315,20 +315,13 @@ export default function SiteMapGlobalPage() {
             </>
           )}
         </label>
-        <button
-          type="button"
-          className="predict-btn map-search-btn"
-          onClick={runSearch}
-          disabled={loading || !indication}
-        >
-          Search
-        </button>
-
-        {/* Compact inline notice next to the button instead of a large
-            dashed placeholder box taking up the whole panel below. */}
+        {/* Compact inline notice instead of a large dashed placeholder box
+            taking up the whole panel below — the search itself now runs
+            automatically (see useIndependentSiteSearch) as soon as an
+            indication/country resolve, so there's no button to prompt. */}
         {!data && !loading && !error && (
           <span className="map-no-search-note">
-            No search yet — hit Search to plot sites.
+            {indication ? "Loading sites…" : "Pick an indication to plot sites."}
           </span>
         )}
       </div>

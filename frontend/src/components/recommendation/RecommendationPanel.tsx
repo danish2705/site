@@ -9,11 +9,9 @@ import { SaveIcon, MailIcon } from "../ui/Icons";
 import { fetchOutreachDraft } from "../../services/siteCombination.service";
 import OutreachDraftModal from "../ui/OutreachDraftModal";
 import type { OutreachDraft } from "../../types";
-import { countriesFromRegionKeys } from "../../utils/region";
 
 export default function RecommendationPanel() {
   const {
-    finalResult,
     llmInfo,
     canSave,
     saveLabel,
@@ -24,30 +22,62 @@ export default function RecommendationPanel() {
     form,
     running,
     analyzing,
+    topRegion,
+    selectedCountries,
+    analysisCache,
+    prefetchingCountries,
     analyzeForCountry,
   } = usePipeline();
   const [saveDialogOpen, setSaveDialogOpen] = useState(false);
 
-  // Country picker — same convention as Risk Register/Ranking: picking a
-  // country here re-runs Stages 4-8 against just that country's live sites,
-  // so the recommended site can be checked/compared country by country
-  // instead of only ever showing the last-run country.
-  const selectedCountries = countriesFromRegionKeys(form.regions);
-  const [analysisCountry, setAnalysisCountry] = useState("");
+  // Country picker — deliberately LOCAL to this page, not shared with Risk
+  // Register/Ranking: those each keep their own selection too. All three
+  // still read from the same PipelineContext analysisCache/
+  // prefetchingCountries, so switching country here is instant once that
+  // country has been analyzed, and only triggers a fresh fetch when it's
+  // genuinely not there yet.
+  const [pageCountry, setPageCountry] = useState("");
 
   useEffect(() => {
+    if (running) return;
+    if (!topRegion) return;
     if (selectedCountries.length === 0) {
-      if (analysisCountry) setAnalysisCountry("");
-    } else if (!selectedCountries.includes(analysisCountry)) {
-      setAnalysisCountry(selectedCountries[0]);
+      if (pageCountry) setPageCountry("");
+      return;
+    }
+    if (!selectedCountries.includes(pageCountry)) {
+      setPageCountry(
+        selectedCountries.includes(topRegion.country)
+          ? topRegion.country
+          : selectedCountries[0],
+      );
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedCountries.join("|")]);
+  }, [selectedCountries.join("|"), topRegion, running]);
 
-  function handleCountryChange(country: string) {
-    setAnalysisCountry(country);
-    if (country) analyzeForCountry(country);
-  }
+  useEffect(() => {
+    if (!pageCountry) return;
+    if (analysisCache[pageCountry]) return;
+    if (prefetchingCountries.has(pageCountry)) return;
+    analyzeForCountry(pageCountry, { background: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pageCountry, analysisCache, prefetchingCountries]);
+
+  const cached = pageCountry ? analysisCache[pageCountry] : undefined;
+  const finalResult = cached?.finalResult ?? null;
+  const pageLoading =
+    !!pageCountry && !cached && (running || analyzing || prefetchingCountries.has(pageCountry));
+
+  const countryPicker = selectedCountries.length > 0 && (
+    <div className="predict-head-actions">
+      <Select
+        value={pageCountry}
+        onChange={setPageCountry}
+        placeholder="Select country to analyze…"
+        options={selectedCountries.map((c) => ({ value: c, label: c }))}
+      />
+    </div>
+  );
 
   // Outreach draft for the recommended site — see backend
   // pipeline/outreachDraft.ts. Draft text only, never actually sent: there
@@ -60,13 +90,27 @@ export default function RecommendationPanel() {
   const [draftError, setDraftError] = useState<string | null>(null);
 
   if (!finalResult) {
-    if (running || analyzing) {
+    if (pageLoading) {
+      // Keep the country picker + action buttons visible and only put the
+      // loader in the body — a bare full-card loader used to blank out the
+      // dropdown and Save/Draft buttons while a country's recommendation
+      // was loading.
       return (
-        <div
-          className="card"
-          style={{ display: "flex", alignItems: "center", justifyContent: "center" }}
-        >
-          <StageLoader label="Loading final recommendation…" />
+        <div className="card">
+          <div className="pipeline-card-head">
+            {countryPicker}
+          </div>
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              flex: 1,
+              minHeight: 200,
+            }}
+          >
+            <StageLoader label="Loading final recommendation…" />
+          </div>
         </div>
       );
     }
@@ -117,17 +161,7 @@ export default function RecommendationPanel() {
   return (
     <div className="card">
       <div className="pipeline-card-head">
-        {selectedCountries.length > 0 && (
-          <div className="predict-head-actions">
-            <Select
-              value={analysisCountry}
-              onChange={handleCountryChange}
-              disabled={analyzing}
-              placeholder="Select country to analyze…"
-              options={selectedCountries.map((c) => ({ value: c, label: c }))}
-            />
-          </div>
-        )}
+        {countryPicker}
         <div style={{ display: "flex", gap: 8, marginLeft: "auto" }}>
           <button
             type="button"

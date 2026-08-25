@@ -26,6 +26,7 @@ import { streamRun, streamSiteAnalysis } from "../services/pipeline.service";
 import { fetchLiveTrialLandscape } from "../services/liveTrials.service";
 import { createRun, getRun, listRuns } from "../services/runs.service";
 import { useRoute } from "./RouteContext";
+import { countriesFromRegionKeys } from "../utils/region";
 
 /** Same last-3-years recency window CompetingTrialsPanel applies to its own
  * table — reused here so a country picked directly from Risk Register goes
@@ -42,11 +43,36 @@ function filterRecentFacilities(facilities: LiveFacilityRow[]): LiveFacilityRow[
   });
 }
 
+/** Backend's POST /api/site-analysis requires every facility row to carry a
+ * usable name (see siteAnalysis.controller.ts's parseFacilities) — some
+ * ClinicalTrials.gov records legitimately omit it. Drop those here so a
+ * country whose live data happens to include one of these blank-name rows
+ * doesn't 400 the whole analysis; only the unusable rows are dropped, not
+ * the whole batch. */
+function filterAnalyzableFacilities(
+  facilities: LiveFacilityRow[],
+): LiveFacilityRow[] {
+  return facilities.filter(
+    (f) => typeof f.facility === "string" && f.facility.trim().length > 0,
+  );
+}
+
 /** The top-scoring region/country Stage 2 resolved — just enough to call
  * /api/site-analysis later (see analyzeOngoingTrialSites below). */
 interface TopRegionInfo {
   region: string;
   country: string;
+}
+
+/** Everything a completed analyzeForCountry() run for one country produces —
+ * cached so Risk Register/Ranking/Final Recommendation can switch back to an
+ * already-analyzed country instantly instead of re-running Stages 4-8. */
+interface CountryAnalysis {
+  riskAssessment: RiskAssessmentRow[];
+  ranking: RankingRow[];
+  finalResult: FinalResult;
+  ongoingTrialSites: LiveFacilityRow[];
+  topRegion: TopRegionInfo;
 }
 
 /**
@@ -125,9 +151,49 @@ export interface PipelineState {
   analyzeOngoingTrialSites: () => Promise<void>;
   /** True once Stage 2 of Run Analysis has resolved a region/country — analyzeOngoingTrialSites needs this, so CompetingTrialsPanel uses it to keep "Send to Risk Assessment & Ranking" disabled (and to explain why) until Run Analysis has actually run. */
   hasTopRegion: boolean;
+  /** The actual region/country Stage 2 resolved (not just whether it exists) — Risk Register/Ranking/Final Recommendation each use this to default their own (independent) country picker to it. */
+  topRegion: TopRegionInfo | null;
   /** Risk Register's own Country picker: fetches a fresh live facility list for `country` itself (same live-trials call Ongoing Trials makes), then sends it straight to Stages 4-8 — the whole "search + analyze" round-trip in one action, so Risk Register/Ranking can be re-run for any country in the trial's selected regions without going through the Ongoing Trials tab at all. */
-  /** Runs Stages 4-8 for one country and returns its top recommended site (or null on failure/no-sites) — used by the single-country picker on Risk Register/Ranking/Final Recommendation. */
-  analyzeForCountry: (country: string) => Promise<FinalResult | null>;
+  /** Runs Stages 4-8 for one country and returns its top recommended site (or null on failure/no-sites) — used by the single-country picker on Risk Register/Ranking/Final Recommendation. Pass `background: true` to run it as a silent prefetch (see analysisCache below) — it won't touch the error banner, the shared loading flags, or the currently-displayed riskAssessment/ranking/finalResult. */
+  analyzeForCountry: (
+    country: string,
+    opts?: { background?: boolean },
+  ) => Promise<FinalResult | null>;
+
+  /** De-duplicated countries behind the trial form's selected region(s) —
+   * the "set" of countries Risk Register/Ranking/Final Recommendation can
+   * each be pointed at. Computed once here instead of separately in each of
+   * those three components. */
+  selectedCountries: string[];
+  /** The country Risk Register/Ranking/Final Recommendation are currently
+   * showing. Setting it (via setAnalysisCountry) is what actually resolves
+   * data for it — either instantly from analysisCache if it's already been
+   * analyzed, or by kicking off analyzeForCountry if not. Shared across all
+   * three pages so picking a country on one keeps the others in sync. */
+  analysisCountry: string;
+  /** Switches the shown country. Looks up analysisCache first: a hit swaps
+   * riskAssessment/ranking/finalResult in immediately with no network call;
+   * a miss calls analyzeForCountry(country) to fetch it (same as picking it
+   * from the dropdown always did). This replaces the old per-page "display
+   * only" default effect that never actually triggered analysis. */
+  setAnalysisCountry: (country: string) => void;
+  /** Every country analyzeForCountry has completed for this session, so the
+   * three pages above can show data instantly when the user switches back
+   * to one. Cleared when the indication changes (a fresh set of countries
+   * needs fresh analysis). */
+  analysisCache: Record<string, CountryAnalysis>;
+  /** Countries currently being analyzed in the background (queued via the
+   * auto-prefetch effect below) — exposed so a picker can show which
+   * not-yet-viewed countries are still being worked on. */
+  prefetchingCountries: Set<string>;
+  /** Why analyzeForCountry came back empty for a given country (e.g. zero
+   * live ClinicalTrials.gov sites in the last 3 years) — background
+   * prefetches don't raise the shared error banner (see analyzeForCountry),
+   * so without this a country that's simply never going to have data would
+   * show the same generic "No risk data yet" as one that just hasn't been
+   * analyzed yet, with no way to tell the two apart. Cleared for a country
+   * the moment it's successfully analyzed. */
+  countryErrors: Record<string, string>;
 
   completedCount: number;
   progressPct: number;
@@ -189,6 +255,21 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
   >(null);
   const [analyzing, setAnalyzing] = useState(false);
   const [topRegion, setTopRegion] = useState<TopRegionInfo | null>(null);
+  const [analysisCountryState, setAnalysisCountryState] = useState("");
+  const [analysisCache, setAnalysisCache] = useState<
+    Record<string, CountryAnalysis>
+  >({});
+  const [prefetchingCountries, setPrefetchingCountries] = useState<
+    Set<string>
+  >(new Set());
+  const [countryErrors, setCountryErrors] = useState<Record<string, string>>(
+    {},
+  );
+  // Sequential background-prefetch queue — see the auto-prefetch effect
+  // below. A ref (not state) for the "currently processing" guard so the
+  // queue-draining effect doesn't need itself as a dependency.
+  const [prefetchQueue, setPrefetchQueue] = useState<string[]>([]);
+  const prefetchInFlightRef = useRef(false);
   const { setRoute } = useRoute();
   // Holds the AbortController for whichever Run Analysis stream is
   // currently in flight, so cancelRun() can stop it — see handleSubmit.
@@ -361,6 +442,14 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
     setLlmInfo(null);
     setError(null);
     setRunning(true);
+    // Re-running can change phase/sampleSize/budgetTier/ageGroups, all of
+    // which feed Stages 4-8 — any previously cached per-country analysis
+    // (and anything still queued to be prefetched under the old params) is
+    // stale the moment a new run starts.
+    setAnalysisCache({});
+    setPrefetchQueue([]);
+    setPrefetchingCountries(new Set());
+    setCountryErrors({});
     // No auto-navigate here anymore — a full-screen loading overlay (see
     // RunAnalysisOverlay, rendered in App.tsx while `running` is true) now
     // covers the screen instead, so there's nothing to navigate away from
@@ -369,6 +458,9 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
     let streamFailed = false;
     const abortController = new AbortController();
     runAbortRef.current = abortController;
+    let runTopRegion: TopRegionInfo | null = null;
+    let runRisk: RiskAssessmentRow[] | null = null;
+    let runRanking: RankingRow[] | null = null;
 
     try {
       const res = await streamRun(form, abortController.signal);
@@ -389,11 +481,15 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
             // here so analyzeOngoingTrialSites() can send the same
             // region/country to /api/site-analysis later.
             const top = (payload.data as { region: string; country: string }[])?.[0];
-            if (top) setTopRegion({ region: top.region, country: top.country });
+            if (top) {
+              runTopRegion = { region: top.region, country: top.country };
+              setTopRegion(runTopRegion);
+            }
           }
           if (payload.stage === 8 && payload.llm) setLlmInfo(payload.llm);
           if (payload.stage === 6 && payload.status === "complete") {
-            setRiskAssessment(payload.data as RiskAssessmentRow[]);
+            runRisk = payload.data as RiskAssessmentRow[];
+            setRiskAssessment(runRisk);
             // No forced navigation to the Risk Register page here — the
             // user lands on Site Map (Global) when the run starts and
             // stays wherever they are; the nav bar's "complete" badge and
@@ -401,10 +497,29 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
             // without yanking them off whatever page they're looking at.
           }
           if (payload.stage === 7 && payload.status === "complete") {
-            setRanking(payload.data as RankingRow[]);
+            runRanking = payload.data as RankingRow[];
+            setRanking(runRanking);
           }
           if (payload.stage === 8 && payload.status === "complete") {
-            setFinalResult(payload.data as FinalResult);
+            const finalRes = payload.data as FinalResult;
+            setFinalResult(finalRes);
+            // Seeds analysisCache for the auto-picked top region with this
+            // run's own result — since it's already been fully analyzed,
+            // there's no reason for the background-prefetch effect (or a
+            // later setAnalysisCountry call) to re-run Stages 4-8 for it.
+            if (runTopRegion && runRisk && runRanking) {
+              setAnalysisCountryState(runTopRegion.country);
+              setAnalysisCache((prev) => ({
+                ...prev,
+                [runTopRegion!.country]: {
+                  riskAssessment: runRisk!,
+                  ranking: runRanking!,
+                  finalResult: finalRes,
+                  ongoingTrialSites: ongoingTrialSites ?? [],
+                  topRegion: runTopRegion!,
+                },
+              }));
+            }
           }
         },
         (message) => {
@@ -457,11 +572,22 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
       setError("Run the initial analysis first so a region/country is selected.");
       return;
     }
+    const facilities = filterAnalyzableFacilities(ongoingTrialSites);
+    if (facilities.length === 0) {
+      setError(
+        "None of the loaded live sites have a usable facility name to analyze.",
+      );
+      return;
+    }
     setAnalyzing(true);
     setError(null);
     setRanking(null);
     setRiskAssessment(null);
     setFinalResult(null);
+    let localRisk: RiskAssessmentRow[] | null = null;
+    let localRanking: RankingRow[] | null = null;
+    let localResult: FinalResult | null = null;
+    const localTopRegion = topRegion;
 
     try {
       const res = await streamSiteAnalysis({
@@ -473,92 +599,6 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
         ageGroups: form.ageGroups,
         region: topRegion.region,
         country: topRegion.country,
-        facilities: ongoingTrialSites,
-      });
-      await consumeStageStream(
-        res,
-        (payload) => {
-          setStages((prev) => ({
-            ...prev,
-            [payload.stage]: {
-              status: payload.status,
-              detail: payload.detail ?? prev[payload.stage]?.detail ?? null,
-              data: payload.data ?? prev[payload.stage]?.data ?? null,
-            },
-          }));
-          if (payload.stage === 8 && payload.llm) setLlmInfo(payload.llm);
-          if (payload.stage === 6 && payload.status === "complete") {
-            setRiskAssessment(payload.data as RiskAssessmentRow[]);
-          }
-          if (payload.stage === 7 && payload.status === "complete") {
-            setRanking(payload.data as RankingRow[]);
-          }
-          if (payload.stage === 8 && payload.status === "complete") {
-            setFinalResult(payload.data as FinalResult);
-          }
-        },
-        (message) => setError(message),
-      );
-    } catch (err) {
-      setError((err as Error).message);
-    } finally {
-      setAnalyzing(false);
-    }
-  }
-
-  /**
-   * Risk Register's Country dropdown: fetches a fresh live facility list for
-   * this specific country (the same /api/live-trials call Ongoing Trials
-   * makes) and immediately sends it on to Stages 4-8, all in one action —
-   * so picking a different country directly on Risk Register re-runs the
-   * whole "find sites -> analyze them" round-trip for that country, without
-   * needing to visit Ongoing Trials first. Also updates ongoingTrialSites/
-   * topRegion so the two stay in sync if the user does visit that tab next.
-   */
-  async function analyzeForCountry(country: string): Promise<FinalResult | null> {
-    if (!form.indication) {
-      setError("Select an indication before analyzing a country.");
-      return null;
-    }
-    // Best-effort region label: reuse whichever region the sidebar's own
-    // Region/Country list already associates with this country (falls back
-    // to the country name itself — the backend only uses this for
-    // display/prevalence lookups, not as a strict key).
-    const regionMatch = regionOptions.find((r) => r.country === country);
-    const region = regionMatch?.region ?? country;
-
-    setAnalyzing(true);
-    setError(null);
-    setRanking(null);
-    setRiskAssessment(null);
-    setFinalResult(null);
-    let result: FinalResult | null = null;
-
-    try {
-      const landscape = await fetchLiveTrialLandscape({
-        indication: form.indication,
-        country,
-        ageGroups: form.ageGroups,
-      });
-      const facilities = filterRecentFacilities(landscape.facilities);
-      if (facilities.length === 0) {
-        setError(
-          `No live ClinicalTrials.gov sites found for "${form.indication}" in ${country} (within the last 3 years).`,
-        );
-        return null;
-      }
-      setOngoingTrialSites(facilities);
-      setTopRegion({ region, country });
-
-      const res = await streamSiteAnalysis({
-        indication: form.indication,
-        phase: form.phase || undefined,
-        sampleSize: form.sampleSize,
-        durationMonths: form.durationMonths,
-        budgetTier: form.budgetTier || undefined,
-        ageGroups: form.ageGroups,
-        region,
-        country,
         facilities,
       });
       await consumeStageStream(
@@ -574,28 +614,392 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
           }));
           if (payload.stage === 8 && payload.llm) setLlmInfo(payload.llm);
           if (payload.stage === 6 && payload.status === "complete") {
-            setRiskAssessment(payload.data as RiskAssessmentRow[]);
+            localRisk = payload.data as RiskAssessmentRow[];
+            setRiskAssessment(localRisk);
           }
           if (payload.stage === 7 && payload.status === "complete") {
-            setRanking(payload.data as RankingRow[]);
+            localRanking = payload.data as RankingRow[];
+            setRanking(localRanking);
           }
           if (payload.stage === 8 && payload.status === "complete") {
-            result = payload.data as FinalResult;
-            setFinalResult(result);
+            localResult = payload.data as FinalResult;
+            setFinalResult(localResult);
           }
         },
         (message) => setError(message),
       );
-      return result;
+      // Also refresh this country's entry in the shared per-country cache —
+      // each of Risk Register/Ranking/Final Recommendation now reads from
+      // analysisCache for whichever country THEY have selected (they no
+      // longer share one "current country" across pages), so a re-analysis
+      // triggered from Ongoing Trials needs to land there too, not just in
+      // these shared display slots.
+      if (localRisk && localRanking && localResult && localTopRegion) {
+        setAnalysisCache((prev) => ({
+          ...prev,
+          [localTopRegion.country]: {
+            riskAssessment: localRisk!,
+            ranking: localRanking!,
+            finalResult: localResult!,
+            ongoingTrialSites: facilities,
+            topRegion: localTopRegion,
+          },
+        }));
+      }
     } catch (err) {
       setError((err as Error).message);
-      return null;
     } finally {
       setAnalyzing(false);
     }
   }
 
+  /**
+   * Risk Register's Country dropdown: fetches a fresh live facility list for
+   * this specific country (the same /api/live-trials call Ongoing Trials
+   * makes) and immediately sends it on to Stages 4-8, all in one action —
+   * so picking a different country directly on Risk Register re-runs the
+   * whole "find sites -> analyze them" round-trip for that country, without
+   * needing to visit Ongoing Trials first. Also updates ongoingTrialSites/
+   * topRegion so the two stay in sync if the user does visit that tab next.
+   *
+   * `opts.background` runs this as a silent prefetch (see the auto-prefetch
+   * effect below): it still fills analysisCache for `country`, but never
+   * touches the error banner, `analyzing`, or the currently-displayed
+   * riskAssessment/ranking/finalResult — those stay whatever the
+   * currently-selected country's data is until the user actually switches
+   * to this one (at which point analysisCache already has it ready).
+   */
+  async function analyzeForCountry(
+    country: string,
+    opts?: { background?: boolean },
+  ): Promise<FinalResult | null> {
+    const background = !!opts?.background;
+    if (!form.indication) {
+      if (!background) setError("Select an indication before analyzing a country.");
+      return null;
+    }
+    // Best-effort region label: reuse whichever region the sidebar's own
+    // Region/Country list already associates with this country (falls back
+    // to the country name itself — the backend only uses this for
+    // display/prevalence lookups, not as a strict key).
+    const regionMatch = regionOptions.find((r) => r.country === country);
+    const region = regionMatch?.region ?? country;
 
+    if (background) {
+      setPrefetchingCountries((prev) => new Set(prev).add(country));
+    } else {
+      setAnalyzing(true);
+      setError(null);
+      setRanking(null);
+      setRiskAssessment(null);
+      setFinalResult(null);
+    }
+    let result: FinalResult | null = null;
+    let localRisk: RiskAssessmentRow[] | null = null;
+    let localRanking: RankingRow[] | null = null;
+    const localTopRegion: TopRegionInfo = { region, country };
+
+    try {
+      const landscape = await fetchLiveTrialLandscape({
+        indication: form.indication,
+        country,
+        ageGroups: form.ageGroups,
+      });
+      const recentFacilities = filterRecentFacilities(landscape.facilities);
+      const facilities = filterAnalyzableFacilities(recentFacilities);
+      if (facilities.length === 0) {
+        const msg =
+          recentFacilities.length > 0
+            ? `Live ClinicalTrials.gov sites were found for "${form.indication}" in ${country}, but none had a usable facility name to analyze.`
+            : `No live ClinicalTrials.gov sites found for "${form.indication}" in ${country} (within the last 3 years).`;
+        if (!background) setError(msg);
+        setCountryErrors((prev) => ({ ...prev, [country]: msg }));
+        return null;
+      }
+      if (!background) {
+        setOngoingTrialSites(facilities);
+        setTopRegion(localTopRegion);
+      }
+
+      const res = await streamSiteAnalysis({
+        indication: form.indication,
+        phase: form.phase || undefined,
+        sampleSize: form.sampleSize,
+        durationMonths: form.durationMonths,
+        budgetTier: form.budgetTier || undefined,
+        ageGroups: form.ageGroups,
+        region,
+        country,
+        facilities,
+      });
+      await consumeStageStream(
+        res,
+        (payload) => {
+          if (!background) {
+            setStages((prev) => ({
+              ...prev,
+              [payload.stage]: {
+                status: payload.status,
+                detail: payload.detail ?? prev[payload.stage]?.detail ?? null,
+                data: payload.data ?? prev[payload.stage]?.data ?? null,
+              },
+            }));
+            if (payload.stage === 8 && payload.llm) setLlmInfo(payload.llm);
+          }
+          if (payload.stage === 6 && payload.status === "complete") {
+            localRisk = payload.data as RiskAssessmentRow[];
+            if (!background) setRiskAssessment(localRisk);
+          }
+          if (payload.stage === 7 && payload.status === "complete") {
+            localRanking = payload.data as RankingRow[];
+            if (!background) setRanking(localRanking);
+          }
+          if (payload.stage === 8 && payload.status === "complete") {
+            result = payload.data as FinalResult;
+            if (!background) setFinalResult(result);
+          }
+        },
+        (message) => {
+          if (!background) setError(message);
+        },
+      );
+      // Cache the full result regardless of foreground/background — this is
+      // what lets switching back to this country later (or a background
+      // prefetch that finishes after the fact) show data instantly with no
+      // re-fetch. Only cache complete results — a stream that errored out
+      // partway shouldn't be remembered as "analyzed."
+      if (localRisk && localRanking && result) {
+        setAnalysisCache((prev) => ({
+          ...prev,
+          [country]: {
+            riskAssessment: localRisk!,
+            ranking: localRanking!,
+            finalResult: result!,
+            ongoingTrialSites: facilities,
+            topRegion: localTopRegion,
+          },
+        }));
+        setCountryErrors((prev) => {
+          if (!(country in prev)) return prev;
+          const next = { ...prev };
+          delete next[country];
+          return next;
+        });
+      }
+      return result;
+    } catch (err) {
+      const msg = (err as Error).message;
+      if (!background) setError(msg);
+      setCountryErrors((prev) => ({ ...prev, [country]: msg }));
+      return null;
+    } finally {
+      if (background) {
+        setPrefetchingCountries((prev) => {
+          const next = new Set(prev);
+          next.delete(country);
+          return next;
+        });
+      } else {
+        setAnalyzing(false);
+      }
+    }
+  }
+
+  const selectedCountries = useMemo(
+    () => countriesFromRegionKeys(form.regions),
+    [form.regions],
+  );
+
+  /**
+   * Switches which country Risk Register/Ranking/Final Recommendation show.
+   * A cache hit swaps the active riskAssessment/ranking/finalResult in with
+   * no network call; a miss falls through to analyzeForCountry (unless a
+   * background prefetch for it is already in flight, in which case the
+   * cache-sync effect below picks the result up as soon as that finishes).
+   */
+  function setAnalysisCountry(country: string): void {
+    setAnalysisCountryState(country);
+    if (!country) return;
+    const cached = analysisCache[country];
+    if (cached) {
+      setRiskAssessment(cached.riskAssessment);
+      setRanking(cached.ranking);
+      setFinalResult(cached.finalResult);
+      setOngoingTrialSites(cached.ongoingTrialSites);
+      setTopRegion(cached.topRegion);
+      return;
+    }
+    // Already queued or actively being fetched in the background — the
+    // cache-sync effect above will pick up the result the moment it lands,
+    // no need to start a second fetch for it. If it's still just waiting in
+    // line (not the one currently in flight), bump it to the front so the
+    // drain effect processes it next — the user is looking at this country
+    // right now, it shouldn't sit behind whatever else happened to queue
+    // ahead of it.
+    // Not cached yet — whatever's currently displayed belongs to whichever
+    // country was selected before (or nothing, on the very first pick).
+    // Clear it now rather than leaving the previous country's table on
+    // screen: the panels only show their loading spinner when there's no
+    // data displayed, so without this a switch to a still-loading country
+    // silently kept showing the old country's rows with just the dropdown
+    // label reading "(analyzing…)" — no visible loading state at all.
+    setRiskAssessment(null);
+    setRanking(null);
+    setFinalResult(null);
+
+    if (prefetchingCountries.has(country)) {
+      setPrefetchQueue((prev) =>
+        prev.includes(country)
+          ? [country, ...prev.filter((c) => c !== country)]
+          : prev,
+      );
+      return;
+    }
+    analyzeForCountry(country);
+  }
+
+  // Keeps the active riskAssessment/ranking/finalResult synced with
+  // whichever country is currently selected, whenever analysisCache
+  // changes — covers the case where a background prefetch for the
+  // currently-selected country finishes after setAnalysisCountry already
+  // deferred to it (see the `prefetchingCountries.has(country)` guard
+  // above), so the page updates the moment that data is ready instead of
+  // requiring another pick.
+  useEffect(() => {
+    if (!analysisCountryState) return;
+    const cached = analysisCache[analysisCountryState];
+    if (cached && riskAssessment !== cached.riskAssessment) {
+      setRiskAssessment(cached.riskAssessment);
+      setRanking(cached.ranking);
+      setFinalResult(cached.finalResult);
+      setOngoingTrialSites(cached.ongoingTrialSites);
+      setTopRegion(cached.topRegion);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [analysisCache, analysisCountryState]);
+
+  // Defaults the shown country whenever the selected region "set" changes —
+  // and, unlike the old per-page effect this replaces, actually resolves
+  // data for it (via setAnalysisCountry) instead of just picking a label to
+  // display. Prefers topRegion.country when it's part of the set, since
+  // that's the one Run Analysis already analyzed for free at Stage 2 —
+  // otherwise falls back to the first selected country, same as before.
+  //
+  // Gated on `topRegion` (i.e. Run Analysis has actually completed once):
+  // checking a box in Step 1's Region/Country list changes `selectedCountries`
+  // immediately, long before the user has finished the form or clicked "Run
+  // Analysis" — without this gate, that alone would kick off a live
+  // Stages-4-8 analysis (ClinicalTrials.gov + LLM calls) the moment a
+  // checkbox is ticked, and unlock/populate Risk Register, Ranking, and
+  // Final Recommendation before the user ever asked for a run.
+  useEffect(() => {
+    // While the initial Run Analysis stream is still going, handleSubmit
+    // itself is already driving topRegion/riskAssessment/ranking/
+    // finalResult and will seed analysisCountryState + analysisCache the
+    // moment Stage 8 completes — this effect firing mid-stream (topRegion
+    // is set as early as Stage 2, well before that) would kick off a
+    // second, redundant analyzeForCountry() race against the run still in
+    // flight. Wait for it to finish; analysisCountryState will already
+    // match by then, so the check below is a no-op rather than a fetch.
+    if (running) return;
+    if (!topRegion) return;
+    if (selectedCountries.length === 0) {
+      if (analysisCountryState) setAnalysisCountry("");
+      return;
+    }
+    if (!selectedCountries.includes(analysisCountryState)) {
+      const preferred = selectedCountries.includes(topRegion.country)
+        ? topRegion.country
+        : selectedCountries[0];
+      setAnalysisCountry(preferred);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedCountries.join("|"), topRegion, running]);
+
+  // Queues every selected country other than the one currently shown (and
+  // not already cached/in-flight) for a silent background analysis — this
+  // is what makes switching to ANY country in the set instant rather than
+  // just the default one. One at a time (not all at once): each call is a
+  // full Stages 4-8 run against live ClinicalTrials.gov + the LLM, and
+  // firing them all concurrently would just queue up behind the same rate
+  // limits with no benefit.
+  //
+  // Same `topRegion` gate as above and for the same reason — this must not
+  // start firing off live analyses for an entire selected region set before
+  // Run Analysis has ever been clicked.
+  useEffect(() => {
+    if (running) return;
+    if (!topRegion || !form.indication || selectedCountries.length <= 1) return;
+    const missing = selectedCountries.filter(
+      (c) =>
+        c !== analysisCountryState &&
+        !analysisCache[c] &&
+        !prefetchingCountries.has(c),
+    );
+    if (missing.length === 0) return;
+    setPrefetchQueue((prev) => [
+      ...prev,
+      ...missing.filter((c) => !prev.includes(c)),
+    ]);
+    // Marked pending immediately (not only once analyzeForCountry actually
+    // starts fetching it) so `prefetchingCountries` means "queued or in
+    // flight" — the panels use it to show a loading state the instant a
+    // country is picked, rather than only once its turn in the queue
+    // arrives.
+    setPrefetchingCountries((prev) => {
+      const next = new Set(prev);
+      missing.forEach((c) => next.add(c));
+      return next;
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    running,
+    topRegion,
+    form.indication,
+    selectedCountries.join("|"),
+    analysisCache,
+    analysisCountryState,
+  ]);
+
+  // Drains prefetchQueue one country at a time. Deliberately does NOT skip
+  // `next` just because it happens to equal the currently-selected country:
+  // setAnalysisCountry bumps a still-queued country to the front instead of
+  // removing it when the user switches to it mid-queue (see above), so
+  // "queued" and "currently selected" are no longer mutually exclusive —
+  // this needs to actually run for it, not drop it silently (which would
+  // otherwise leave it stuck in prefetchingCountries forever, showing an
+  // endless loading state that never resolves).
+  useEffect(() => {
+    if (prefetchInFlightRef.current) return;
+    if (prefetchQueue.length === 0) return;
+    const next = prefetchQueue[0];
+    if (analysisCache[next]) {
+      setPrefetchQueue((q) => q.filter((c) => c !== next));
+      setPrefetchingCountries((prev) => {
+        const n = new Set(prev);
+        n.delete(next);
+        return n;
+      });
+      return;
+    }
+    prefetchInFlightRef.current = true;
+    analyzeForCountry(next, { background: true }).finally(() => {
+      prefetchInFlightRef.current = false;
+      setPrefetchQueue((q) => q.filter((c) => c !== next));
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [prefetchQueue, analysisCache, analysisCountryState]);
+
+  // A fresh indication means a fresh region list and stale analyses for the
+  // old one — drop the cache and prefetch queue so a re-selected country
+  // name from a different indication can't serve mismatched cached data.
+  useEffect(() => {
+    setAnalysisCache({});
+    setPrefetchQueue([]);
+    setPrefetchingCountries(new Set());
+    setCountryErrors({});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [form.indication]);
 
   const value: PipelineState = {
     meta,
@@ -616,7 +1020,14 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
     analyzing,
     analyzeOngoingTrialSites,
     hasTopRegion: !!topRegion,
+    topRegion,
     analyzeForCountry,
+    selectedCountries,
+    analysisCountry: analysisCountryState,
+    setAnalysisCountry,
+    analysisCache,
+    prefetchingCountries,
+    countryErrors,
     completedCount,
     progressPct,
     pipelineDone,

@@ -84,17 +84,16 @@ export function useIndependentSiteSearch(): IndependentSiteSearchState {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [running]);
 
-  // Auto-run once for the default (first selected) country as soon as one
-  // is resolved, instead of making the user click Search first. Waits for
-  // `country` to actually settle to that default (set by the sync effect
-  // above) rather than firing on the same-render "" — otherwise this would
-  // kick off an unscoped/all-countries search instead of the intended one.
-  const autoSearchedRef = useRef(false);
+  // Searches automatically — for the default (first selected) country as
+  // soon as one resolves, and again every time this page's own country
+  // dropdown changes — instead of requiring a manual "Search" click each
+  // time. Waits for `country` to actually settle to a real value (set by
+  // the sync effect above) rather than firing on the same-render "" —
+  // otherwise this would kick off an unscoped/all-countries search instead
+  // of the intended one.
   useEffect(() => {
-    if (autoSearchedRef.current) return;
     if (!indication) return;
     if (selectedCountries.length > 0 && !country) return;
-    autoSearchedRef.current = true;
     runSearch();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [indication, country, selectedCountriesKey]);

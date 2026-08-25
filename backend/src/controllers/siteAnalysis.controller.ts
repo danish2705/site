@@ -16,26 +16,44 @@ function parseFacilities(raw: unknown): LiveFacility[] {
   if (!Array.isArray(raw) || raw.length === 0) {
     throw badRequest('Body field "facilities" must be a non-empty array.');
   }
-  return raw.map((f: unknown, i: number) => {
-    const facility = f as Record<string, unknown>;
-    if (typeof facility.facility !== "string" || !facility.facility) {
-      throw badRequest(`facilities[${i}].facility is required.`);
-    }
-    return {
-      nctId: typeof facility.nctId === "string" ? facility.nctId : "",
-      briefTitle:
-        typeof facility.briefTitle === "string" ? facility.briefTitle : null,
-      facility: facility.facility,
-      city: typeof facility.city === "string" ? facility.city : null,
-      state: typeof facility.state === "string" ? facility.state : null,
-      country: typeof facility.country === "string" ? facility.country : null,
-      status: typeof facility.status === "string" ? facility.status : null,
-      lastUpdatePostDate:
-        typeof facility.lastUpdatePostDate === "string"
-          ? facility.lastUpdatePostDate
-          : null,
-    };
-  });
+  // ClinicalTrials.gov records legitimately omit the facility/site name for
+  // some trials (sponsor never filled it in). A single such row used to
+  // fail the ENTIRE batch with a 400 — which is why picking a second
+  // country from the Risk Register dropdown (a country whose live data
+  // happens to include one of these blank-name rows) could 400 while the
+  // default country (whose data didn't) worked fine. Skip unusable rows
+  // instead of rejecting the whole request; only 400 if nothing usable is
+  // left.
+  const parsed = raw
+    .map((f: unknown): LiveFacility | null => {
+      const facility = f as Record<string, unknown>;
+      if (typeof facility.facility !== "string" || !facility.facility) {
+        return null;
+      }
+      return {
+        nctId: typeof facility.nctId === "string" ? facility.nctId : "",
+        briefTitle:
+          typeof facility.briefTitle === "string" ? facility.briefTitle : null,
+        facility: facility.facility,
+        city: typeof facility.city === "string" ? facility.city : null,
+        state: typeof facility.state === "string" ? facility.state : null,
+        country:
+          typeof facility.country === "string" ? facility.country : null,
+        status: typeof facility.status === "string" ? facility.status : null,
+        lastUpdatePostDate:
+          typeof facility.lastUpdatePostDate === "string"
+            ? facility.lastUpdatePostDate
+            : null,
+      };
+    })
+    .filter((f): f is LiveFacility => f !== null);
+
+  if (parsed.length === 0) {
+    throw badRequest(
+      "None of the supplied facilities has a usable facility/site name.",
+    );
+  }
+  return parsed;
 }
 
 /**
