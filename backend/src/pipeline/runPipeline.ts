@@ -1,5 +1,7 @@
 import { generateRecommendation, llmStatus } from "../llm/client.js";
-import { scoreSites, explainScore, capConfidenceForEstimate } from "./scoring.js";
+import { storeAnalysis } from "./analysisCache.js";
+import { buildFinalResultPayload } from "./finalResult.js";
+import { scoreSites, capConfidenceForEstimate } from "./scoring.js";
 import type { ExtendedEvaluationRow } from "./scoring.js";
 import {
   buildLiveCandidateSites,
@@ -788,31 +790,24 @@ export async function runSiteAnalysis(
     top,
     riskExplanation: top.riskExplanation,
   });
+  // Cache the full scored pool so the Final Recommendation page's status
+  // dropdown (best of Recruiting / Not Yet Recruiting / Active, Not
+  // Recruiting — see RecommendationPanel.tsx) can ask for a different
+  // status's top site later without re-running Stages 4-6. See
+  // analysisCache.ts / siteRecommendation.controller.ts.
+  const analysisId = storeAnalysis({ input, topRegion, estimatedPatients, ranked });
   send("stage", {
     stage: 8,
     name: STAGE_NAMES[8],
     status: "complete",
     llm: recommendation.llm,
-    data: {
-      region: topRegion.Region,
-      country: topRegion.Country,
+    data: buildFinalResultPayload({
+      topRegion,
       estimatedPatients,
-      recommendedSite: top.siteName,
-      siteId: top.siteId,
-      score: top.scored.score,
-      scoreExplanation: explainScore(top.scored),
-      components: top.scored.components,
-      confidence: top.scored.confidence,
-      meetsRequirements: top.requirementChecks.every((c) => c.pass),
-      requirementChecks: top.requirementChecks,
-      suitabilityScore: top.suitabilityScore,
-      riskLevel: top.overallRisk,
-      highRiskCount: top.highRiskCount,
-      riskExplanation: top.riskExplanation,
-      dataSource: top.evalRow.dataSource ?? "llm-estimated",
-      liveKpiFields: top.evalRow.liveKpiFields ?? [],
-      text: recommendation.text,
-    },
+      top,
+      recommendationText: recommendation.text,
+      analysisId,
+    }),
   });
 }
 

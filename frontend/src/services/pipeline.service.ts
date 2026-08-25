@@ -1,5 +1,5 @@
-import type { LiveFacilityRow, TrialForm } from "../types";
-import { apiFetch } from "./api";
+import type { FinalResult, LiveFacilityRow, TrialForm } from "../types";
+import { apiFetch, postJson } from "./api";
 import { parseRegionKey } from "../utils/region";
 
 export async function streamRun(
@@ -52,4 +52,23 @@ export async function streamSiteAnalysis(
     throw new Error("Streaming not supported by this browser/response.");
   }
   return res;
+}
+
+/**
+ * Fetches the best-scored site for one live ClinicalTrials.gov status
+ * ("RECRUITING" | "NOT_YET_RECRUITING" | "ACTIVE_NOT_RECRUITING") from an
+ * already-computed candidate pool, with its own AI recommendation — powers
+ * the status dropdown on the Final Recommendation page. Cheap relative to
+ * streamSiteAnalysis: no live ClinicalTrials.gov re-fetch, just one LLM
+ * call server-side (see backend's siteRecommendation.controller.ts).
+ */
+export function fetchRecommendationForStatus(
+  analysisId: string,
+  status: string,
+): Promise<FinalResult> {
+  return postJson<FinalResult>(
+    "/api/site-recommendation-by-status",
+    { analysisId, status },
+    "Could not load a recommendation for that status.",
+  );
 }

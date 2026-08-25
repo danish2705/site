@@ -212,6 +212,10 @@ export interface FinalResult {
   dataSource?: "excel" | "llm-estimated";
   liveKpiFields?: string[];
   text: string;
+  /** Real, live ClinicalTrials.gov status of the recommended site (e.g. "RECRUITING", "NOT_YET_RECRUITING", "ACTIVE_NOT_RECRUITING") — null if unknown. Used by the status dropdown on the Final Recommendation page to know which slot this result belongs to. */
+  status?: string | null;
+  /** Id of the cached, fully-scored candidate pool this result came from — pass back to fetchRecommendationForStatus() to get the best site for a different live status without re-running Stages 4-6. Absent for older/edge-case results. */
+  analysisId?: string;
 }
 
 export interface StageEventPayload {

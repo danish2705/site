@@ -73,6 +73,10 @@ interface CountryAnalysis {
   finalResult: FinalResult;
   ongoingTrialSites: LiveFacilityRow[];
   topRegion: TopRegionInfo;
+  /** finalResult.analysisId, hoisted up so RecommendationPanel does not need
+   * to reach into finalResult for it — null when this analysis predates the
+   * status-dropdown feature or the backend omitted it. */
+  analysisId: string | null;
 }
 
 /**
@@ -517,6 +521,7 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
                   finalResult: finalRes,
                   ongoingTrialSites: ongoingTrialSites ?? [],
                   topRegion: runTopRegion!,
+                  analysisId: finalRes.analysisId ?? null,
                 },
               }));
             }
@@ -643,6 +648,7 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
             finalResult: localResult!,
             ongoingTrialSites: facilities,
             topRegion: localTopRegion,
+            analysisId: localResult!.analysisId ?? null,
           },
         }));
       }
@@ -777,6 +783,7 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
             finalResult: result!,
             ongoingTrialSites: facilities,
             topRegion: localTopRegion,
+            analysisId: result!.analysisId ?? null,
           },
         }));
         setCountryErrors((prev) => {

@@ -3,12 +3,38 @@ import { usePipeline } from "../../hooks/usePipeline";
 import WhyThisRating from "../risk/WhyThisRating";
 import WizardNextLink from "../ui/WizardNextLink";
 import StageLoader from "../ui/StageLoader";
+import EmptyState from "../ui/EmptyState";
 import SaveRunDialog from "../runs/SaveRunDialog";
 import Select from "../ui/Select";
 import { SaveIcon, MailIcon } from "../ui/Icons";
 import { fetchOutreachDraft } from "../../services/siteCombination.service";
+import { fetchRecommendationForStatus } from "../../services/pipeline.service";
 import OutreachDraftModal from "../ui/OutreachDraftModal";
-import type { OutreachDraft } from "../../types";
+import type { FinalResult, OutreachDraft } from "../../types";
+
+type LiveStatusFilter = "RECRUITING" | "NOT_YET_RECRUITING" | "ACTIVE_NOT_RECRUITING";
+
+// Same three statuses/labels as the Ranking page's status filter (see
+// SiteRankingPanel.tsx) — kept as its own local copy rather than shared,
+// same "deliberately LOCAL to this page" approach already used for the
+// country picker below.
+const STATUS_OPTIONS: { value: LiveStatusFilter; label: string }[] = [
+  { value: "RECRUITING", label: "Recruiting" },
+  { value: "NOT_YET_RECRUITING", label: "Not Yet Recruiting" },
+  { value: "ACTIVE_NOT_RECRUITING", label: "Active, Not Recruiting" },
+];
+
+function normalizeStatus(raw: string | null | undefined): LiveStatusFilter | null {
+  if (!raw) return null;
+  const upper = raw.toUpperCase();
+  return STATUS_OPTIONS.some((o) => o.value === upper)
+    ? (upper as LiveStatusFilter)
+    : null;
+}
+
+function statusLabel(status: string): string {
+  return STATUS_OPTIONS.find((o) => o.value === status)?.label ?? status;
+}
 
 export default function RecommendationPanel() {
   const {
@@ -64,9 +90,84 @@ export default function RecommendationPanel() {
   }, [pageCountry, analysisCache, prefetchingCountries]);
 
   const cached = pageCountry ? analysisCache[pageCountry] : undefined;
-  const finalResult = cached?.finalResult ?? null;
   const pageLoading =
     !!pageCountry && !cached && (running || analyzing || prefetchingCountries.has(pageCountry));
+
+  // Status dropdown — "best of Recruiting / Not Yet Recruiting / Active,
+  // Not Recruiting" (see backend's Stage 8: it always recommends the single
+  // best site across every status combined, which can silently be a site
+  // the Ranking page's default "Recruiting" filter never shows). Each
+  // status's result is fetched lazily and cached per country+status so
+  // switching back to one already seen is instant.
+  const [statusFilter, setStatusFilter] = useState<LiveStatusFilter | "">("");
+  const [recoByStatus, setRecoByStatus] = useState<Record<string, FinalResult>>({});
+  const [statusLoading, setStatusLoading] = useState(false);
+  const [statusError, setStatusError] = useState<string | null>(null);
+
+  // New country selected — the previous country's status choice doesn't
+  // carry over; the default below re-derives once that country's overall
+  // best result (already fetched by analyzeForCountry) is in.
+  useEffect(() => {
+    setStatusFilter("");
+    setStatusError(null);
+  }, [pageCountry]);
+
+  // Seed the cache for whichever status the country's overall-best site
+  // actually has, straight from the result analyzeForCountry already
+  // fetched — no extra request needed for that one status.
+  useEffect(() => {
+    if (!pageCountry || !cached?.finalResult) return;
+    const s = normalizeStatus(cached.finalResult.status);
+    if (!s) return;
+    const key = `${cached.analysisId ?? pageCountry}::${s}`;
+    setRecoByStatus((prev) => (prev[key] ? prev : { ...prev, [key]: cached.finalResult }));
+  }, [pageCountry, cached?.finalResult]);
+
+  // Default the dropdown to that same status once it's known, so the page
+  // shows exactly what it always showed until the user picks a different
+  // status themselves.
+  useEffect(() => {
+    if (statusFilter) return;
+    if (!cached?.finalResult) return;
+    setStatusFilter(normalizeStatus(cached.finalResult.status) ?? "RECRUITING");
+  }, [statusFilter, cached?.finalResult]);
+
+  // Fetch the best site for the selected status when it isn't cached yet.
+  useEffect(() => {
+    if (!pageCountry || !statusFilter) return;
+    const analysisId = cached?.analysisId;
+    const key = `${analysisId ?? pageCountry}::${statusFilter}`;
+    if (recoByStatus[key]) return;
+    if (!analysisId) {
+      setStatusError(
+        "Switching status isn't available for this result — try re-selecting the country.",
+      );
+      return;
+    }
+    let cancelled = false;
+    setStatusLoading(true);
+    setStatusError(null);
+    fetchRecommendationForStatus(analysisId, statusFilter)
+      .then((res) => {
+        if (cancelled) return;
+        setRecoByStatus((prev) => ({ ...prev, [key]: res }));
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        setStatusError((err as Error).message);
+      })
+      .finally(() => {
+        if (!cancelled) setStatusLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [pageCountry, statusFilter, cached?.analysisId, recoByStatus]);
+
+  const finalResult =
+    pageCountry && statusFilter
+      ? recoByStatus[`${cached?.analysisId ?? pageCountry}::${statusFilter}`] ?? null
+      : null;
 
   const countryPicker = selectedCountries.length > 0 && (
     <div className="predict-head-actions">
@@ -75,6 +176,22 @@ export default function RecommendationPanel() {
         onChange={setPageCountry}
         placeholder="Select country to analyze…"
         options={selectedCountries.map((c) => ({ value: c, label: c }))}
+      />
+    </div>
+  );
+
+  const statusPicker = pageCountry && (
+    <div className="predict-head-actions">
+      <Select
+        className="status-filter-select"
+        value={statusFilter}
+        onChange={(v) => setStatusFilter(v as LiveStatusFilter)}
+        placeholder="Best of…"
+        disabled={statusLoading}
+        options={STATUS_OPTIONS.map((opt) => ({
+          value: opt.value,
+          label: opt.label,
+        }))}
       />
     </div>
   );
@@ -90,15 +207,15 @@ export default function RecommendationPanel() {
   const [draftError, setDraftError] = useState<string | null>(null);
 
   if (!finalResult) {
-    if (pageLoading) {
-      // Keep the country picker + action buttons visible and only put the
-      // loader in the body — a bare full-card loader used to blank out the
-      // dropdown and Save/Draft buttons while a country's recommendation
-      // was loading.
+    if (pageLoading || statusLoading) {
+      // Keep the country/status pickers + action buttons visible and only
+      // put the loader in the body — a bare full-card loader used to blank
+      // out the dropdowns and Save/Draft buttons while a result was loading.
       return (
         <div className="card">
           <div className="pipeline-card-head">
             {countryPicker}
+            {statusPicker}
           </div>
           <div
             style={{
@@ -109,7 +226,34 @@ export default function RecommendationPanel() {
               minHeight: 200,
             }}
           >
-            <StageLoader label="Loading final recommendation…" />
+            <StageLoader
+              label={
+                statusLoading && statusFilter
+                  ? `Loading best ${statusLabel(statusFilter)} site…`
+                  : "Loading final recommendation…"
+              }
+            />
+          </div>
+        </div>
+      );
+    }
+    if (statusError) {
+      return (
+        <div className="card">
+          <div className="pipeline-card-head">
+            {countryPicker}
+            {statusPicker}
+          </div>
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              flex: 1,
+              minHeight: 200,
+            }}
+          >
+            <EmptyState title="Could not load this recommendation" detail={statusError} />
           </div>
         </div>
       );
@@ -162,6 +306,7 @@ export default function RecommendationPanel() {
     <div className="card">
       <div className="pipeline-card-head">
         {countryPicker}
+        {statusPicker}
         <div style={{ display: "flex", gap: 8, marginLeft: "auto" }}>
           <button
             type="button"

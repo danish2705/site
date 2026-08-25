@@ -12,6 +12,7 @@ import { runRoutes } from "./routes/run.routes.js";
 import { runsRoutes } from "./routes/runs.routes.js";
 import { siteCombinationRoutes } from "./routes/siteCombination.routes.js";
 import { siteAnalysisRoutes } from "./routes/siteAnalysis.routes.js";
+import { siteRecommendationRoutes } from "./routes/siteRecommendation.routes.js";
 import { eligibilityFiltersRoutes } from "./routes/eligibilityFilters.routes.js";
 
 export function createApp() {
@@ -35,6 +36,7 @@ export function createApp() {
   app.use("/api", liveMapRoutes);
   app.use("/api", siteCombinationRoutes);
   app.use("/api", siteAnalysisRoutes);
+  app.use("/api", siteRecommendationRoutes);
   app.use("/api", eligibilityFiltersRoutes);
 
   app.use(notFound);
