@@ -1,13 +1,15 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import * as L from "leaflet";
 import "leaflet.markercluster";
 import "leaflet/dist/leaflet.css";
 import "leaflet.markercluster/dist/MarkerCluster.css";
 import "leaflet.markercluster/dist/MarkerCluster.Default.css";
 import type { MapSiteRow } from "../../types";
-import { useSiteMap } from "../../context/SiteMapContext";
+import { useIndependentSiteSearch } from "../../hooks/useIndependentSiteSearch";
 import WizardNextLink from "../ui/WizardNextLink";
 import StageLoader from "../ui/StageLoader";
+import Select from "../ui/Select";
+import EmptyState from "../ui/EmptyState";
 import {
   MILES_TO_METERS,
   SITE_MAP_METRIC,
@@ -144,11 +146,13 @@ export default function SiteMapGlobalPage() {
     loading,
     error,
     runSearch,
-    filteredSites,
     allSites,
-    selectedSiteId,
-    setSelectedSiteId,
-  } = useSiteMap();
+  } = useIndependentSiteSearch();
+  // Local to this page only — Site Map Details no longer shares state with
+  // this page (each of the 3 Site Map pages now has its own independent
+  // country/site data, per request), so there's nothing else to sync a
+  // clicked pin's selection with.
+  const [selectedSiteId, setSelectedSiteId] = useState<string | null>(null);
 
   const mapContainerRef = useRef<HTMLDivElement | null>(null);
   const mapInstanceRef = useRef<L.Map | null>(null);
@@ -240,7 +244,7 @@ export default function SiteMapGlobalPage() {
       radiusCircleRef.current = null;
     }
     const latLngs: [number, number][] = [];
-    for (const s of filteredSites) {
+    for (const s of allSites) {
       const marker = L.marker([s.lat, s.lng], { icon: siteIcon() });
       marker.bindPopup(buildPopupHtml(s, SITE_MAP_METRIC), { maxWidth: 280 });
       marker.bindTooltip(buildMarkerTooltipHtml(s), {
@@ -269,7 +273,7 @@ export default function SiteMapGlobalPage() {
       map.setView(WORLD_CENTER, WORLD_ZOOM);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filteredSites]);
+  }, [allSites]);
 
   // Focus whichever site is selected — whether that selection came from a
   // pin click here, or a table-row click on the Site Map Details page.
@@ -279,36 +283,31 @@ export default function SiteMapGlobalPage() {
     if (!selectedSiteId) return;
     const clusterGroup = clusterGroupRef.current;
     const marker = markerByIdRef.current.get(selectedSiteId);
-    const site = filteredSites.find((s) => s.siteId === selectedSiteId);
+    const site = allSites.find((s) => s.siteId === selectedSiteId);
     if (!clusterGroup || !marker || !site) return;
     showRadiusRing(site);
     clusterGroup.zoomToShowLayer(marker, () => {
       marker.openPopup();
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedSiteId, filteredSites]);
+  }, [selectedSiteId, allSites]);
 
   return (
     <div className="card">
-      <div className="map-controls">
-        <label
-          className="map-field"
-          title="Sourced from the region(s) already selected for this trial — either picked manually in Step 1, or applied from an AI region prediction."
-        >
-          <span>Country</span>
+      <div className="map-controls map-controls--flush">
+        {/* No tooltip here — this label sits at the very top of the card,
+            so a hover bubble that opens upward has nowhere to render and
+            just shows up as a box clipped above the viewport. */}
+        <label className="map-field">
           {selectedCountries.length > 0 ? (
-            <select value={country} onChange={(e) => setCountry(e.target.value)}>
-              {selectedCountries.map((c) => (
-                <option key={c} value={c}>
-                  {c}
-                </option>
-              ))}
-            </select>
+            <Select
+              value={country}
+              onChange={setCountry}
+              options={selectedCountries.map((c) => ({ value: c, label: c }))}
+            />
           ) : (
             <>
-              <select value="" disabled>
-                <option value="">All countries</option>
-              </select>
+              <Select value="" onChange={() => {}} disabled options={[{ value: "", label: "All countries" }]} />
               <span className="map-field-note">
                 No region selected yet — pick one in Step 1 (or apply an AI
                 prediction) to narrow this.
@@ -322,32 +321,34 @@ export default function SiteMapGlobalPage() {
           onClick={runSearch}
           disabled={loading || !indication}
         >
-          {loading ? (
-            <>
-              <span className="spinner" /> Searching…
-            </>
-          ) : (
-            "Search"
-          )}
+          Search
         </button>
+
+        {/* Compact inline notice next to the button instead of a large
+            dashed placeholder box taking up the whole panel below. */}
+        {!data && !loading && !error && (
+          <span className="map-no-search-note">
+            No search yet — hit Search to plot sites.
+          </span>
+        )}
       </div>
 
       <div className="card-scroll-body">
         {error && <p className="error-text">{error}</p>}
 
-        {loading && <StageLoader label="Loading site map…" />}
-
-        {!data && !loading && !error && (
-          <p className="predict-placeholder">
-            No search yet — hit Search to plot real trial sites for this
-            indication worldwide, without changing your left-hand filters.
-          </p>
-        )}
-
         {/* Always visible (not conditionally hidden) — creating the Leaflet
             map while its container is display:none leaves Leaflet with a
-            stale/zero size it never recovers from on its own. */}
-        <div style={{ marginTop: 14 }}>
+            stale/zero size it never recovers from on its own. The loading
+            spinner overlays this same box (centered over the map itself)
+            instead of sitting in its own space above it, so it doesn't
+            leave a tall, mostly-empty gap between the toolbar and the map
+            while a search is in flight. */}
+        <div style={{ marginTop: 14, position: "relative" }}>
+          {loading && (
+            <div className="map-loading-overlay">
+              <StageLoader label="Loading site map…" />
+            </div>
+          )}
           <div
             ref={mapContainerRef}
             style={{
@@ -413,16 +414,11 @@ export default function SiteMapGlobalPage() {
               {SITE_MAP_RADIUS_MILES}-mile catchment — shown when you click a
               site
             </span>
-            <span className="map-legend-note">
-              Cluster color/number is just a count of nearby sites — risk
-              score is shown on the Site Map Details page and in each site's
-              popup
-            </span>
           </div>
         </div>
 
         {data && allSites.length === 0 && !error && (
-          <p className="predict-placeholder">No live sites found for this search.</p>
+          <EmptyState icon="🔍" title="No live sites found" detail="Try a different country or adjust your search." />
         )}
       </div>
       <WizardNextLink />

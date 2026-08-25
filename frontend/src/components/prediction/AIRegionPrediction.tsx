@@ -1,12 +1,15 @@
 import { useEffect, useRef, useState } from "react";
 import type { TrialForm, RegionPredictionResponse } from "../../types";
 import { predictRegion } from "../../services/region.service";
+import EmptyState from "../ui/EmptyState";
 
 export default function AIRegionPrediction({
   form,
   disabled,
   onApply,
   autoPredict = false,
+  onResultChange,
+  onCancelClose,
 }: {
   form: TrialForm;
   disabled: boolean;
@@ -16,12 +19,27 @@ export default function AIRegionPrediction({
    * inside the modal — used by PredictRegionModal, since opening the modal
    * already IS the "predict" action from the user's point of view. */
   autoPredict?: boolean;
+  /** Fires whenever a result becomes available/unavailable — lets
+   * PredictRegionModal widen itself once there's an actual recommendation
+   * to show, instead of sitting at a wide fixed width during the initial
+   * "Predicting…" state when there's nothing but a title and a button. */
+  onResultChange?: (hasResult: boolean) => void;
+  /** Called when the user cancels the very first (autoPredict) prediction
+   * — closes the modal entirely instead of leaving it open on an empty
+   * "No prediction yet" placeholder with just a button, which read like a
+   * broken/stuck state rather than a completed cancel. */
+  onCancelClose?: () => void;
 }) {
   const [result, setResult] = useState<RegionPredictionResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showAll, setShowAll] = useState(false);
   const [applied, setApplied] = useState<string | null>(null);
+
+  useEffect(() => {
+    onResultChange?.(!!result);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [result]);
 
   useEffect(() => {
     setResult(null);
@@ -44,20 +62,31 @@ export default function AIRegionPrediction({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [autoPredict, disabled, form.indication]);
 
+  const predictAbortRef = useRef<AbortController | null>(null);
+
   async function predict() {
     setLoading(true);
     setError(null);
     setApplied(null);
+    const controller = new AbortController();
+    predictAbortRef.current = controller;
     try {
-      const data = await predictRegion({
-        indication: form.indication,
-        phase: form.phase,
-        sampleSize: form.sampleSize,
-        durationMonths: form.durationMonths,
-        budgetTier: form.budgetTier,
-      });
+      const data = await predictRegion(
+        {
+          indication: form.indication,
+          phase: form.phase,
+          sampleSize: form.sampleSize,
+          durationMonths: form.durationMonths,
+          budgetTier: form.budgetTier,
+        },
+        controller.signal,
+      );
       setResult(data);
     } catch (err) {
+      if ((err as Error).name === "AbortError") {
+        // Cancelled by the user — not a real failure, stay silent.
+        return;
+      }
       setError((err as Error).message);
       setResult(null);
     } finally {
@@ -65,15 +94,46 @@ export default function AIRegionPrediction({
     }
   }
 
+  function cancelPredict() {
+    predictAbortRef.current?.abort();
+    // Only closing on the initial (autoPredict) prediction — cancelling a
+    // later "Re-predict" should just fall back to the existing result
+    // rather than closing a modal the user is actively looking at.
+    if (!result) onCancelClose?.();
+  }
+
   const p = result?.prediction;
   const visibleCandidates = showAll
     ? (result?.candidates ?? [])
     : (result?.candidates ?? []).slice(0, 5);
 
+  // Before a result exists, "loading" IS the whole modal (title + a
+  // "Predicting…" button and nothing else beneath it) — replacing that
+  // with a plain centered loader + Cancel matches every other
+  // long-running step in this app (Run Analysis, Risk Register, Ranking)
+  // instead of a one-off button-spinner look. Once a result exists, a
+  // later "Re-predict" keeps the small inline spinner instead, so the
+  // existing recommendation stays visible while the new one loads.
+  if (loading && !result) {
+    return (
+      <div className="predict-card-content predict-card-content--loading">
+        <span className="run-loading-spinner" aria-hidden="true" />
+        <div className="run-loading-title">Predicting region…</div>
+        <button
+          type="button"
+          className="btn-secondary run-loading-cancel"
+          onClick={cancelPredict}
+        >
+          Cancel
+        </button>
+      </div>
+    );
+  }
+
   return (
     <div className="predict-card-content">
       <div className="predict-head">
-        <div className="predict-head-top">
+        <div className="predict-head-top predict-head-top--stacked">
           <div className="predict-head-text">
             <span className="predict-title">Predicted Region / Country</span>
           </div>
@@ -89,7 +149,7 @@ export default function AIRegionPrediction({
             )}
             <button
               type="button"
-              className="predict-btn"
+              className="predict-btn predict-btn--square"
               onClick={predict}
               disabled={disabled || loading || !form.indication}
             >
@@ -105,21 +165,17 @@ export default function AIRegionPrediction({
             </button>
           </div>
         </div>
-        <p className="section-hint">
-          Instead of choosing a region yourself, let the model propose one from
-          the trial requirements — then apply it to the form and run the
-          pipeline.
-        </p>
       </div>
 
       <div className="card-scroll-body">
         {error && <p className="error-text">{error}</p>}
 
         {!result && !loading && !error && (
-          <p className="predict-placeholder">
-            No prediction yet — run it to see a recommended region, why it was
-            chosen, and how every viable region scored.
-          </p>
+          <EmptyState
+            icon="✦"
+            title="No prediction yet"
+            detail="Run it to see a recommended region, why it was chosen, and how every viable region scored."
+          />
         )}
 
         {result && p && (
@@ -286,7 +342,7 @@ export default function AIRegionPrediction({
                             {c.competingTrialsSource === "live" && (
                               <span
                                 className="chip live-chip"
-                                title="Live count from ClinicalTrials.gov"
+                                data-tooltip="Live count from ClinicalTrials.gov"
                               >
                                 live
                               </span>

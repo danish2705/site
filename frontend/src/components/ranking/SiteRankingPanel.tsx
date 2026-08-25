@@ -1,10 +1,15 @@
-import { Fragment, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 import { usePipeline } from "../../hooks/usePipeline";
 import ScoreBreakdown from "./ScoreBreakdown";
 import WizardNextLink from "../ui/WizardNextLink";
-import StageLoader from "../ui/StageLoader";
+import TableSkeleton from "../ui/TableSkeleton";
+import Select from "../ui/Select";
 import { fetchOutreachDraft } from "../../services/siteCombination.service";
+import OutreachDraftModal from "../ui/OutreachDraftModal";
+import { MailIcon } from "../ui/Icons";
+import { countriesFromRegionKeys } from "../../utils/region";
 import type { OutreachDraft, RankingRow } from "../../types";
+import EmptyState from "../ui/EmptyState";
 
 type LiveStatusFilter = "RECRUITING" | "NOT_YET_RECRUITING" | "ACTIVE_NOT_RECRUITING";
 
@@ -44,10 +49,34 @@ function statusBand(
 }
 
 export default function SiteRankingPanel() {
-  const { ranking, form, running, analyzing } = usePipeline();
+  const { ranking, form, running, analyzing, analyzeForCountry } = usePipeline();
   // Default to Recruiting per request — the strongest, currently-live
   // signal. Only these three statuses are offered.
   const [statusFilter, setStatusFilter] = useState<LiveStatusFilter>("RECRUITING");
+  // Country picker — same idea as Risk Register's: picking a country here
+  // fetches its live sites and re-runs Stages 4-8 (Risk Register, Ranking,
+  // Final Recommendation) against just that country, so ranking can be
+  // checked country-by-country without leaving this page.
+  const selectedCountries = countriesFromRegionKeys(form.regions);
+  const [analysisCountry, setAnalysisCountry] = useState("");
+
+  // Default the picker to the first selected country (same convention as
+  // Ongoing Trials' country picker) so it shows an actual country instead
+  // of sitting on the "Select country to analyze…" placeholder — this is
+  // purely a display default, it does not call analyzeForCountry itself.
+  useEffect(() => {
+    if (selectedCountries.length === 0) {
+      if (analysisCountry) setAnalysisCountry("");
+    } else if (!selectedCountries.includes(analysisCountry)) {
+      setAnalysisCountry(selectedCountries[0]);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedCountries.join("|")]);
+
+  function handleCountryChange(country: string) {
+    setAnalysisCountry(country);
+    if (country) analyzeForCountry(country);
+  }
 
   const filteredRanking = useMemo(() => {
     if (!ranking) return [];
@@ -109,16 +138,16 @@ export default function SiteRankingPanel() {
     if (running || analyzing) {
       return (
         <div className="card">
-          <StageLoader label="Loading site ranking…" />
+          <TableSkeleton columns={9} rows={7} label="Loading site ranking…" />
         </div>
       );
     }
     return (
       <div className="card">
-        <p className="predict-placeholder">
-          No ranking yet — search Ongoing Trials and click "Send to Risk
-          Assessment &amp; Ranking" to populate this.
-        </p>
+        <EmptyState
+          title="No ranking yet"
+          detail='Search Ongoing Trials and click "Send to Risk Assessment & Ranking" to populate this.'
+        />
       </div>
     );
   }
@@ -127,20 +156,28 @@ export default function SiteRankingPanel() {
     <div className="card">
       <div className="predict-head">
         <div className="predict-head-top">
+          {selectedCountries.length > 0 && (
+            <div className="predict-head-actions">
+              <Select
+                value={analysisCountry}
+                onChange={handleCountryChange}
+                disabled={analyzing}
+                placeholder="Select country to analyze…"
+                options={selectedCountries.map((c) => ({ value: c, label: c }))}
+              />
+            </div>
+          )}
           <div className="predict-head-actions" style={{ marginLeft: "auto" }}>
-            <select
+            <Select
+              className="status-filter-select"
               value={statusFilter}
-              onChange={(e) =>
-                setStatusFilter(e.target.value as LiveStatusFilter)
-              }
-              title="Filter sites by trial status"
-            >
-              {STATUS_OPTIONS.map((opt) => (
-                <option key={opt.value} value={opt.value}>
-                  {opt.label}
-                </option>
-              ))}
-            </select>
+              onChange={(v) => setStatusFilter(v as LiveStatusFilter)}
+              data-tooltip="Filter sites by trial status"
+              options={STATUS_OPTIONS.map((opt) => ({
+                value: opt.value,
+                label: opt.label,
+              }))}
+            />
             <span className="map-table-count">
               {filteredRanking.length.toLocaleString()} of{" "}
               {ranking.length.toLocaleString()} site(s)
@@ -149,22 +186,36 @@ export default function SiteRankingPanel() {
         </div>
       </div>
       {draftError && <p className="error-text">{draftError}</p>}
-      <div className="card-scroll-body">
+      <div className="card-scroll-body ranking-scroll-body">
         <div className="table-scroll">
-          <table>
+          <table className="ranking-table">
+            <colgroup>
+              <col style={{ width: "4%" }} />
+              <col style={{ width: "24%" }} />
+              <col style={{ width: "9%" }} />
+              <col style={{ width: "10%" }} />
+              <col style={{ width: "16%" }} />
+              <col style={{ width: "10%" }} />
+              <col style={{ width: "8%" }} />
+              <col style={{ width: "10%" }} />
+              <col style={{ width: "9%" }} />
+            </colgroup>
             <thead>
               <tr>
                 <th>Rank</th>
-                <th>Site</th>
+                <th className="ranking-site-col">Site</th>
                 <th>Region</th>
                 <th>Score</th>
                 <th>Breakdown</th>
                 <th>Protocol fit</th>
                 <th>Risk</th>
-                <th title="Live ClinicalTrials.gov status for this site.">
+                <th data-tooltip="Live ClinicalTrials.gov status for this site.">
                   Status
                 </th>
-                <th title="Draft-only outreach text — no real contact email exists for these sites, and this app never actually sends anything.">
+                <th
+                  style={{ textAlign: "center" }}
+                  data-tooltip="Draft-only outreach text — no real contact email exists for these sites, and this app never actually sends anything."
+                >
                   Outreach
                 </th>
               </tr>
@@ -181,7 +232,7 @@ export default function SiteRankingPanel() {
                 <Fragment key={r.siteId}>
                 <tr>
                   <td>{r.rank}</td>
-                  <td>
+                  <td className="ranking-site-col">
                     {r.siteName}
                     <div className="site-id">{r.siteId}</div>
                   </td>
@@ -191,7 +242,7 @@ export default function SiteRankingPanel() {
                     {r.confidence !== "High" && (
                       <div
                         className="score-confidence"
-                        title={r.caveats.join(" ")}
+                        data-tooltip={r.caveats.join(" ")}
                       >
                         {r.confidence.toLowerCase()} confidence
                       </div>
@@ -211,7 +262,7 @@ export default function SiteRankingPanel() {
                     ) : (
                       <span
                         className="badge medium"
-                        title={`Fails: ${r.failedCriteria.join(", ")}`}
+                        data-tooltip={`Fails: ${r.failedCriteria.join(", ")}`}
                       >
                         {r.failedCriteria.length} unmet
                       </span>
@@ -227,75 +278,30 @@ export default function SiteRankingPanel() {
                       {statusLabel(r.status)}
                     </span>
                   </td>
-                  <td>
+                  <td style={{ textAlign: "center" }}>
                     <button
                       type="button"
-                      className="predict-btn"
-                      style={{ fontSize: 12, padding: "4px 10px" }}
+                      className="predict-btn predict-btn-icon"
                       onClick={() => draftOutreachFor(r)}
                       disabled={draftLoadingSiteId === r.siteId}
+                      data-tooltip={
+                        draftLoadingSiteId === r.siteId
+                          ? "Drafting…"
+                          : openDraftSiteId === r.siteId
+                            ? "Hide draft"
+                            : drafts[r.siteId]
+                              ? "View draft"
+                              : "Draft email"
+                      }
                     >
-                      {draftLoadingSiteId === r.siteId
-                        ? "Drafting…"
-                        : openDraftSiteId === r.siteId
-                          ? "Hide draft"
-                          : drafts[r.siteId]
-                            ? "View draft"
-                            : "Draft email"}
+                      {draftLoadingSiteId === r.siteId ? (
+                        <span className="spinner" />
+                      ) : (
+                        <MailIcon className="btn-icon" />
+                      )}
                     </button>
                   </td>
                 </tr>
-                {openDraftSiteId === r.siteId && drafts[r.siteId] && (
-                  <tr>
-                    <td colSpan={9} style={{ background: "#f7f8fb" }}>
-                      <div style={{ padding: "10px 4px" }}>
-                        <div
-                          style={{
-                            display: "flex",
-                            alignItems: "center",
-                            gap: 8,
-                            marginBottom: 6,
-                          }}
-                        >
-                          <strong>Outreach draft (not sent)</strong>
-                          <span className="chip">synthetic contact</span>
-                        </div>
-                        <p
-                          className="warning-text"
-                          style={{ marginTop: 0 }}
-                        >
-                          This is draft-only text — nothing is emailed
-                          from this app. ClinicalTrials.gov does not
-                          reliably disclose a real per-facility contact,
-                          so the address below is a fabricated
-                          placeholder, not a real inbox. Verify the
-                          site's actual contact and send from your own
-                          email tool if you want this to actually go
-                          out.
-                        </p>
-                        <div style={{ fontSize: 13 }}>
-                          <div>
-                            <strong>To:</strong>{" "}
-                            {drafts[r.siteId].contactEmail}
-                          </div>
-                          <div>
-                            <strong>Subject:</strong>{" "}
-                            {drafts[r.siteId].subject}
-                          </div>
-                          <pre
-                            style={{
-                              whiteSpace: "pre-wrap",
-                              marginTop: 6,
-                              fontFamily: "inherit",
-                            }}
-                          >
-                            {drafts[r.siteId].body}
-                          </pre>
-                        </div>
-                      </div>
-                    </td>
-                  </tr>
-                )}
                 </Fragment>
               ))}
             </tbody>
@@ -303,6 +309,13 @@ export default function SiteRankingPanel() {
         </div>
       </div>
       <WizardNextLink />
+
+      {openDraftSiteId && drafts[openDraftSiteId] && (
+        <OutreachDraftModal
+          draft={drafts[openDraftSiteId]}
+          onClose={() => setOpenDraftSiteId(null)}
+        />
+      )}
     </div>
   );
 }

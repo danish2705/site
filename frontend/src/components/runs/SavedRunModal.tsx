@@ -30,7 +30,7 @@ export default function SavedRunModal({
             type="button"
             className="icon-close-btn"
             onClick={onClose}
-            title="Close"
+            data-tooltip="Close"
             aria-label="Close"
           >
             <CloseIcon className="btn-icon" />
@@ -94,7 +94,7 @@ export default function SavedRunModal({
                       ) : (
                         <span
                           className="badge medium"
-                          title={`Fails: ${(s.failed_criteria ?? []).join(", ")}`}
+                          data-tooltip={`Fails: ${(s.failed_criteria ?? []).join(", ")}`}
                         >
                           {(s.failed_criteria ?? []).length} unmet
                         </span>

@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { TrialForm } from "../../types";
 import AIRegionPrediction from "../prediction/AIRegionPrediction";
 import { CloseIcon } from "./Icons";
@@ -30,6 +30,10 @@ export default function PredictRegionModal({
   onClose: () => void;
 }) {
   const dialogRef = useRef<HTMLDivElement | null>(null);
+  // Starts compact (title + button, nothing else yet) and widens once a
+  // prediction actually comes back with content worth the extra room —
+  // see AIRegionPrediction's onResultChange.
+  const [hasResult, setHasResult] = useState(false);
 
   useEffect(() => {
     // Focus the dialog on open so Escape/keyboard interaction works right
@@ -45,7 +49,7 @@ export default function PredictRegionModal({
   return (
     <div className="run-modal-backdrop" onClick={onClose}>
       <div
-        className="run-modal run-modal-wide predict-region-modal"
+        className={`run-modal predict-region-modal${hasResult ? " predict-region-modal--wide" : ""}`}
         onClick={(e) => e.stopPropagation()}
         role="dialog"
         aria-modal="true"
@@ -53,19 +57,27 @@ export default function PredictRegionModal({
         ref={dialogRef}
         tabIndex={-1}
       >
-        <button
-          type="button"
-          className="icon-close-btn predict-region-modal-close"
-          onClick={onClose}
-          title="Close"
-          aria-label="Close"
-        >
-          <CloseIcon className="btn-icon" />
-        </button>
+        <div className="predict-region-modal-close-bar">
+          <button
+            type="button"
+            className="icon-close-btn"
+            onClick={onClose}
+            // No tooltip here — this button sits right at the top edge of
+            // the modal (inside the sticky close-bar), so the hover bubble
+            // (positioned above the trigger) had nowhere to render and
+            // showed as a clipped/blank white shape instead of readable
+            // text. The X icon is unambiguous on its own.
+            aria-label="Close"
+          >
+            <CloseIcon className="btn-icon" />
+          </button>
+        </div>
         <AIRegionPrediction
           form={form}
           disabled={disabled}
           autoPredict
+          onResultChange={setHasResult}
+          onCancelClose={onClose}
           onApply={(region, country) => {
             onApply(region, country);
             // Stay open after applying — the confirmation ("Applied to

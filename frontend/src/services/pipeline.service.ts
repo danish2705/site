@@ -2,7 +2,10 @@ import type { LiveFacilityRow, TrialForm } from "../types";
 import { apiFetch } from "./api";
 import { parseRegionKey } from "../utils/region";
 
-export async function streamRun(form: TrialForm): Promise<Response> {
+export async function streamRun(
+  form: TrialForm,
+  signal?: AbortSignal,
+): Promise<Response> {
   const res = await apiFetch("/api/run", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -10,6 +13,7 @@ export async function streamRun(form: TrialForm): Promise<Response> {
       ...form,
       regions: form.regions.map(parseRegionKey),
     }),
+    signal,
   });
   if (!res.body) {
     throw new Error("Streaming not supported by this browser/response.");

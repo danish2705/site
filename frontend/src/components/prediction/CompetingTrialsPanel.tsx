@@ -3,7 +3,9 @@ import type { LiveTrialLandscapeResponse } from "../../types";
 import { fetchLiveTrialLandscape } from "../../services/liveTrials.service";
 import { usePipeline } from "../../hooks/usePipeline";
 import WizardNextLink from "../ui/WizardNextLink";
-import StageLoader from "../ui/StageLoader";
+import TableSkeleton from "../ui/TableSkeleton";
+import Select from "../ui/Select";
+import Tooltip from "../ui/Tooltip";
 
 export default function CompetingTrialsPanel({
   indication,
@@ -203,27 +205,39 @@ export default function CompetingTrialsPanel({
     return "no-data";
   }
 
+  // Dot color for the status pill in the toolbar — mirrors statusBand's
+  // groupings (recruiting=green, in-between=amber, stopped-for-cause=red,
+  // completed=blue-ish info) using the same design tokens as .badge.
+  function statusFilterDotColor(filter: StatusFilter): string {
+    switch (filter) {
+      case "recruiting":
+        return "var(--low)";
+      case "not_yet_recruiting":
+      case "active_not_recruiting":
+      case "enrolling_by_invitation":
+        return "var(--med)";
+      case "completed":
+        return "var(--info)";
+      case "other":
+        return "var(--high)";
+      default:
+        return "var(--sub)";
+    }
+  }
+
   return (
     <div className="card">
       <div className="predict-head">
         <div className="predict-head-top">
-          {/* predict-head-top is justify-content:space-between, which relied
-              on the (now-removed) title occupying the "left" slot to push
-              this to the right — margin-left:auto keeps that same
-              right-aligned position with only one child left in the row. */}
-          <div className="predict-head-actions" style={{ marginLeft: "auto" }}>
+          {/* Country picker + Search kept on the left (predict-head-top's
+              default flex start alignment) per request. */}
+          <div className="predict-head-actions">
             {selectedCountries.length > 0 && (
-              <select
+              <Select
                 value={country}
-                onChange={(e) => setCountry(e.target.value)}
-              >
-                <option value="">All selected countries</option>
-                {selectedCountries.map((c) => (
-                  <option key={c} value={c}>
-                    {c}
-                  </option>
-                ))}
-              </select>
+                onChange={setCountry}
+                options={selectedCountries.map((c) => ({ value: c, label: c }))}
+              />
             )}
             <button
               type="button"
@@ -246,7 +260,7 @@ export default function CompetingTrialsPanel({
       <div className="card-scroll-body">
       {error && <p className="error-text">{error}</p>}
 
-      {loading && !data && <StageLoader label="Loading ongoing trials…" />}
+      {loading && !data && <TableSkeleton columns={5} rows={7} label="Loading ongoing trials…" />}
 
       {data?.warnings.map((w, i) => (
         <p key={i} className="warning-text">
@@ -256,45 +270,69 @@ export default function CompetingTrialsPanel({
 
       {data && (
         <>
-          <div className="final-grid" style={{ marginTop: 4, marginBottom: 12 }}>
-            <div className="item">
-              <div className="k">Active / competing sites</div>
-              <div className="v">{activeCompetingSites.toLocaleString()}</div>
+          <div className="ct-toolbar">
+            <div className="ct-stat-item ct-stat-item--inline">
+              <div className="ct-stat-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <rect x="3" y="3" width="7" height="7" rx="1.5" />
+                  <rect x="14" y="3" width="7" height="7" rx="1.5" />
+                  <rect x="3" y="14" width="7" height="7" rx="1.5" />
+                  <rect x="14" y="14" width="7" height="7" rx="1.5" />
+                </svg>
+              </div>
+              <div className="ct-stat-text">
+                <div className="k">Active / Competing Sites</div>
+                <div className="v">{activeCompetingSites.toLocaleString()}</div>
+              </div>
             </div>
-            <div className="item">
-              <div className="k">Trial/site rows found (last {RECENT_YEARS} yrs)</div>
-              <div className="v">{recentFacilities.length.toLocaleString()}</div>
+            <div className="ct-divider" />
+            <div className="ct-stat-item ct-stat-item--inline">
+              <div className="ct-stat-icon green">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M3 3v18h18" />
+                  <path d="m19 9-5 5-4-4-3 3" />
+                </svg>
+              </div>
+              <div className="ct-stat-text">
+                <div className="k">Trial / Site Rows Found (Last {RECENT_YEARS} yrs)</div>
+                <div className="v">{recentFacilities.length.toLocaleString()}</div>
+              </div>
             </div>
-          </div>
-
-          <div className="map-controls">
-            <input
-              type="search"
-              className="map-search-input"
-              placeholder="Search trial, site, city, or country…"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-            />
-            <select
-              value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value as StatusFilter)}
-              title="Filter rows by trial status"
-            >
-              <option value="all">All statuses</option>
-              <option value="recruiting">Recruiting</option>
-              <option value="not_yet_recruiting">Not Yet Recruiting</option>
-              <option value="active_not_recruiting">
-                Active, Not Recruiting
-              </option>
-              <option value="enrolling_by_invitation">
-                Enrolling By Invitation
-              </option>
-              <option value="completed">Completed</option>
-              <option value="other">
-                Other (Terminated/Withdrawn/Suspended/Unknown)
-              </option>
-            </select>
-            <span className="map-table-count">
+            <div className="ct-divider" />
+            <div className="ct-search-wrap">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="11" cy="11" r="7" />
+                <path d="m21 21-4.3-4.3" />
+              </svg>
+              <input
+                type="search"
+                placeholder="Search trial, site, city, or country…"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+              />
+            </div>
+            <div className="ct-divider" />
+            <div className="ct-status-wrap">
+              <span
+                className="ct-status-dot"
+                style={{ background: statusFilterDotColor(statusFilter) }}
+              />
+              <Select
+                className="ct-status-select"
+                value={statusFilter}
+                onChange={(v) => setStatusFilter(v as StatusFilter)}
+                data-tooltip="Filter rows by trial status"
+                options={[
+                  { value: "all", label: "All statuses" },
+                  { value: "recruiting", label: "Recruiting" },
+                  { value: "not_yet_recruiting", label: "Not Yet Recruiting" },
+                  { value: "active_not_recruiting", label: "Active, Not Recruiting" },
+                  { value: "completed", label: "Completed" },
+                ]}
+              />
+            </div>
+            <div className="ct-divider" />
+            <span className="ct-count-chip">
               {filtered.length.toLocaleString()} of{" "}
               {recentFacilities.length.toLocaleString()} row(s)
             </span>
@@ -325,8 +363,9 @@ export default function CompetingTrialsPanel({
                     .join(", ");
                   return (
                     <tr key={`${f.nctId}-${i}`}>
-                      <td
-                        title={f.briefTitle ?? undefined}
+                      <Tooltip
+                        as="td"
+                        text={f.briefTitle ?? undefined}
                         style={{
                           overflow: "hidden",
                           textOverflow: "ellipsis",
@@ -343,7 +382,7 @@ export default function CompetingTrialsPanel({
                         {f.briefTitle && f.nctId && (
                           <div className="site-id">{f.nctId}</div>
                         )}
-                      </td>
+                      </Tooltip>
                       <td>
                         <span className={`badge ${statusBand(f.status)}`}>
                           {statusLabel(f.status)}
@@ -356,7 +395,6 @@ export default function CompetingTrialsPanel({
                           textOverflow: "ellipsis",
                           whiteSpace: "nowrap",
                         }}
-                        title={f.facility || location || undefined}
                       >
                         {f.facility || location || "—"}
                       </td>

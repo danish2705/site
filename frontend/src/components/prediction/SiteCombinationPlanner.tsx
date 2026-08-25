@@ -1,15 +1,43 @@
 import { useEffect, useRef, useState } from "react";
 import type {
   MapSiteRow,
-  OutreachDraftResponse,
   SiteCombinationResponse,
+  SiteCombinationStrategyResult,
 } from "../../types";
-import {
-  fetchOutreachDraft,
-  fetchSiteCombination,
-} from "../../services/siteCombination.service";
+
+// Short display labels for the strategy cards — the API's `label` field is a
+// full sentence (e.g. "Lowest risk first — accumulate the least-risky sites
+// until the target is met"), which reads as too much text on a compact card.
+// We keep the full sentence available as a hover tooltip instead of dropping
+// it.
+const STRATEGY_SHORT_LABEL: Record<
+  SiteCombinationStrategyResult["strategy"],
+  string
+> = {
+  "lowest-risk-first": "Least-risky sites",
+  "lowest-cost-first": "Cheapest sites",
+  "highest-capacity-first": "Highest-capacity sites",
+  balanced: "Balanced",
+};
+
+// A light tint per strategy so the four cards read as distinct at a
+// glance instead of four identical white boxes — reuses the app's own
+// existing color tokens (the same tints already used for risk/status
+// badges elsewhere) rather than introducing new colors.
+const STRATEGY_CARD_TINT: Record<
+  SiteCombinationStrategyResult["strategy"],
+  string
+> = {
+  "lowest-risk-first": "var(--low-bg)",
+  "lowest-cost-first": "var(--info-bg)",
+  "highest-capacity-first": "var(--med-bg)",
+  balanced: "var(--accent-soft)",
+};
+import { fetchSiteCombination } from "../../services/siteCombination.service";
 import WizardNextLink from "../ui/WizardNextLink";
 import StageLoader from "../ui/StageLoader";
+import Select from "../ui/Select";
+import Tooltip from "../ui/Tooltip";
 
 /**
  * "Which sites, together, get me to my enrollment target" planner — the
@@ -31,14 +59,25 @@ import StageLoader from "../ui/StageLoader";
 export default function SiteCombinationPlanner({
   indication,
   country,
-  phase,
+  selectedCountries,
+  onCountryChange,
+  onSearchCountry,
+  countrySearchLoading,
   sites,
   defaultTargetEnrollment,
 }: {
   indication: string;
   /** Required — the combination optimizer calls the same country-scoped cost estimate the rest of the app uses, so a specific country (not a global/all-countries search) is needed. */
   country: string;
-  /** Optional — passed through to outreach draft generation only. */
+  /** The trial's selected region(s) countries — populates the Country dropdown, same list Site Map (Global)/Details use. */
+  selectedCountries?: string[];
+  /** Switches which country's sites this planner (and the shared Site Map data) is scoped to. */
+  onCountryChange?: (country: string) => void;
+  /** Re-fetches the site list for whichever country is currently selected — same search Site Map (Global)/Details trigger. */
+  onSearchCountry?: () => void;
+  /** True while onSearchCountry's fetch is in flight. */
+  countrySearchLoading?: boolean;
+  /** Optional — accepted for callers that still pass it; no longer used here since outreach-draft generation was removed. */
   phase?: string;
   sites: MapSiteRow[];
   defaultTargetEnrollment?: number;
@@ -50,12 +89,6 @@ export default function SiteCombinationPlanner({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const [drafts, setDrafts] = useState<OutreachDraftResponse | null>(null);
-  const [draftLoading, setDraftLoading] = useState(false);
-  const [draftError, setDraftError] = useState<string | null>(null);
-  const [draftStrategyKey, setDraftStrategyKey] = useState<string | null>(
-    null,
-  );
   // Once the user types into the Target Enrollment field themselves, stop
   // overwriting it with the sidebar's value — a deliberate what-if edit
   // here shouldn't get silently reverted if the sidebar value changes.
@@ -74,7 +107,6 @@ export default function SiteCombinationPlanner({
     }
     setLoading(true);
     setError(null);
-    setDrafts(null);
     try {
       const res = await fetchSiteCombination({
         indication,
@@ -97,34 +129,6 @@ export default function SiteCombinationPlanner({
       setResult(null);
     } finally {
       setLoading(false);
-    }
-  }
-
-  async function draftOutreach(strategy: SiteCombinationResponse["strategies"][number]) {
-    setDraftLoading(true);
-    setDraftError(null);
-    setDraftStrategyKey(strategy.strategy);
-    try {
-      const res = await fetchOutreachDraft({
-        indication,
-        phase,
-        targetEnrollment: result?.targetEnrollment,
-        sites: strategy.sites.map((s) => {
-          const src = sites.find((m) => m.siteId === s.siteId);
-          return {
-            siteId: s.siteId,
-            siteName: s.siteName,
-            city: src?.city ?? null,
-            country: src?.country ?? null,
-          };
-        }),
-      });
-      setDrafts(res);
-    } catch (err) {
-      setDraftError((err as Error).message);
-      setDrafts(null);
-    } finally {
-      setDraftLoading(false);
     }
   }
 
@@ -160,11 +164,60 @@ export default function SiteCombinationPlanner({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [defaultTargetEnrollment, sites.length]);
 
+  const showLoadingOverlay = loading || !!countrySearchLoading;
+
   return (
     <div className="card">
-      <div className="card-scroll-body">
+      <div className="card-scroll-body" style={{ position: "relative" }}>
+      {/* Overlays whatever's already on screen (stale results, or nothing
+          yet) instead of squeezing its own StageLoader in above them, so it
+          sits centered in the middle of the panel — same pattern as Site
+          Map Details. Covers both loading states this page has: refetching
+          sites for a newly picked country, and computing a combination. */}
+      {showLoadingOverlay && (
+        <div className="table-loading-overlay">
+          <StageLoader
+            label={
+              countrySearchLoading
+                ? "Loading sites…"
+                : "Finding site combinations…"
+            }
+          />
+        </div>
+      )}
       <div className="map-controls">
-        <label className="map-field">
+        {selectedCountries && selectedCountries.length > 0 ? (
+          <>
+            {/* No label span here (unlike Target Enrollment below) — pushed
+                down 20px to match where a label would otherwise put it, same
+                trick .map-search-btn already uses to line up with a labeled
+                field beside it. */}
+            <label className="map-field" style={{ marginTop: 20 }}>
+              <Select
+                value={country}
+                onChange={(v) => onCountryChange?.(v)}
+                options={selectedCountries.map((c) => ({ value: c, label: c }))}
+              />
+            </label>
+            {/* No spinner/"Searching..." swap here — the centered overlay
+                above is the one loading indicator for this action. */}
+            <button
+              type="button"
+              className="predict-btn map-search-btn"
+              onClick={() => onSearchCountry?.()}
+              disabled={!!countrySearchLoading || !indication}
+            >
+              Search
+            </button>
+          </>
+        ) : (
+          <span className="map-field-note">
+            No region selected yet — pick one in Step 1 (or apply an AI
+            prediction) to choose a country here.
+          </span>
+        )}
+
+        <label className="map-field" style={{ marginLeft: "auto" }}>
           <span>Target enrollment</span>
           <input
             type="number"
@@ -177,27 +230,20 @@ export default function SiteCombinationPlanner({
             }}
           />
         </label>
+        {/* Same — no spinner/"Computing..." swap, the centered overlay
+            above covers this button's loading state too. */}
         <button
           type="button"
           className="predict-btn map-search-btn"
           onClick={() => run()}
-          disabled={loading || !target}
+          disabled={loading || !target || !country}
+          data-tooltip={!country ? "Select a country above first" : undefined}
         >
-          {loading ? (
-            <>
-              <span className="spinner" /> Computing…
-            </>
-          ) : (
-            "Find combination"
-          )}
+          Find combination
         </button>
       </div>
 
       {error && <p className="error-text">{error}</p>}
-
-      {loading && !result && (
-        <StageLoader label="Finding site combinations…" />
-      )}
 
       {result && (
         <>
@@ -213,27 +259,28 @@ export default function SiteCombinationPlanner({
               gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))",
               gap: 12,
               marginTop: 10,
+              alignItems: "start",
             }}
           >
-            {result.strategies.map((s) => (
+            {[...result.strategies]
+              .sort((a, b) => {
+                const aBalanced = a.strategy === "balanced" ? 1 : 0;
+                const bBalanced = b.strategy === "balanced" ? 1 : 0;
+                return aBalanced - bBalanced;
+              })
+              .map((s) => (
               <div
                 key={s.strategy}
-                className="card"
+                className="card combo-strategy-card"
                 style={{
                   padding: 12,
-                  border:
-                    result.recommendedStrategy === s.strategy
-                      ? "2px solid #2f7d4f"
-                      : "1px solid #d7dbe6",
+                  minHeight: 220,
+                  border: "1px solid #d7dbe6",
+                  background: STRATEGY_CARD_TINT[s.strategy] ?? "#fff",
                 }}
               >
                 <div style={{ fontWeight: 600 }}>
-                  {s.label}
-                  {result.recommendedStrategy === s.strategy && (
-                    <span className="chip live-chip" style={{ marginLeft: 8 }}>
-                      recommended
-                    </span>
-                  )}
+                  {STRATEGY_SHORT_LABEL[s.strategy] ?? s.label}
                 </div>
                 <div className="final-grid" style={{ marginTop: 8 }}>
                   <div className="item">
@@ -271,105 +318,84 @@ export default function SiteCombinationPlanner({
                     </div>
                   </div>
                 </div>
-                <div className="table-scroll" style={{ marginTop: 8 }}>
-                  <table>
-                    <thead>
-                      <tr>
-                        <th>Site</th>
-                        <th>Available</th>
-                        <th>Patients taken</th>
-                        <th>Risk</th>
-                        <th>Est. cost</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {s.sites.map((site) => (
-                        <tr key={site.siteId}>
-                          <td>{site.siteName}</td>
-                          <td>
-                            {site.recruitablePatientsAvailable.toLocaleString()}
-                          </td>
-                          <td>{site.patientsTaken.toLocaleString()}</td>
-                          <td>
-                            {site.riskScore !== null
-                              ? `${site.riskScore}/100`
-                              : "N/A"}
-                          </td>
-                          <td>
-                            {site.estimatedCostUsd !== null
-                              ? `$${site.estimatedCostUsd.toLocaleString()}`
-                              : "N/A"}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-                <button
-                  type="button"
-                  className="predict-btn"
-                  style={{ marginTop: 10 }}
-                  onClick={() => draftOutreach(s)}
-                  disabled={draftLoading}
+                <div
+                  style={{
+                    fontSize: 10.5,
+                    color: "var(--sub)",
+                    textTransform: "uppercase",
+                    letterSpacing: "0.04em",
+                    fontWeight: 700,
+                    marginTop: 10,
+                    marginBottom: 5,
+                  }}
                 >
-                  {draftLoading && draftStrategyKey === s.strategy ? (
-                    <>
-                      <span className="spinner" /> Drafting…
-                    </>
-                  ) : (
-                    "Draft outreach emails"
-                  )}
-                </button>
+                  Site
+                </div>
+                <div
+                  style={{
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: 6,
+                    height: 220,
+                    overflowY: "auto",
+                  }}
+                >
+                  {s.sites.map((site) => (
+                    <div
+                      key={site.siteId}
+                      style={{
+                        padding: "6px 8px",
+                        background: "#f7f8fb",
+                        borderRadius: 6,
+                      }}
+                    >
+                      <Tooltip
+                        as="div"
+                        text={site.siteName}
+                        style={{
+                          fontSize: 12.5,
+                          fontWeight: 600,
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                          whiteSpace: "nowrap",
+                        }}
+                      >
+                        {site.siteName}
+                      </Tooltip>
+                      <div
+                        style={{
+                          display: "flex",
+                          flexWrap: "wrap",
+                          gap: 10,
+                          marginTop: 3,
+                          fontSize: 11.5,
+                          color: "#666",
+                        }}
+                      >
+                        <span>
+                          Available: {site.recruitablePatientsAvailable.toLocaleString()}
+                        </span>
+                        <span>Taken: {site.patientsTaken.toLocaleString()}</span>
+                        <span>
+                          Risk:{" "}
+                          {site.riskScore !== null
+                            ? `${site.riskScore}/100`
+                            : "N/A"}
+                        </span>
+                        <span>
+                          Cost:{" "}
+                          {site.estimatedCostUsd !== null
+                            ? `$${site.estimatedCostUsd.toLocaleString()}`
+                            : "N/A"}
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
               </div>
             ))}
           </div>
         </>
-      )}
-
-      {draftError && <p className="error-text">{draftError}</p>}
-
-      {drafts && (
-        <div className="card" style={{ marginTop: 16, padding: 12 }}>
-          <div style={{ fontWeight: 600 }}>Outreach drafts (not sent)</div>
-          <p className="section-hint">
-            These are draft-only text — nothing is actually emailed from this
-            app, and every contact address shown is a synthetic placeholder
-            (ClinicalTrials.gov does not reliably disclose a real per-facility
-            contact email).
-          </p>
-          {drafts.warnings.map((w, i) => (
-            <p key={i} className="warning-text">
-              {w}
-            </p>
-          ))}
-          {drafts.drafts.map((d) => (
-            <details key={d.siteId} style={{ marginTop: 8 }}>
-              <summary>
-                {d.siteName}{" "}
-                <span className="chip" style={{ marginLeft: 6 }}>
-                  synthetic contact
-                </span>
-              </summary>
-              <div style={{ marginTop: 6, fontSize: 13 }}>
-                <div>
-                  <strong>To:</strong> {d.contactEmail}
-                </div>
-                <div>
-                  <strong>Subject:</strong> {d.subject}
-                </div>
-                <pre
-                  style={{
-                    whiteSpace: "pre-wrap",
-                    marginTop: 6,
-                    fontFamily: "inherit",
-                  }}
-                >
-                  {d.body}
-                </pre>
-              </div>
-            </details>
-          ))}
-        </div>
       )}
       </div>
       <WizardNextLink />

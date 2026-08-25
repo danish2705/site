@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import type { RiskAssessmentRow } from "../../types";
 import RiskRegisterTable from "./RiskRegisterTable";
+import EmptyState from "../ui/EmptyState";
 
 function isAllNoRisk(r: RiskAssessmentRow): boolean {
   return (
@@ -106,9 +107,7 @@ export default function RiskAssessmentAccordion({
 
   if (orderedRows.length === 0) {
     return (
-      <p className="predict-placeholder">
-        No sites match the selected status filter.
-      </p>
+      <EmptyState title="No matching sites" detail="No sites match the selected status filter." />
     );
   }
 
@@ -135,24 +134,24 @@ export default function RiskAssessmentAccordion({
               <span className="risk-accordion-status">
                 <span
                   className={`badge ${statusBand(r.status)}`}
-                  title="Live ClinicalTrials.gov status for this site."
+                  data-tooltip="Live ClinicalTrials.gov status for this site."
                 >
                   {statusLabel(r.status)}
                 </span>
               </span>
               <span className="risk-accordion-badge-col">
                 {r.riskDataUnavailable ? (
-                  <span className="badge no-data" title={overallRiskTooltip(r)}>
+                  <span className="badge no-data" data-tooltip={overallRiskTooltip(r)}>
                     Unassessed
                   </span>
                 ) : isAllNoRisk(r) ? (
-                  <span className="badge no-risk" title={overallRiskTooltip(r)}>
+                  <span className="badge no-risk" data-tooltip={overallRiskTooltip(r)}>
                     No Risk
                   </span>
                 ) : (
                   <span
                     className={`badge ${r.overallRisk.toLowerCase()}`}
-                    title={overallRiskTooltip(r)}
+                    data-tooltip={overallRiskTooltip(r)}
                   >
                     {r.overallRisk} Risk
                   </span>
@@ -160,7 +159,7 @@ export default function RiskAssessmentAccordion({
               </span>
               <span
                 className="risk-accordion-counts"
-                title={overallRiskTooltip(r)}
+                data-tooltip={overallRiskTooltip(r)}
               >
                 {r.riskDataUnavailable
                   ? "unassessed"
@@ -168,22 +167,11 @@ export default function RiskAssessmentAccordion({
               </span>
               <span className="risk-accordion-caret">{isOpen ? "−" : "+"}</span>
             </button>
-            {isOpen && (
+            <div className={`risk-accordion-body-wrap${isOpen ? " open" : ""}`}>
               <div className="risk-accordion-body">
                 <RiskRegisterTable records={r.riskRecords} />
-                {/* Static, non-scored note — Compliance is no longer generated as a
-                    risk-register row (it had no real/disclosed data behind it and
-                    could distort the Overall Risk badge with a fabricated rating).
-                    This applies to every site equally, so it's shown here as plain
-                    text rather than as a scored row. */}
-                <p className="compliance-disclaimer">
-                  Note: Compliance / GCP inspection history is not available from any
-                  public source for these facilities. Verify current compliance status
-                  directly with the CRO or site monitor before relying on this
-                  assessment for a site activation decision.
-                </p>
               </div>
-            )}
+            </div>
           </div>
         );
       })}

@@ -8,6 +8,12 @@ export type RegionPredictionInput = Pick<
 
 export function predictRegion(
   input: RegionPredictionInput,
+  signal?: AbortSignal,
 ): Promise<RegionPredictionResponse> {
-  return postJson<RegionPredictionResponse>("/api/predict-region", input);
+  return postJson<RegionPredictionResponse>(
+    "/api/predict-region",
+    input,
+    undefined,
+    signal,
+  );
 }

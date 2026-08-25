@@ -51,11 +51,11 @@ export default function WorkflowNav({
             type="button"
             className="workflow-nav-item workflow-nav-item--predict"
             disabled={!predictAvailable}
-            title={
-              !form.indication
-                ? "Select an indication first"
-                : "Let AI propose a region/country based on the trial requirements"
-            }
+            // No tooltip here — this item sits right at the top of the
+            // page, so the hover bubble (positioned above the trigger) had
+            // nowhere to render and showed as a clipped/blank white shape
+            // instead of readable text, same issue as the modal's close
+            // button.
             onClick={() => predictAvailable && onOpenPredictModal()}
           >
             <span className="workflow-nav-index">✨</span>
@@ -76,11 +76,12 @@ export default function WorkflowNav({
                     complete ? "complete" : ""
                   }`}
                   disabled={!available}
-                  title={
-                    available
-                      ? step.label
-                      : `${step.label} — not available yet`
-                  }
+                  // No tooltip here — this whole nav bar sits at the very
+                  // top of the page, so a hover bubble that opens upward
+                  // (the app's standard tooltip direction) has nowhere to
+                  // render and just showed up as an empty white box
+                  // clipped above the viewport, same issue "Predict Region
+                  // with AI" had.
                   onClick={() => available && setRoute(step.key)}
                 >
                   <span className="workflow-nav-index">

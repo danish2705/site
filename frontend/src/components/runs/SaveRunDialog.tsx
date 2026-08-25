@@ -33,13 +33,13 @@ export default function SaveRunDialog({
   return (
     <div className="run-modal-backdrop" onClick={onClose}>
       <form
-        className="run-modal"
+        className="run-modal run-modal-square"
         onClick={(e) => e.stopPropagation()}
         onSubmit={handleSubmit}
         role="dialog"
         aria-modal="true"
       >
-        <div className="run-modal-head">
+        <div className="run-modal-head run-modal-head--sticky">
           <div>
             <h2>Save this run</h2>
             <p className="muted">
@@ -50,7 +50,7 @@ export default function SaveRunDialog({
             type="button"
             className="icon-close-btn"
             onClick={onClose}
-            title="Close"
+            data-tooltip="Close"
             aria-label="Close"
           >
             <CloseIcon className="btn-icon" />

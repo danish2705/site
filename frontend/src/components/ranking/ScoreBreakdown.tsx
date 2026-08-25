@@ -76,7 +76,7 @@ export default function ScoreBreakdown({
           <div
             key={key}
             className={`score-component${isPartlyLive ? " score-component--live" : ""}`}
-            title={title}
+            data-tooltip={title}
           >
             <span className="score-component-label">{label.slice(0, 4)}</span>
             <span className="score-component-track">

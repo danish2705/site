@@ -2,6 +2,7 @@ import {
   createContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type FormEvent,
   type ReactNode,
@@ -109,6 +110,11 @@ export interface PipelineState {
   ranking: RankingRow[] | null;
   riskAssessment: RiskAssessmentRow[] | null;
   error: string | null;
+  /** Non-blocking informational notice (e.g. a data-source fallback) —
+   *  shown as a dismissible Toast rather than the red error banner, since
+   *  it doesn't affect what the user can do next. */
+  notice: string | null;
+  dismissNotice: () => void;
 
   /** The live ClinicalTrials.gov rows currently loaded on the Ongoing Trials tab — set by CompetingTrialsPanel after each search, consumed by analyzeOngoingTrialSites. */
   ongoingTrialSites: LiveFacilityRow[] | null;
@@ -120,16 +126,23 @@ export interface PipelineState {
   /** True once Stage 2 of Run Analysis has resolved a region/country — analyzeOngoingTrialSites needs this, so CompetingTrialsPanel uses it to keep "Send to Risk Assessment & Ranking" disabled (and to explain why) until Run Analysis has actually run. */
   hasTopRegion: boolean;
   /** Risk Register's own Country picker: fetches a fresh live facility list for `country` itself (same live-trials call Ongoing Trials makes), then sends it straight to Stages 4-8 — the whole "search + analyze" round-trip in one action, so Risk Register/Ranking can be re-run for any country in the trial's selected regions without going through the Ongoing Trials tab at all. */
-  analyzeForCountry: (country: string) => Promise<void>;
+  /** Runs Stages 4-8 for one country and returns its top recommended site (or null on failure/no-sites) — used by the single-country picker on Risk Register/Ranking/Final Recommendation. */
+  analyzeForCountry: (country: string) => Promise<FinalResult | null>;
 
   completedCount: number;
   progressPct: number;
   pipelineDone: boolean;
+  /** Human-readable "Stage N of 8: <label>" for whichever stage is currently running — drives the full-screen loading overlay shown while `running` is true. null when not running. */
+  runningStageLabel: string | null;
 
   /** Availability guard for the guided workflow nav (WorkflowNav) and WizardNextLink — same rules the old 5-step wizardStepAvailable used, just extended to cover the 3 Site Map pages (always available, same as before when they were an always-reachable tab). "Predict Region with AI" is no longer a workflow step — it's a modal opened from the sidebar, not gated by this function. */
   workflowStepAvailable: (step: WorkflowStep) => boolean;
 
   handleSubmit: (e: FormEvent<HTMLFormElement>) => Promise<void>;
+  /** Aborts the in-flight Run Analysis stream — see RunAnalysisOverlay's Cancel button. No-op if nothing is running. */
+  cancelRun: () => void;
+  /** Increments every time cancelRun() actually cancels an in-flight run — App.tsx watches this to re-expand the Analysis Parameters sidebar, which auto-collapses once a run starts (the sidebar has no other reason to reopen on its own after a cancel, unlike a normal completed/failed run where the user can just use the collapse toggle). */
+  cancelSignal: number;
 
   // Saved runs
   saveLabel: string;
@@ -170,12 +183,16 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
     RiskAssessmentRow[] | null
   >(null);
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const [ongoingTrialSites, setOngoingTrialSites] = useState<
     LiveFacilityRow[] | null
   >(null);
   const [analyzing, setAnalyzing] = useState(false);
   const [topRegion, setTopRegion] = useState<TopRegionInfo | null>(null);
   const { setRoute } = useRoute();
+  // Holds the AbortController for whichever Run Analysis stream is
+  // currently in flight, so cancelRun() can stop it — see handleSubmit.
+  const runAbortRef = useRef<AbortController | null>(null);
 
   const [saveLabel, setSaveLabel] = useState("");
   const [saving, setSaving] = useState(false);
@@ -185,19 +202,23 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
   const [loadingRuns, setLoadingRuns] = useState(false);
   const [openingRunId, setOpeningRunId] = useState<string | null>(null);
   const [openRunError, setOpenRunError] = useState<string | null>(null);
+  const [cancelSignal, setCancelSignal] = useState(0);
 
   const canSave = !running && !!ranking && ranking.length > 0;
 
   function workflowStepAvailable(step: WorkflowStep): boolean {
-    // The 3 Site Map pages have no hard prerequisite — same as before,
-    // when the map was an always-reachable tab (it degrades gracefully
-    // with no indication picked yet).
+    // Every numbered step (1-7) needs Run Analysis to have actually been
+    // clicked — only "Predict Region with AI" (not gated by this function
+    // at all, see WorkflowNav) is reachable beforehand. The 3 Site Map
+    // pages plot/plan around the region Run Analysis resolves at Stage 2,
+    // same dependency as Ongoing Trials below, so picking an Indication
+    // alone is no longer enough to unlock them.
     if (
       step === "site-map-global" ||
       step === "site-map-details" ||
       step === "site-combination"
     ) {
-      return true;
+      return !!topRegion || running || analyzing;
     }
     // Ongoing Trials feeds Risk Register/Ranking now (see
     // analyzeOngoingTrialSites), which needs the region/country Run
@@ -208,10 +229,18 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
     // Reachable as soon as the pipeline is running (not only once its data
     // has arrived) so the nav can be clicked mid-run — the page itself
     // shows a loading state for whichever of these 3 stages hasn't
-    // completed yet, rather than being unreachable until it has.
-    if (step === "risk") return !!riskAssessment || running || analyzing;
-    if (step === "ranking") return !!ranking || running || analyzing;
-    return !!finalResult || running || analyzing;
+    // completed yet, rather than being unreachable until it has. Also
+    // stays unlocked once `topRegion` exists (Run Analysis has completed
+    // at least once) — otherwise re-analyzing a different country from
+    // Risk Register's own country picker (analyzeForCountry) would
+    // temporarily clear riskAssessment/ranking/finalResult to null, and if
+    // that country turns out to have no live sites the request bails out
+    // with `analyzing` back to false too, re-locking this whole step and
+    // hiding the error message behind the generic "not available" screen
+    // instead of showing it.
+    if (step === "risk") return !!riskAssessment || running || analyzing || !!topRegion;
+    if (step === "ranking") return !!ranking || running || analyzing || !!topRegion;
+    return !!finalResult || running || analyzing || !!topRegion;
   }
 
   async function handleSave(): Promise<boolean> {
@@ -289,8 +318,9 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
         setMeta(data);
         // metaWarning means indications fell back to a static list because
         // the live ClinicalTrials.gov vocabulary lookup returned nothing —
-        // surface it (non-blocking; the fallback list keeps the form usable).
-        if (data.metaWarning) setError(data.metaWarning);
+        // the fallback list is used silently, with no visible banner at
+        // all, per explicit request. Details remain available in the
+        // Data Transparency modal for anyone who wants them.
       })
       .catch((err: Error) =>
         setError(`Could not reach backend: ${err.message}`),
@@ -302,6 +332,14 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
   ).length;
   const progressPct = Math.round((completedCount / STAGE_LIST.length) * 100);
   const pipelineDone = completedCount === STAGE_LIST.length;
+  const runningStageLabel = (() => {
+    if (!running) return null;
+    const inProgress = STAGE_LIST.find((s) => stages[s.n]?.status === "in-progress");
+    if (inProgress) return `Stage ${inProgress.n} of ${STAGE_LIST.length}: ${inProgress.label}`;
+    const nextPending = STAGE_LIST.find((s) => stages[s.n]?.status === "pending");
+    if (nextPending) return `Stage ${nextPending.n} of ${STAGE_LIST.length}: ${nextPending.label}`;
+    return "Finalizing recommendation…";
+  })();
   // Region options are no longer indication-specific — every region/country
   // in data/regionMap.ts (backend) applies to every indication now, so the
   // old indication-equality filter (which relied on Region_Data being
@@ -323,13 +361,17 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
     setLlmInfo(null);
     setError(null);
     setRunning(true);
-    // Auto-navigate to the workflow pages as soon as Run Analysis is
-    // clicked — lands on Site Map (Global) first, per request, while the
-    // backend pipeline keeps streaming stage updates in the background.
-    setRoute("site-map-global");
+    // No auto-navigate here anymore — a full-screen loading overlay (see
+    // RunAnalysisOverlay, rendered in App.tsx while `running` is true) now
+    // covers the screen instead, so there's nothing to navigate away from
+    // until the whole pipeline finishes (see the navigate-to-Ongoing-Trials
+    // call after the stream completes below).
+    let streamFailed = false;
+    const abortController = new AbortController();
+    runAbortRef.current = abortController;
 
     try {
-      const res = await streamRun(form);
+      const res = await streamRun(form, abortController.signal);
       await consumeStageStream(
         res,
         (payload) => {
@@ -365,17 +407,37 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
             setFinalResult(payload.data as FinalResult);
           }
         },
-        (message) => setError(message),
+        (message) => {
+          streamFailed = true;
+          setError(message);
+        },
       );
     } catch (err) {
-      setError((err as Error).message);
+      streamFailed = true;
+      // A user-initiated cancelRun() aborts the fetch, which rejects with
+      // an AbortError here — that's expected, not a real failure, so it
+      // shouldn't surface as an error banner the way a genuine stream
+      // failure does.
+      if ((err as Error).name !== "AbortError") {
+        setError((err as Error).message);
+      }
     } finally {
       setRunning(false);
-      // No redirect-on-failure needed: the user is already on Site Map
-      // (Global) (navigated there at the start of this run) and the error
-      // banner above the page surfaces the failure without yanking them
-      // anywhere else.
+      runAbortRef.current = null;
+      // On success, land the user on Ongoing Trials once the whole pipeline
+      // (Stages 1-8) has actually finished — replaces the old
+      // navigate-immediately-to-Site-Map-(Global) behavior now that a
+      // full-screen loading overlay covers the run instead. On failure (or
+      // cancellation), stay put so the error banner (if any) is visible
+      // against whatever page the user was already on.
+      if (!streamFailed) setRoute("competing");
     }
+  }
+
+  function cancelRun(): void {
+    if (!runAbortRef.current) return;
+    runAbortRef.current.abort();
+    setCancelSignal((n) => n + 1);
   }
 
   /**
@@ -453,10 +515,10 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
    * needing to visit Ongoing Trials first. Also updates ongoingTrialSites/
    * topRegion so the two stay in sync if the user does visit that tab next.
    */
-  async function analyzeForCountry(country: string): Promise<void> {
+  async function analyzeForCountry(country: string): Promise<FinalResult | null> {
     if (!form.indication) {
       setError("Select an indication before analyzing a country.");
-      return;
+      return null;
     }
     // Best-effort region label: reuse whichever region the sidebar's own
     // Region/Country list already associates with this country (falls back
@@ -470,6 +532,7 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
     setRanking(null);
     setRiskAssessment(null);
     setFinalResult(null);
+    let result: FinalResult | null = null;
 
     try {
       const landscape = await fetchLiveTrialLandscape({
@@ -482,7 +545,7 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
         setError(
           `No live ClinicalTrials.gov sites found for "${form.indication}" in ${country} (within the last 3 years).`,
         );
-        return;
+        return null;
       }
       setOngoingTrialSites(facilities);
       setTopRegion({ region, country });
@@ -517,17 +580,22 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
             setRanking(payload.data as RankingRow[]);
           }
           if (payload.stage === 8 && payload.status === "complete") {
-            setFinalResult(payload.data as FinalResult);
+            result = payload.data as FinalResult;
+            setFinalResult(result);
           }
         },
         (message) => setError(message),
       );
+      return result;
     } catch (err) {
       setError((err as Error).message);
+      return null;
     } finally {
       setAnalyzing(false);
     }
   }
+
+
 
   const value: PipelineState = {
     meta,
@@ -541,6 +609,8 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
     ranking,
     riskAssessment,
     error,
+    notice,
+    dismissNotice: () => setNotice(null),
     ongoingTrialSites,
     setOngoingTrialSites,
     analyzing,
@@ -550,8 +620,11 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
     completedCount,
     progressPct,
     pipelineDone,
+    runningStageLabel,
     workflowStepAvailable,
     handleSubmit,
+    cancelRun,
+    cancelSignal,
     saveLabel,
     setSaveLabel,
     saving,

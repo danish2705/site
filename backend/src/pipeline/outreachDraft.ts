@@ -94,9 +94,7 @@ export function buildOutreachDrafts(
       `more information on your current capacity, relevant investigator experience, and interest in ` +
       `participating.\n\n` +
       `Please let us know a good time to discuss further.\n\n` +
-      `Best regards,\n${sender}\n\n` +
-      `[DRAFT — generated automatically; review, add specifics, and send from your own verified contact ` +
-      `before use. The address below is a placeholder, not a real contact.]`;
+      `Best regards,\n${sender}`;
 
     return {
       siteId: site.siteId,

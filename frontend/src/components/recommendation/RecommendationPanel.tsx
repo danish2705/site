@@ -1,12 +1,15 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { usePipeline } from "../../hooks/usePipeline";
 import WhyThisRating from "../risk/WhyThisRating";
 import WizardNextLink from "../ui/WizardNextLink";
 import StageLoader from "../ui/StageLoader";
 import SaveRunDialog from "../runs/SaveRunDialog";
-import { SaveIcon } from "../ui/Icons";
+import Select from "../ui/Select";
+import { SaveIcon, MailIcon } from "../ui/Icons";
 import { fetchOutreachDraft } from "../../services/siteCombination.service";
+import OutreachDraftModal from "../ui/OutreachDraftModal";
 import type { OutreachDraft } from "../../types";
+import { countriesFromRegionKeys } from "../../utils/region";
 
 export default function RecommendationPanel() {
   const {
@@ -20,8 +23,31 @@ export default function RecommendationPanel() {
     handleSave,
     form,
     running,
+    analyzing,
+    analyzeForCountry,
   } = usePipeline();
   const [saveDialogOpen, setSaveDialogOpen] = useState(false);
+
+  // Country picker — same convention as Risk Register/Ranking: picking a
+  // country here re-runs Stages 4-8 against just that country's live sites,
+  // so the recommended site can be checked/compared country by country
+  // instead of only ever showing the last-run country.
+  const selectedCountries = countriesFromRegionKeys(form.regions);
+  const [analysisCountry, setAnalysisCountry] = useState("");
+
+  useEffect(() => {
+    if (selectedCountries.length === 0) {
+      if (analysisCountry) setAnalysisCountry("");
+    } else if (!selectedCountries.includes(analysisCountry)) {
+      setAnalysisCountry(selectedCountries[0]);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedCountries.join("|")]);
+
+  function handleCountryChange(country: string) {
+    setAnalysisCountry(country);
+    if (country) analyzeForCountry(country);
+  }
 
   // Outreach draft for the recommended site — see backend
   // pipeline/outreachDraft.ts. Draft text only, never actually sent: there
@@ -34,9 +60,12 @@ export default function RecommendationPanel() {
   const [draftError, setDraftError] = useState<string | null>(null);
 
   if (!finalResult) {
-    if (running) {
+    if (running || analyzing) {
       return (
-        <div className="card">
+        <div
+          className="card"
+          style={{ display: "flex", alignItems: "center", justifyContent: "center" }}
+        >
           <StageLoader label="Loading final recommendation…" />
         </div>
       );
@@ -87,15 +116,31 @@ export default function RecommendationPanel() {
 
   return (
     <div className="card">
-      <div className="pipeline-card-head" style={{ justifyContent: "flex-end" }}>
-        <div style={{ display: "flex", gap: 8 }}>
+      <div className="pipeline-card-head">
+        {selectedCountries.length > 0 && (
+          <div className="predict-head-actions">
+            <Select
+              value={analysisCountry}
+              onChange={handleCountryChange}
+              disabled={analyzing}
+              placeholder="Select country to analyze…"
+              options={selectedCountries.map((c) => ({ value: c, label: c }))}
+            />
+          </div>
+        )}
+        <div style={{ display: "flex", gap: 8, marginLeft: "auto" }}>
           <button
             type="button"
             className="save-run-btn"
             onClick={draftOutreach}
             disabled={draftLoading}
-            title="Draft-only outreach text — no real contact email exists for this site, and this app never actually sends anything."
+            data-tooltip="Draft-only outreach text — no real contact email exists for this site, and this app never actually sends anything."
           >
+            {draftLoading ? (
+              <span className="spinner" />
+            ) : (
+              <MailIcon className="btn-icon" />
+            )}
             {draftLoading
               ? "Drafting…"
               : draftOpen
@@ -142,7 +187,7 @@ export default function RecommendationPanel() {
           </div>
           <div className="item">
             <div className="k">Site Score</div>
-            <div className="v" title={finalResult.scoreExplanation}>
+            <div className="v" data-tooltip={finalResult.scoreExplanation}>
               {finalResult.score}/100
               {finalResult.confidence !== "High" && (
                 <span className="score-confidence">
@@ -171,58 +216,14 @@ export default function RecommendationPanel() {
           <strong>AI Recommendation ({llmInfo}):</strong> {finalResult.text}
         </p>
 
-        {draftOpen && draft && (
-          <div
-            className="final-why"
-            style={{
-              marginTop: 12,
-              background: "#f7f8fb",
-              border: "1px solid var(--line)",
-              borderRadius: 12,
-              padding: "13px 15px",
-            }}
-          >
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 8,
-                marginBottom: 6,
-              }}
-            >
-              <strong>Outreach draft (not sent)</strong>
-              <span className="chip">synthetic contact</span>
-            </div>
-            <p className="warning-text" style={{ marginTop: 0 }}>
-              This is draft-only text — nothing is emailed from this app.
-              ClinicalTrials.gov does not reliably disclose a real
-              per-facility contact, so the address below is a fabricated
-              placeholder, not a real inbox. Verify the site's actual
-              contact and send from your own email tool if you want this to
-              actually go out.
-            </p>
-            <div style={{ fontSize: 13 }}>
-              <div>
-                <strong>To:</strong> {draft.contactEmail}
-              </div>
-              <div>
-                <strong>Subject:</strong> {draft.subject}
-              </div>
-              <pre
-                style={{
-                  whiteSpace: "pre-wrap",
-                  marginTop: 6,
-                  fontFamily: "inherit",
-                }}
-              >
-                {draft.body}
-              </pre>
-            </div>
-          </div>
-        )}
+
       </div>
 
       <WizardNextLink />
+
+      {draftOpen && draft && (
+        <OutreachDraftModal draft={draft} onClose={() => setDraftOpen(false)} />
+      )}
 
       {saveDialogOpen && (
         <SaveRunDialog

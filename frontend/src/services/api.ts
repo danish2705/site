@@ -40,11 +40,13 @@ export function postJson<T>(
   path: string,
   payload: unknown,
   fallbackError?: string,
+  signal?: AbortSignal,
 ): Promise<T> {
   return apiJson<T>(path, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
     fallbackError,
+    signal,
   });
 }

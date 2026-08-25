@@ -1,3 +1,5 @@
+import { useLayoutEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { useSiteMap } from "../../context/SiteMapContext";
 import {
   downloadCsv,
@@ -7,6 +9,9 @@ import {
 } from "../../utils/siteMapFormat";
 import WizardNextLink from "../ui/WizardNextLink";
 import StageLoader from "../ui/StageLoader";
+import Select from "../ui/Select";
+import Tooltip from "../ui/Tooltip";
+import EmptyState from "../ui/EmptyState";
 
 /**
  * "Site Map Details" page — the sortable per-site table, per-site detail
@@ -20,6 +25,9 @@ export default function SiteMapDetailsPage() {
   const {
     indication,
     country,
+    setCountry,
+    selectedCountries,
+    runSearch,
     data,
     loading,
     error,
@@ -28,7 +36,6 @@ export default function SiteMapDetailsPage() {
     selectedSiteId,
     setSelectedSiteId,
     search,
-    setSearch,
     sortArrow,
     toggleSort,
     combineIds,
@@ -56,6 +63,32 @@ export default function SiteMapDetailsPage() {
     expectedRecruitment,
   } = useSiteMap();
 
+  // The eligibility-filter dropdown (opened from the "Available" column
+  // header) is rendered through a portal into document.body, positioned
+  // via this header cell's own bounding rect — same reasoning as Select.tsx:
+  // an absolutely-positioned 380px-wide panel nested inside a fixed-layout
+  // <table>/<th> was both getting clipped by the table's scroll container
+  // and distorting the table's own column widths. A portal escapes both.
+  const filterHeaderRef = useRef<HTMLTableCellElement>(null);
+  const [filterPanelRect, setFilterPanelRect] = useState<{ top: number; left: number } | null>(null);
+
+  useLayoutEffect(() => {
+    if (!filterPanelOpen) return;
+    const updateRect = () => {
+      const el = filterHeaderRef.current;
+      if (!el) return;
+      const rect = el.getBoundingClientRect();
+      setFilterPanelRect({ top: rect.bottom + 4, left: rect.left });
+    };
+    updateRect();
+    window.addEventListener("scroll", updateRect, true);
+    window.addEventListener("resize", updateRect);
+    return () => {
+      window.removeEventListener("scroll", updateRect, true);
+      window.removeEventListener("resize", updateRect);
+    };
+  }, [filterPanelOpen]);
+
   function handleExportCsv() {
     if (sortedSites.length === 0) return;
     const filenameParts = [
@@ -72,44 +105,83 @@ export default function SiteMapDetailsPage() {
 
   return (
     <div className="card">
-      <div className="card-scroll-body">
+      <div className="map-controls map-controls--flush">
+        {/* No tooltip here — this label sits at the very top of the card,
+            so a hover bubble that opens upward has nowhere to render and
+            just shows up as a box clipped above the viewport. */}
+        <label className="map-field">
+          {selectedCountries.length > 0 ? (
+            <Select
+              value={country}
+              onChange={setCountry}
+              options={selectedCountries.map((c) => ({ value: c, label: c }))}
+            />
+          ) : (
+            <>
+              <Select value="" onChange={() => {}} disabled options={[{ value: "", label: "All countries" }]} />
+              <span className="map-field-note">
+                No region selected yet — pick one in Step 1 (or apply an AI
+                prediction) to narrow this.
+              </span>
+            </>
+          )}
+        </label>
+        {/* No spinner/"Searching..." swap on this button — the centered
+            overlay below is the one loading indicator for this action, so
+            showing a second, independently-spinning one here just reads as
+            two different things happening. Still disabled while loading. */}
+        <button
+          type="button"
+          className="predict-btn map-search-btn"
+          onClick={runSearch}
+          disabled={loading || !indication}
+        >
+          Search
+        </button>
+
+        {/* Kept in the same row as the Country control above (instead of a
+            separate toolbar row further down) so "pick a country -> search
+            -> export" reads as one continuous bar. Only shown once there's
+            a table to export. The site-name search box and the "N of N
+            site(s)" count that used to sit here were removed per request —
+            the table just lists every site now, with no text filter. */}
+        {data && allSites.length > 0 && (
+          <button
+            type="button"
+            className="map-csv-btn"
+            onClick={handleExportCsv}
+            disabled={sortedSites.length === 0}
+          >
+            Export CSV
+          </button>
+        )}
+      </div>
+
+      <div className="card-scroll-body" style={{ position: "relative" }}>
         {error && <p className="error-text">{error}</p>}
 
-        {loading && <StageLoader label="Loading site map details…" />}
+        {/* Overlays the (possibly still-showing stale) table below instead
+            of squeezing into its own slot above it, so the spinner sits
+            centered in the middle of the visible panel rather than in a
+            small empty gap near the top. */}
+        {loading && (
+          <div className="table-loading-overlay">
+            <StageLoader label="Loading site map details…" />
+          </div>
+        )}
 
         {!data && !loading && !error && (
-          <p className="predict-placeholder">
-            No search yet — run a search from the Site Map (Global) page to
-            populate this table.
-          </p>
+          <EmptyState
+            title="No search yet"
+            detail="Run a search from the Site Map (Global) page to populate this table."
+          />
         )}
 
         {data && allSites.length > 0 && (
           <>
-            <div className="map-table-toolbar">
-              <input
-                type="search"
-                className="map-search-input"
-                placeholder="Search site, city, state, or country…"
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-              />
-              <span className="map-table-count">
-                {sortedSites.length.toLocaleString()} of{" "}
-                {allSites.length.toLocaleString()} site(s)
-              </span>
-              <button
-                type="button"
-                className="map-csv-btn"
-                onClick={handleExportCsv}
-                disabled={sortedSites.length === 0}
-              >
-                Export CSV
-              </button>
-            </div>
 
             <label
-              title="Uncheck to compare against the total eligible population, including patients already enrolled in another trial for this indication"
+              data-tooltip="Uncheck to compare against the total eligible population, including patients already enrolled in another trial for this indication"
               style={{
                 display: "flex",
                 alignItems: "center",
@@ -155,18 +227,18 @@ export default function SiteMapDetailsPage() {
               >
                 <colgroup>
                   <col style={{ width: "4%" }} />
-                  <col style={{ width: "22%" }} />
-                  <col style={{ width: "14%" }} />
+                  <col style={{ width: "19%" }} />
                   <col style={{ width: "12%" }} />
-                  <col style={{ width: "12%" }} />
-                  <col style={{ width: "12%" }} />
-                  <col style={{ width: "13%" }} />
+                  <col style={{ width: "10%" }} />
                   <col style={{ width: "11%" }} />
+                  <col style={{ width: "15%" }} />
+                  <col style={{ width: "15%" }} />
+                  <col style={{ width: "14%" }} />
                 </colgroup>
                 <thead>
                   <tr>
                     <th
-                      title="Check to compare combined catchment across sites"
+                      data-tooltip="Check to compare combined catchment across sites"
                       style={{ padding: "8px 4px" }}
                     ></th>
                     <th className="sortable" onClick={() => toggleSort("site")}>
@@ -179,8 +251,17 @@ export default function SiteMapDetailsPage() {
                       Gross Eligible{sortArrow("gross")}
                     </th>
                     <th
-                      style={{ position: "relative", overflow: "visible" }}
-                      title={
+                      ref={filterHeaderRef}
+                      // No inline position:relative here — an inline style
+                      // always wins over the shared `th { position: sticky }`
+                      // rule regardless of specificity, which was silently
+                      // stopping just this one header cell from sticking.
+                      // The filter panel below is portaled and positioned
+                      // via getBoundingClientRect() already, so it never
+                      // actually needed this <th> to be a positioned
+                      // ancestor — sticky already counts as positioned for
+                      // any descendant that does need one.
+                      data-tooltip={
                         excludeEnrolled
                           ? "Eligible patients minus an estimated already-enrolled-elsewhere share"
                           : "Eligible patients including those already enrolled in another trial elsewhere"
@@ -190,7 +271,7 @@ export default function SiteMapDetailsPage() {
                       <button
                         type="button"
                         className="net-available-filter-btn"
-                        title="Filter by inclusion/exclusion criteria"
+                        data-tooltip="Filter by inclusion/exclusion criteria"
                         onClick={(e) => {
                           e.stopPropagation();
                           setFilterPanelOpen((v) => !v);
@@ -208,14 +289,16 @@ export default function SiteMapDetailsPage() {
                         ▾{activeEligFilters.length > 0 ? ` ${activeEligFilters.length}` : ""}
                       </button>
 
-                      {filterPanelOpen && (
+                      {filterPanelOpen &&
+                        filterPanelRect &&
+                        createPortal(
                         <div
                           onClick={(e) => e.stopPropagation()}
                           style={{
-                            position: "absolute",
-                            top: "100%",
-                            left: 0,
-                            zIndex: 1000,
+                            position: "fixed",
+                            top: filterPanelRect.top,
+                            left: filterPanelRect.left,
+                            zIndex: 3000,
                             // Wider than before (320 -> 380) and no horizontal
                             // scrolling — labels are now capped at 45 chars
                             // server-side and wrap onto a second line if
@@ -251,15 +334,24 @@ export default function SiteMapDetailsPage() {
 
                           {eligFilters && eligFilters.filters.length > 0 && (
                             <>
+                              {/* Sticky at the top of the scrollable panel
+                                  (negative margin + matching padding to
+                                  extend under the panel's own 8px padding)
+                                  so it stays visible while the filter list
+                                  below it scrolls. */}
                               <label
                                 style={{
                                   display: "flex",
                                   alignItems: "center",
                                   gap: 8,
                                   fontSize: 12.5,
-                                  padding: "4px 4px",
+                                  position: "sticky",
+                                  top: -8,
+                                  zIndex: 2,
+                                  background: "#fff",
+                                  margin: "-8px -8px 4px",
+                                  padding: "8px 8px 4px",
                                   borderBottom: "1px solid #eee",
-                                  marginBottom: 4,
                                 }}
                               >
                                 <input
@@ -273,7 +365,7 @@ export default function SiteMapDetailsPage() {
                               {eligFilters.filters.map((f) => (
                                 <label
                                   key={f.id}
-                                  title={`${f.detail}\n\n(${f.type} — ~${f.estimatedExcludedPercent}% of the general population excluded, AI-estimated)`}
+                                  data-tooltip={`${f.detail}\n\n(${f.type} — ~${f.estimatedExcludedPercent}% of the general population excluded, AI-estimated)`}
                                   style={{
                                     display: "flex",
                                     alignItems: "flex-start",
@@ -317,12 +409,19 @@ export default function SiteMapDetailsPage() {
                                 </label>
                               ))}
 
+                              {/* Sticky at the bottom, same trick as the
+                                  header above, so Clear/Done stay reachable
+                                  without scrolling all the way down. */}
                               <div
                                 style={{
                                   display: "flex",
                                   justifyContent: "space-between",
-                                  marginTop: 8,
-                                  paddingTop: 6,
+                                  position: "sticky",
+                                  bottom: -8,
+                                  zIndex: 2,
+                                  background: "#fff",
+                                  margin: "8px -8px -8px",
+                                  padding: "6px 8px 8px",
                                   borderTop: "1px solid #eee",
                                 }}
                               >
@@ -351,16 +450,27 @@ export default function SiteMapDetailsPage() {
                               No filterable criteria available for this indication.
                             </div>
                           )}
-                        </div>
+                        </div>,
+                        document.body,
                       )}
                     </th>
-                    <th title="Available x this site's own synthetic consent/conversion rate — 100 eligible patients doesn't mean 100 enrolled">
+                    <th
+                      data-tooltip="Available x this site's own synthetic consent/conversion rate — 100 eligible patients doesn't mean 100 enrolled"
+                      style={{ whiteSpace: "normal", lineHeight: 1.3 }}
+                    >
                       Expected Recruitment
                     </th>
-                    <th title="Illustrative split of Net Available — not real claims data">
+                    <th
+                      data-tooltip="Illustrative split of Net Available — not real claims data"
+                      style={{ whiteSpace: "normal", lineHeight: 1.3 }}
+                    >
                       Segments (illustrative)
                     </th>
-                    <th className="sortable" onClick={() => toggleSort("risk")}>
+                    <th
+                      className="sortable"
+                      onClick={() => toggleSort("risk")}
+                      style={{ whiteSpace: "normal", lineHeight: 1.3 }}
+                    >
                       Risk{sortArrow("risk")}
                     </th>
                   </tr>
@@ -384,11 +494,10 @@ export default function SiteMapDetailsPage() {
                             type="checkbox"
                             checked={combineIds.has(s.siteId)}
                             onChange={() => toggleCombine(s.siteId)}
-                            title="Include in combined-catchment comparison"
+                            data-tooltip="Include in combined-catchment comparison"
                           />
                         </td>
                         <td
-                          title={s.siteName}
                           style={{
                             overflow: "hidden",
                             textOverflow: "ellipsis",
@@ -398,7 +507,6 @@ export default function SiteMapDetailsPage() {
                           {s.siteName}
                         </td>
                         <td
-                          title={location}
                           style={{
                             overflow: "hidden",
                             textOverflow: "ellipsis",
@@ -407,38 +515,65 @@ export default function SiteMapDetailsPage() {
                         >
                           {location}
                         </td>
-                        <td>{s.grossEligiblePatients.toLocaleString()}</td>
                         <td
-                          title={
-                            activeEligFilters.length > 0
-                              ? `${baseAvailable(s).toLocaleString()} before filters — adjusted using ${activeEligFilters.length} selected criterion/criteria (illustrative estimate, not exact)`
-                              : `Already enrolled elsewhere: ${s.alreadyEnrolledPatients.toLocaleString()}`
+                          data-tooltip={
+                            s.populationInRadius === 0
+                              ? "No population data available for this site's catchment area — not a real zero"
+                              : undefined
                           }
                         >
-                          {adjustedNetAvailable(s).toLocaleString()}
-                          {activeEligFilters.length > 0 && (
-                            <span
-                              style={{
-                                display: "block",
-                                fontSize: 11,
-                                color: "#888",
-                                textDecoration: "line-through",
-                              }}
-                            >
-                              {baseAvailable(s).toLocaleString()}
-                            </span>
+                          {s.populationInRadius === 0
+                            ? "No data found"
+                            : s.grossEligiblePatients.toLocaleString()}
+                        </td>
+                        <td>
+                          {s.populationInRadius === 0 ? (
+                            "No data found"
+                          ) : (
+                            <>
+                              {adjustedNetAvailable(s).toLocaleString()}
+                              {activeEligFilters.length > 0 && (
+                                <span
+                                  style={{
+                                    display: "block",
+                                    fontSize: 11,
+                                    color: "#888",
+                                    textDecoration: "line-through",
+                                  }}
+                                >
+                                  {baseAvailable(s).toLocaleString()}
+                                </span>
+                              )}
+                            </>
                           )}
                         </td>
                         <td
-                          title={`${(Math.round(s.assumedConsentRate * 1000) / 10).toFixed(1)}% assumed consent/conversion rate (synthetic, varies per site) applied to the Available figure above`}
+                          data-tooltip={
+                            s.populationInRadius === 0
+                              ? "No population data available for this site's catchment area — not a real zero"
+                              : `${(Math.round(s.assumedConsentRate * 1000) / 10).toFixed(1)}% assumed consent/conversion rate (synthetic, varies per site) applied to the Available figure above`
+                          }
                         >
-                          {expectedRecruitment(s).toLocaleString()}
-                          <span style={{ display: "block", fontSize: 11, color: "#888" }}>
-                            {(Math.round(s.assumedConsentRate * 1000) / 10).toFixed(1)}% consent rate
-                          </span>
+                          {s.populationInRadius === 0 ? (
+                            "No data found"
+                          ) : (
+                            <>
+                              {expectedRecruitment(s).toLocaleString()}
+                              <span style={{ display: "block", fontSize: 11, color: "#888" }}>
+                                {(Math.round(s.assumedConsentRate * 1000) / 10).toFixed(1)}% consent rate
+                              </span>
+                            </>
+                          )}
                         </td>
-                        <td
-                          title={s.patientSegments ? segmentsLine(s) : "n/a"}
+                        <Tooltip
+                          as="td"
+                          text={
+                            s.patientSegments
+                              ? segmentsLine(s)
+                              : s.populationInRadius === 0
+                                ? "No population data available for this site's catchment area — not a real zero"
+                                : "n/a"
+                          }
                           style={{
                             overflow: "hidden",
                             textOverflow: "ellipsis",
@@ -447,12 +582,14 @@ export default function SiteMapDetailsPage() {
                         >
                           {s.patientSegments
                             ? `${(s.patientSegments.newlyDiagnosed + s.patientSegments.nonResponder).toLocaleString()} recruitable`
-                            : "n/a"}
-                        </td>
+                            : s.populationInRadius === 0
+                              ? "No data found"
+                              : "n/a"}
+                        </Tooltip>
                         <td>
                           <span
                             className={`badge ${riskBand(s.riskScore)}`}
-                            title={`${s.riskLevel} risk (AI-labeled) — ${s.riskRationale}`}
+                            data-tooltip={`${s.riskLevel} risk (AI-labeled) — ${s.riskRationale}`}
                           >
                             {s.riskScore !== null ? `${s.riskScore}/100` : "N/A"}
                           </span>
@@ -489,7 +626,12 @@ export default function SiteMapDetailsPage() {
                       "Calculate combined catchment"
                     )}
                   </button>
-                  <button type="button" className="link-btn" onClick={clearCombine}>
+                  <button
+                    type="button"
+                    className="link-btn"
+                    onClick={clearCombine}
+                    style={{ marginTop: 0 }}
+                  >
                     Clear
                   </button>
                 </div>
@@ -524,19 +666,13 @@ export default function SiteMapDetailsPage() {
                     </div>
                   </div>
                 )}
-                {combineResult &&
-                  combineResult.warnings.map((w, i) => (
-                    <p key={i} className="warning-text">
-                      {w}
-                    </p>
-                  ))}
               </div>
             )}
           </>
         )}
 
         {data && allSites.length === 0 && !error && (
-          <p className="predict-placeholder">No live sites found for this search.</p>
+          <EmptyState icon="🔍" title="No live sites found" detail="Try a different country or clear the eligibility filters." />
         )}
       </div>
       <WizardNextLink />

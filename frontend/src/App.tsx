@@ -1,9 +1,10 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import "./styles/App.css";
 import { PipelineProvider } from "./context/PipelineContext";
 import { RouteProvider, useRoute } from "./context/RouteContext";
 import { SiteMapProvider } from "./context/SiteMapContext";
 import { usePipeline } from "./hooks/usePipeline";
+import Toast from "./components/ui/Toast";
 import TopBar from "./components/layout/TopBar";
 import Sidebar from "./components/layout/Sidebar";
 import WorkflowNav from "./components/layout/WorkflowNav";
@@ -17,6 +18,7 @@ import SiteMapDetailsPage from "./components/sitemap/SiteMapDetailsPage";
 import SiteCombinationPlannerPage from "./components/sitemap/SiteCombinationPlannerPage";
 import HistoryModal from "./components/runs/HistoryModal";
 import ErrorBoundary from "./components/ui/ErrorBoundary";
+import RunAnalysisOverlay from "./components/ui/RunAnalysisOverlay";
 import { countriesFromRegionKeys } from "./utils/region";
 
 function Dashboard() {
@@ -27,8 +29,37 @@ function Dashboard() {
   // main-panel layout can react to it — no form/filter state moves, so
   // collapsing/expanding never touches any entered values.
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-  const { form, meta, running, error, setForm, workflowStepAvailable } =
-    usePipeline();
+  const {
+    form,
+    meta,
+    running,
+    error,
+    notice,
+    dismissNotice,
+    setForm,
+    workflowStepAvailable,
+    cancelSignal,
+  } = usePipeline();
+  // Auto-collapse the Analysis Parameters sidebar the moment "Run Analysis"
+  // starts (running flips true) — the input form isn't needed anymore once
+  // the pipeline is off and running, and it just eats space next to the
+  // results panels. Only the user's own click on the collapse-toggle button
+  // reopens it again; finishing the run does not auto-expand it back.
+  useEffect(() => {
+    if (running) {
+      setSidebarCollapsed(true);
+    }
+  }, [running]);
+  // Cancelling a run is different from finishing/failing one: there's
+  // nothing to look at yet (no results panel to switch to), so re-expand
+  // the form immediately instead of leaving the user stuck looking at a
+  // collapsed sidebar and a locked step with no way back in except the
+  // manual toggle.
+  useEffect(() => {
+    if (cancelSignal > 0) {
+      setSidebarCollapsed(false);
+    }
+  }, [cancelSignal]);
   const { route, setRoute } = useRoute();
   // Gates a step's real content behind workflowStepAvailable() — closes the
   // gap where WorkflowNav disabling the nav button only stops NEW clicks:
@@ -42,6 +73,7 @@ function Dashboard() {
 
   return (
     <div className="app-shell">
+      <RunAnalysisOverlay />
       <TopBar onOpenHistory={() => setHistoryOpen(true)} />
 
       <div className="dashboard-body">
@@ -52,11 +84,10 @@ function Dashboard() {
             type="button"
             className="sidebar-collapse-toggle"
             onClick={() => setSidebarCollapsed((c) => !c)}
-            title={
-              sidebarCollapsed
-                ? "Expand Analysis Parameters"
-                : "Collapse Analysis Parameters"
-            }
+            // No tooltip here — this button sits right at the top edge of
+            // the sidebar, just below the top bar, so a hover bubble that
+            // opens upward has nowhere to render and just showed up as a
+            // box clipped above the viewport.
             aria-expanded={!sidebarCollapsed}
             aria-label={
               sidebarCollapsed
@@ -84,6 +115,8 @@ function Dashboard() {
               <p className="error-text">{error}</p>
             </div>
           )}
+
+          {notice && <Toast message={notice} onDismiss={dismissNotice} />}
 
           <div className="wizard-panel">
             {locked ? (
@@ -154,11 +187,12 @@ export default function App() {
       )}
     >
       {/* RouteProvider wraps PipelineProvider because PipelineProvider's
-          handleSubmit auto-navigates to Site Map (Global) as soon as Run
-          Analysis is clicked (setRoute("site-map-global")) — the user stays
-          in control of navigation from there via WorkflowNav/WizardNextLink
-          as later stages complete. SiteMapProvider is innermost because it
-          reads the trial form via usePipeline(). */}
+          handleSubmit navigates to Ongoing Trials (setRoute("competing"))
+          once the whole pipeline finishes — a full-screen loading overlay
+          (RunAnalysisOverlay) covers the screen for the run itself, so
+          there's no page to control navigation from until then.
+          SiteMapProvider is innermost because it reads the trial form via
+          usePipeline(). */}
       <RouteProvider>
         <PipelineProvider>
           <SiteMapProvider>

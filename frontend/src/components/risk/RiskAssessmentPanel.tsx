@@ -1,8 +1,10 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { usePipeline } from "../../hooks/usePipeline";
 import RiskAssessmentAccordion from "./RiskAssessmentAccordion";
 import WizardNextLink from "../ui/WizardNextLink";
 import StageLoader from "../ui/StageLoader";
+import Select from "../ui/Select";
+import EmptyState from "../ui/EmptyState";
 import { countriesFromRegionKeys } from "../../utils/region";
 
 type LiveStatusFilter = "RECRUITING" | "NOT_YET_RECRUITING" | "ACTIVE_NOT_RECRUITING";
@@ -27,6 +29,19 @@ export default function RiskAssessmentPanel() {
   const selectedCountries = countriesFromRegionKeys(form.regions);
   const [analysisCountry, setAnalysisCountry] = useState("");
 
+  // Default the picker to the first selected country (same convention as
+  // Ongoing Trials' country picker) so it shows an actual country instead
+  // of sitting on the "Select country to analyze…" placeholder — this is
+  // purely a display default, it does not call analyzeForCountry itself.
+  useEffect(() => {
+    if (selectedCountries.length === 0) {
+      if (analysisCountry) setAnalysisCountry("");
+    } else if (!selectedCountries.includes(analysisCountry)) {
+      setAnalysisCountry(selectedCountries[0]);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedCountries.join("|")]);
+
   function handleCountryChange(country: string) {
     setAnalysisCountry(country);
     if (country) analyzeForCountry(country);
@@ -40,32 +55,27 @@ export default function RiskAssessmentPanel() {
   }, [riskAssessment, statusFilter]);
 
   const countryPicker = selectedCountries.length > 0 && (
-    <label
-      className="map-field"
-      title="Pick a country to fetch its live sites and re-run Risk Register/Ranking against them."
+    <div
+      className="predict-head-actions"
+      data-tooltip="Pick a country to fetch its live sites and re-run Risk Register/Ranking against them."
     >
-      <span>Country</span>
-      <select
+      <Select
         value={analysisCountry}
-        onChange={(e) => handleCountryChange(e.target.value)}
+        onChange={handleCountryChange}
         disabled={analyzing}
-      >
-        <option value="" disabled>
-          Select country to analyze…
-        </option>
-        {selectedCountries.map((c) => (
-          <option key={c} value={c}>
-            {c}
-          </option>
-        ))}
-      </select>
-    </label>
+        placeholder="Select country to analyze…"
+        options={selectedCountries.map((c) => ({ value: c, label: c }))}
+      />
+    </div>
   );
 
   if (!riskAssessment) {
     if (running || analyzing) {
       return (
-        <div className="card">
+        <div
+          className="card"
+          style={{ display: "flex", alignItems: "center", justifyContent: "center" }}
+        >
           <StageLoader label="Loading risk register…" />
         </div>
       );
@@ -77,11 +87,14 @@ export default function RiskAssessmentPanel() {
     return (
       <div className="card">
         {countryPicker && <div className="map-controls">{countryPicker}</div>}
-        <p className="predict-placeholder">
-          {selectedCountries.length > 0
-            ? "No risk data yet — pick a country above to fetch its live sites and run Risk Register/Ranking."
-            : 'No risk data yet — pick a region/country in Step 1, then select a country above to populate this.'}
-        </p>
+        <EmptyState
+          title="No risk data yet"
+          detail={
+            selectedCountries.length > 0
+              ? "Pick a country above to fetch its live sites and run Risk Register/Ranking."
+              : "Pick a region/country in Step 1, then select a country above to populate this."
+          }
+        />
       </div>
     );
   }
@@ -90,25 +103,19 @@ export default function RiskAssessmentPanel() {
     <div className="card">
       <div className="predict-head">
         <div className="predict-head-top">
+          {countryPicker}
           <div className="predict-head-actions" style={{ marginLeft: "auto" }}>
-            {countryPicker}
-            <select
-              className={countryPicker ? "map-search-btn" : undefined}
+            <Select
+              className="status-filter-select"
               value={statusFilter}
-              onChange={(e) =>
-                setStatusFilter(e.target.value as LiveStatusFilter)
-              }
-              title="Filter sites by trial status"
-            >
-              {STATUS_OPTIONS.map((opt) => (
-                <option key={opt.value} value={opt.value}>
-                  {opt.label}
-                </option>
-              ))}
-            </select>
-            <span
-              className={`map-table-count ${countryPicker ? "map-search-btn" : ""}`}
-            >
+              onChange={(v) => setStatusFilter(v as LiveStatusFilter)}
+              data-tooltip="Filter sites by trial status"
+              options={STATUS_OPTIONS.map((opt) => ({
+                value: opt.value,
+                label: opt.label,
+              }))}
+            />
+            <span className="map-table-count">
               {filteredRows.length.toLocaleString()} of{" "}
               {riskAssessment.length.toLocaleString()} site(s)
             </span>

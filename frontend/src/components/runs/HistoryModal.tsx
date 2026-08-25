@@ -50,7 +50,7 @@ export default function HistoryModal({ onClose }: { onClose: () => void }) {
           role="dialog"
           aria-modal="true"
         >
-          <div className="run-modal-head">
+          <div className="run-modal-head run-modal-head--sticky">
             <div>
               <h2>Saved Runs</h2>
               <p className="muted">Every run you've saved, newest first.</p>
@@ -69,7 +69,7 @@ export default function HistoryModal({ onClose }: { onClose: () => void }) {
                 type="button"
                 className="icon-close-btn"
                 onClick={onClose}
-                title="Close"
+                data-tooltip="Close"
                 aria-label="Close"
               >
                 <CloseIcon className="btn-icon" />
@@ -128,7 +128,7 @@ export default function HistoryModal({ onClose }: { onClose: () => void }) {
                           className="btn-link row-icon-link icon-only"
                           onClick={() => openSavedRun(r.id)}
                           disabled={openingRunId === r.id}
-                          title={openingRunId === r.id ? "Loading..." : "View"}
+                          data-tooltip={openingRunId === r.id ? "Loading..." : "View"}
                           aria-label="View"
                         >
                           {openingRunId === r.id ? (
@@ -142,7 +142,7 @@ export default function HistoryModal({ onClose }: { onClose: () => void }) {
                         <a
                           className="btn-link row-icon-link icon-only"
                           href={shareMailtoHref(r)}
-                          title="Share this run by email"
+                          data-tooltip="Share this run by email"
                           aria-label="Share by email"
                         >
                           <MailIcon className="btn-icon" />
@@ -187,7 +187,7 @@ export default function HistoryModal({ onClose }: { onClose: () => void }) {
                       reset();
                       setOpenRun(null);
                     }}
-                    title="Close"
+                    data-tooltip="Close"
                     aria-label="Close"
                   >
                     <CloseIcon className="btn-icon" />
