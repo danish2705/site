@@ -60,7 +60,7 @@ function Dashboard() {
       setSidebarCollapsed(false);
     }
   }, [cancelSignal]);
-  const { route, setRoute } = useRoute();
+  const { route } = useRoute();
   // Gates a step's real content behind workflowStepAvailable() — closes the
   // gap where WorkflowNav disabling the nav button only stops NEW clicks:
   // this app's router is plain location.hash (see RouteContext.tsx), so
@@ -125,13 +125,6 @@ function Dashboard() {
                   This step isn't available yet — click "Run Analysis" in the
                   sidebar first.
                 </p>
-                <button
-                  type="button"
-                  className="btn-secondary"
-                  onClick={() => setRoute("site-map-global")}
-                >
-                  ← Back to Site Map
-                </button>
               </div>
             ) : (
               <>
