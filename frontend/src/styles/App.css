@@ -1581,6 +1581,45 @@ tbody tr:hover {
 .combo-strategy-card .final-grid .item {
   background: #fff;
 }
+/* Final Recommendation's own 5 metric boxes — each gets a faint (4-6%)
+   wash of a color tied to what it represents, instead of the shared flat
+   grey, so the row reads at a glance instead of five identical boxes.
+   Scoped to .final-grid--reco (RecommendationPanel.tsx only) since the
+   plain grey is still right for every other .final-grid usage. Order is
+   fixed (Region, Population, Site, Score, Risk Level), so nth-child is
+   reliable here. */
+.final-grid--reco .item:nth-child(1) {
+  background: rgba(29, 95, 191, 0.045);
+}
+.final-grid--reco .item:nth-child(2) {
+  background: rgba(79, 91, 255, 0.045);
+}
+.final-grid--reco .item:nth-child(3) {
+  background: rgba(23, 132, 90, 0.05);
+}
+.final-grid--reco .item:nth-child(4) {
+  background: rgba(79, 91, 255, 0.045);
+}
+.final-grid--reco .item:nth-child(5) {
+  background: rgba(194, 59, 59, 0.055);
+}
+/* "Why this site is rated X" card — light blue instead of the plain
+   white it had (WhyThisRating.tsx renders this same card in Risk
+   Register too, but only via the RecommendationPanel usage does
+   .final-why wrap it, so this stays scoped to Final Recommendation). */
+.final-why .why-risk {
+  background: rgba(29, 95, 191, 0.05);
+  border-color: #dde6f5;
+}
+/* AI Recommendation paragraph — a light purple wash to set the model's
+   own writeup apart from the plain metric/explanation text above it.
+   .final-text--reco only (SavedRunModal reuses the base .final-text
+   class and should keep its plain background). */
+.final-text--reco {
+  background: rgba(79, 91, 255, 0.04);
+  border-radius: 10px;
+  padding: 14px 16px;
+}
 .final-grid .item .k {
   font-size: 10.5px;
   color: var(--sub);

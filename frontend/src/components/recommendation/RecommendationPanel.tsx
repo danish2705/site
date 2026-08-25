@@ -168,7 +168,7 @@ export default function RecommendationPanel() {
       )}
       <div style={{ height: "16px" }} />
       <div className="card-scroll-body">
-        <div className="final-grid">
+        <div className="final-grid final-grid--reco">
           <div className="item">
             <div className="k">Region</div>
             <div className="v">
@@ -212,7 +212,7 @@ export default function RecommendationPanel() {
           </div>
         )}
 
-        <p className="final-text">
+        <p className="final-text final-text--reco">
           <strong>AI Recommendation ({llmInfo}):</strong> {finalResult.text}
         </p>
 
