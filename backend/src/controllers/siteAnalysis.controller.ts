@@ -16,14 +16,6 @@ function parseFacilities(raw: unknown): LiveFacility[] {
   if (!Array.isArray(raw) || raw.length === 0) {
     throw badRequest('Body field "facilities" must be a non-empty array.');
   }
-  // ClinicalTrials.gov records legitimately omit the facility/site name for
-  // some trials (sponsor never filled it in). A single such row used to
-  // fail the ENTIRE batch with a 400 — which is why picking a second
-  // country from the Risk Register dropdown (a country whose live data
-  // happens to include one of these blank-name rows) could 400 while the
-  // default country (whose data didn't) worked fine. Skip unusable rows
-  // instead of rejecting the whole request; only 400 if nothing usable is
-  // left.
   const parsed = raw
     .map((f: unknown): LiveFacility | null => {
       const facility = f as Record<string, unknown>;
@@ -56,27 +48,6 @@ function parseFacilities(raw: unknown): LiveFacility[] {
   return parsed;
 }
 
-/**
- * POST /api/site-analysis
- * Body: { indication, phase?, sampleSize?, durationMonths?, budgetTier?,
- *         ageGroups?, region, country, facilities: LiveFacility[] }
- *
- * Runs Stages 4-8 (Candidate Site Identification through Final
- * Recommendation) over EXACTLY the facilities the caller supplies — the
- * real ClinicalTrials.gov rows a user already reviewed on the Ongoing
- * Trials tab (GET /api/live-trials) — instead of Stage 4 silently
- * re-querying ClinicalTrials.gov on its own and potentially landing on a
- * different set of sites. `region`/`country` are the ones already resolved
- * by Stage 2 of a prior /api/run call (see PipelineContext's `topRegion`).
- *
- * `specialty` and the trial requirement/region-metrics figures are
- * re-derived here from indication/region/country rather than trusted from
- * the caller — same pattern as postSiteCombination in
- * siteCombination.controller.ts — which keeps the request body small and
- * reuses the same cached live calls Stages 1-3 already made.
- *
- * Streams the same SSE "stage" events as POST /api/run (stages 4-8 only).
- */
 export async function postSiteAnalysis(
   req: Request,
   res: Response,

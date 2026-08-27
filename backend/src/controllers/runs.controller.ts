@@ -32,7 +32,6 @@ export async function getRuns(_req: Request, res: Response): Promise<void> {
   }
 }
 
-/** One saved run with its full ranked-site list. */
 export async function getRunById(req: Request, res: Response): Promise<void> {
   try {
     res.json(await getRun(String(req.params.id)));

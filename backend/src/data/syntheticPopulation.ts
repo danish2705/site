@@ -353,17 +353,6 @@ const TIER_POPULATION_RANGE: Record<CityAnchor["tier"], [number, number]> = {
   mid: [200_000, 800_000],
 };
 
-// Point density is derived from each country's actual bounding-box area
-// rather than a hand-picked number per country — a fixed guess (the
-// original approach here) badly under-covers large countries: scattering
-// ~220 points across the US's ~5,000,000 sq mi means the average gap
-// between points is 100+ miles, so a 50-mile-radius search around a real
-// site has well under even odds of hitting a single point, and the Site
-// Map silently shows 0 patients everywhere — not a display bug, a density
-// bug. This targets a fixed expected number of points inside a 50-mile
-// search radius (the feature's default/typical radius) for EVERY country,
-// large or small, so radius search reliably returns a plausible non-zero
-// number of catchment points regardless of the country's size.
 const MILES_PER_DEGREE_LAT = 69;
 const DEFAULT_RADIUS_MILES = 50;
 const TARGET_EXPECTED_HITS_AT_DEFAULT_RADIUS = 20;
@@ -395,10 +384,6 @@ function pointCountFor(box: CountryBoundingBox): number {
   );
 }
 
-// Deterministic string -> PRNG (mulberry32-style) so the synthetic dataset
-// is stable across process restarts instead of regenerating differently
-// every boot — a flickering patient count on every server restart would be
-// worse than a wrong-but-stable one.
 function seededRandom(seed: string): () => number {
   let h = 1779033703 ^ seed.length;
   for (let i = 0; i < seed.length; i++) {
@@ -415,14 +400,6 @@ function seededRandom(seed: string): () => number {
 
 let cache: SyntheticPostalRegion[] | null = null;
 
-/**
- * Builds (once per process, then caches) a large synthetic catchment-area
- * dataset — density scaled to each country's real area (see pointCountFor
- * above) so a default 50-mile radius search reliably hits multiple points
- * everywhere, not just by luck in smaller countries — standing in for real
- * zip/postal-level population data, which has no live public source at
- * this granularity.
- */
 export function getAllSyntheticPostalRegions(): SyntheticPostalRegion[] {
   if (cache) return cache;
   const out: SyntheticPostalRegion[] = [];
@@ -430,11 +407,6 @@ export function getAllSyntheticPostalRegions(): SyntheticPostalRegion[] {
     const rand = seededRandom(`postal-regions|${box.country}`);
     const anchors = CITY_ANCHORS[box.country] ?? [];
 
-    // Place the named real-city anchors first, each with a small (~1-2 mile)
-    // jitter so repeated points don't all collapse onto one literal
-    // coordinate. This is what makes a search near an actual major city
-    // reliably return a large number instead of it being luck of the draw
-    // — see the CITY_ANCHORS comment above for why this exists.
     anchors.forEach((anchor, index) => {
       const [lo, hi] = TIER_POPULATION_RANGE[anchor.tier];
       const population = Math.round(lo + rand() * (hi - lo));
@@ -449,11 +421,6 @@ export function getAllSyntheticPostalRegions(): SyntheticPostalRegion[] {
       });
     });
 
-    // Fill the rest of this country's point budget with the same uniform
-    // random scatter as before (mostly small towns/suburbs), minus the
-    // points already spent on named-city anchors above. A small residual
-    // chance of an unlisted "secondary city" bump remains, at a lower rate
-    // than before now that the biggest cities are anchored explicitly.
     const pointCount = Math.max(0, pointCountFor(box) - anchors.length);
     for (let i = 0; i < pointCount; i++) {
       const lat = box.minLat + rand() * (box.maxLat - box.minLat);

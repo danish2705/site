@@ -1,7 +1,5 @@
 export interface SyntheticSiteCost {
-  /** One-time per-site setup/regulatory/IRB/monitoring cost, independent of how many patients it enrolls. */
   baseCostUsd: number;
-  /** Incremental cost per patient enrolled at this site (procedures, visits, site payments). */
   perPatientCostUsd: number;
   costSource: "synthetic";
 }

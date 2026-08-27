@@ -7,15 +7,6 @@ import {
 import { resolveSpecialty } from "../pipeline/liveIndications.js";
 import { badRequest } from "../utils/httpError.js";
 
-/**
- * GET /api/live-map?indication=...&country=...&radiusMiles=...
- *
- * Data for the "Site Map" tab next to Predicted Region/Country — see
- * pipeline/liveMapData.ts for exactly what's live vs. synthetic vs.
- * approximate in the response. `country` is optional: omit it to see sites
- * across every country ClinicalTrials.gov returns for this indication (a
- * global view), matching the rest of this app's global region taxonomy.
- */
 export async function getLiveSiteMap(
   req: Request,
   res: Response,

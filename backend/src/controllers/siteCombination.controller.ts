@@ -18,18 +18,6 @@ function regionLabelForCountry(country: string): string {
   return match?.region ?? "Global";
 }
 
-/**
- * POST /api/site-combination
- * Body: { indication, country, targetEnrollment, sites: [{ siteId, siteName, city?, country?, recruitablePatients, riskScore, baseCostUsd?, perPatientCostUsd? }] }
- *
- * The "which combination of sites gets me to my enrollment target for the
- * least cost/risk" mechanic from Srikanth's 2024 intern demo — see
- * pipeline/siteCombinationOptimizer.ts for the (greedy, not exhaustive)
- * method and its caveats. `sites` is the candidate list already returned by
- * GET /api/live-map for this indication/country — this endpoint doesn't
- * re-fetch it, so the combination is always computed over exactly what the
- * caller is already looking at.
- */
 export async function postSiteCombination(
   req: Request,
   res: Response,
@@ -53,12 +41,6 @@ export async function postSiteCombination(
   const parsedSites: SiteCombinationRequestSite[] = sites.map(
     (s: unknown, i: number) => {
       const site = s as Record<string, unknown>;
-      // Accept either the new `recruitablePatients` field (MapSiteRow, already
-      // netted for the assumed-consent-rate haircut) or the older
-      // `netAvailablePatients` name for backward compatibility with any
-      // caller still sending it — the latter overstates what a site can
-      // realistically deliver, since it hasn't had the consent-rate haircut
-      // applied, so callers should migrate to recruitablePatients.
       const recruitablePatientsRaw =
         site.recruitablePatients ?? site.netAvailablePatients;
       const recruitablePatients = Number(recruitablePatientsRaw);
@@ -105,10 +87,6 @@ export async function postSiteCombination(
     throw badRequest((err as Error).message);
   }
 
-  // Reuse the same LLM-estimated avg-cost-per-patient figure already shown
-  // elsewhere in the app (region scoring, candidate-site estimates) rather
-  // than inventing a second cost source — null (not 0) if it's unavailable,
-  // so the optimizer and the UI can tell "no cost data" apart from "free."
   let avgCostPerPatientUsd: number | null = null;
   try {
     const regionRow = await buildLiveRegionRow({
@@ -122,8 +100,6 @@ export async function postSiteCombination(
         ? regionRow["Avg Cost per Patient (USD)"]
         : null;
   } catch {
-    // Leave avgCostPerPatientUsd null — cost-based figures on the response
-    // will read as unavailable rather than silently showing $0.
   }
 
   const response = optimizeSiteCombination(
@@ -135,15 +111,6 @@ export async function postSiteCombination(
   res.json(response);
 }
 
-/**
- * POST /api/outreach-draft
- * Body: { indication, phase?, targetEnrollment?, senderOrganization?, sites: [{ siteId, siteName, city?, country? }] }
- *
- * Srikanth's "send notification to this sites requesting for support" ask —
- * see pipeline/outreachDraft.ts for exactly what this does and, importantly,
- * does NOT do (it drafts text only; it never sends anything, and every
- * contact address returned is a labeled synthetic placeholder).
- */
 export async function postOutreachDraft(
   req: Request,
   res: Response,
