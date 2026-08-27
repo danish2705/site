@@ -12,8 +12,8 @@ export interface RegionRow {
   "Avg Cost per Patient (USD)": number;
   /** Set by services/liveRegionData.ts once a row has been enriched. */
   competingTrialsSource?: "live" | "excel";
-  /** Source of Prevalence/Regulatory/Cost fields on this row — see pipeline/liveRegionMetrics.ts. */
-  regionMetricsSource?: "live" | "llm-estimated" | "unavailable";
+  /** Source of Prevalence/Regulatory/Cost fields on this row — see pipeline/liveRegionMetrics.ts. "claims-synthetic" = pulled from the static data/claimsIndicationMetrics.ts lookup table instead of asking the LLM (only covers the app's 24 known indications — see that file's doc comment). */
+  regionMetricsSource?: "live" | "llm-estimated" | "claims-synthetic" | "unavailable";
   /** Set when regionMetricsSource is "unavailable" (LLM not configured or the call failed), explaining why those fields are 0 rather than a real/estimated figure. */
   metricsWarning?: string;
 }

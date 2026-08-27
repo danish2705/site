@@ -2,6 +2,7 @@ import type { RegionRow } from "../types.js";
 import { getActiveCompetingTrialsCount } from "../services/ctgov.client.js";
 import { estimateRegionMetrics, llmStatus } from "../llm/client.js";
 import { config } from "../config.js";
+import { getClaimsRegionMetrics } from "./claimsRegionMetrics.js";
 
 export interface BuildLiveRegionRowParams {
   region: string;
@@ -36,6 +37,30 @@ export async function buildLiveRegionRow(
   let avgCostPerPatient = 0;
   let regionMetricsSource: RegionRow["regionMetricsSource"] = "unavailable";
   let metricsWarning: string | undefined;
+
+  // Checked FIRST, before the cache/LLM path below: an instant, in-memory
+  // lookup covering the app's 24 known indications (see
+  // repository/excelStore.ts's FALLBACK_INDICATION_TO_SPECIALTY) across all
+  // 35 countries in data/regionMap.ts. Returns null for anything outside
+  // that — a different indication, or one of the 24 paired with a country
+  // not in the table — in which case this falls through to the existing
+  // cache/LLM logic completely unchanged. See claimsRegionMetrics.ts and
+  // data/claimsIndicationMetrics.ts for what this is (and isn't) grounded in.
+  const claimsMetrics = getClaimsRegionMetrics(params.indication, params.country);
+  if (claimsMetrics) {
+    return {
+      Region: params.region,
+      Country: params.country,
+      Indication: params.indication,
+      "Prevalence (per 100k)": claimsMetrics.prevalencePer100k,
+      "Regulatory Approval Time (weeks)": claimsMetrics.regulatoryApprovalWeeks,
+      "Active Competing Trials": competingTrials,
+      "Avg Cost per Patient (USD)": claimsMetrics.avgCostPerPatientUsd,
+      competingTrialsSource: "live",
+      regionMetricsSource: "claims-synthetic",
+      metricsWarning: undefined,
+    };
+  }
 
   const cached = metricsCache.get(cacheKey);
   if (cached && Date.now() < cached.expiresAt) {
