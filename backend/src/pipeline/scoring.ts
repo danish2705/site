@@ -81,35 +81,13 @@ export interface ExtendedEvaluationRow extends EvaluationRow {
   "Site Cost per Patient (USD)"?: number | null;
   "Catchment Population"?: number | null;
   "Diversity Index (0-100)"?: number | null;
-  /** The real category-by-category breakdown Diversity Index was computed from (e.g. [{category:"White",percent:61.2},...]) — see services/ctgov.client.ts's raceDiversityIndex. null/absent whenever Diversity Index is LLM-estimated rather than real. Same trial-wide (not this-facility-alone) caveat as liveKpiSourceNctId. */
   raceBreakdown?: { category: string; percent: number }[] | null;
-  /** "llm-estimated" = KPIs guessed by an LLM for a real live-sourced site with no measured data; absent/"excel" = measured, from Site_Evaluation. */
   dataSource?: "excel" | "llm-estimated";
-  /** Set only when dataSource === "llm-estimated" — the model's own explanation of what it grounded the estimate in. */
   estimateRationale?: string;
-  /**
-   * Names of the raw KPI fields on THIS row that were overridden with real
-   * ClinicalTrials.gov data instead of the LLM estimate — e.g.
-   * "Historical Enrollment Rate (pts/month)", "Dropout Rate (%)",
-   * "Diversity Index (0-100)". Undefined/empty means every field on this row
-   * is still LLM-estimated (or, for dataSource "excel", measured). See
-   * liveCandidateSites.ts's applyLiveKpiOverrides for what's real and why;
-   * Dropout Rate / Diversity Index are trial-level, not site-level, figures
-   * (ClinicalTrials.gov has no per-site breakout for either) — see
-   * liveKpiSourceNctId for which trial they came from.
-   */
   liveKpiFields?: string[];
-  /** The NCTId that Dropout Rate (%) / Diversity Index (0-100) were sourced from, when either is in liveKpiFields. null/absent otherwise. */
   liveKpiSourceNctId?: string | null;
 }
 
-/**
- * LLM-estimated KPIs are, by construction, never as certain as a measured
- * Site_Evaluation row — even with every field populated. This caps a
- * ScoredSite's confidence at "Medium" for such rows and adds a caveat
- * explaining why, rather than letting the ordinary coverage/completeness
- * math claim "High" confidence for a guess.
- */
 export function capConfidenceForEstimate(
   scored: ScoredSite,
   row: ExtendedEvaluationRow,
@@ -137,16 +115,6 @@ export const THRESHOLDS = {
   protocolDeviation: { floor: 0.3, ceiling: 20 },
   dropout: { floor: 2, ceiling: 30 },
   staffTurnover: { floor: 2, ceiling: 50 },
-  // Requirement #5 benchmark finding: a site running many concurrent trials
-  // (any indication) has less staff/investigator attention available for a
-  // NEW trial — this is the same real-world concern already flagged by the
-  // Risk Register's Site Capacity category (config.siteWorkload), now also
-  // scored here so it actually moves a site's ranking instead of only
-  // appearing as a separate risk-list item. floor=0 (no other active trials,
-  // best case); ceiling is a stated heuristic, not a published standard —
-  // set well above config.siteWorkload.highThreshold so the score degrades
-  // smoothly rather than bottoming out right at the risk-register's "High"
-  // cutoff.
   competingTrialsAtSite: { floor: 0, ceiling: 20 },
   investigatorExperienceBest: 10,
   staffAvailabilityBest: 10,
@@ -190,14 +158,6 @@ function componentScores(
       ),
       0.15,
     ],
-    // Requirement #5 benchmark finding: this field previously existed on
-    // every row (LLM-estimated, or REAL when liveKpiFields includes it —
-    // see liveCandidateSites.ts's applyLiveKpiOverrides) but was never read
-    // by this function, so a site's competing-trial workload never actually
-    // affected its rank. A facility juggling many concurrent trials has
-    // less staff/investigator bandwidth for a new one, so it's scored here
-    // as a recruitment-capacity factor, same real-world concern as the Risk
-    // Register's Site Capacity category.
     [
       lowerBetter(
         num(row["Competing Trials at Site"]),
@@ -206,11 +166,6 @@ function componentScores(
       ),
       0.25,
     ],
-    // Same benchmark finding for these two — LLM-estimated only (no live
-    // source discloses investigator experience or staff availability), but
-    // previously collected and shown as "data available" while being
-    // mathematically inert. Weighted modestly since they're the least
-    // certain inputs in this blend.
     [
       higherBetter(
         num(row["Investigator Experience Score (0-10)"]),
@@ -261,10 +216,6 @@ function componentScores(
       ),
       0.15,
     ],
-    // Requirement #5 benchmark finding: same as above — both LLM-estimated
-    // (no live source for either), previously collected but never scored.
-    // Infrastructure and current GCP certification status are quality/
-    // compliance signals, not recruitment-speed ones, so they land here.
     [num(row["Infrastructure Readiness (%)"]), 0.2],
     [num(row["GCP Certification Current (%)"]), 0.15],
   ]);
@@ -410,9 +361,6 @@ export function scoreSites(
       caveats.push("No usable KPI data at all — this site cannot be scored.");
     }
     if (row.liveKpiFields && row.liveKpiFields.length > 0) {
-      // Show the actual value alongside each real field name, not just which
-      // fields are real — "Dropout Rate (%)" alone tells you nothing; "Dropout
-      // Rate (%): 12.5" does.
       const fieldsWithValues = row.liveKpiFields
         .map((field) => {
           const value = (row as unknown as Record<string, unknown>)[field];
@@ -426,13 +374,6 @@ export function scoreSites(
             : "."),
       );
     }
-    // Requirement #5 benchmark finding, surfaced explicitly: connects this
-    // score back to the Risk Register's Site Workload category (renamed
-    // from "Site Capacity" for requirement #6) so the two no longer
-    // silently disagree — a site real-flagged Medium/High for
-    // concurrent-trial workload there now also shows why its Recruitment
-    // component here was pulled down, instead of the two screens
-    // contradicting each other with no explanation.
     if (
       row.liveKpiFields?.includes("Competing Trials at Site") &&
       typeof row["Competing Trials at Site"] === "number" &&

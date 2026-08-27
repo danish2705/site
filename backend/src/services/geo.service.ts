@@ -41,8 +41,7 @@ function scheduleOnNominatimQueue<T>(fn: () => Promise<T>): Promise<T> {
     lastNominatimCallAt = Date.now();
     return fn();
   });
-  // Keep chaining even if this call fails, so one bad lookup doesn't wedge
-  // every geocode call behind it forever.
+
   nominatimQueueTail = run.then(
     () => undefined,
     () => undefined,
@@ -99,8 +98,6 @@ export async function getDistanceMiles(
         });
       }
     } catch {
-      // Fall through to the free tier below — a network/API hiccup should
-      // never break the map, just make it less precise.
     }
   }
 
@@ -121,7 +118,6 @@ export async function getDistanceMiles(
       });
     }
   } catch {
-    // Fall through to the approximation below.
   }
 
   return cacheAndReturn({
@@ -130,27 +126,8 @@ export async function getDistanceMiles(
   });
 }
 
-// Google's Distance Matrix accepts many destinations per origin in one call
-// (billed per element, i.e. per origin x destination pair) — well under its
-// per-request cap, this keeps a whole site's catchment check to a handful of
-// requests instead of one request per candidate point.
 const GOOGLE_BATCH_DESTINATIONS = 25;
 
-/**
- * Real driving distance from one origin to MANY destinations, batched to
- * stay cheap even when checking dozens of candidate catchment points per
- * site. Same fallback chain as getDistanceMiles (Google Distance Matrix ->
- * OSRM -> haversine approximation), but OSRM's free /table endpoint (a
- * proper many-to-one matrix, not one /route call per destination) is used
- * for the free tier instead of looping getDistanceMiles per destination —
- * looping would multiply this function's whole reason for existing (keeping
- * request counts low) right back out again.
- *
- * Callers should still pre-filter `destinations` down to a plausible
- * candidate set (e.g. via a widened haversine radius) before calling this —
- * see config.map.catchmentPrefilterFactor — rather than passing every point
- * in a country and relying on this function alone to keep costs down.
- */
 export async function getDistancesMilesBatch(
   origin: LatLng,
   destinations: LatLng[],
@@ -209,8 +186,6 @@ export async function getDistancesMilesBatch(
           }
         });
       } catch {
-        // This chunk's elements stay unresolved — the OSRM/haversine tiers
-        // below still get a chance at them individually.
       }
     }
   }
@@ -218,9 +193,6 @@ export async function getDistancesMilesBatch(
   const stillPending = pending.filter((p) => !results[p.index]);
   if (stillPending.length > 0) {
     try {
-      // OSRM's /table service: one origin (source index 0), many
-      // destinations, one HTTP call — a real many-to-one driving-distance
-      // matrix, not this function looping single /route calls.
       const coordList = [origin, ...stillPending.map((p) => p.dest)]
         .map((p) => `${p.lng},${p.lat}`)
         .join(";");
@@ -248,7 +220,6 @@ export async function getDistancesMilesBatch(
         });
       }
     } catch {
-      // Fall through to the approximation below for anything still unresolved.
     }
   }
 
@@ -269,8 +240,6 @@ export interface GeocodeResult {
   source: "live-google" | "live-nominatim" | "approximate";
 }
 
-// Real, approximate country centroids (public geography) used only as the
-// jitter anchor for the deterministic last-resort fallback.
 const COUNTRY_CENTROIDS: Record<string, LatLng> = {
   "united states": { lat: 39.8, lng: -98.6 },
   canada: { lat: 56.1, lng: -106.3 },
@@ -317,15 +286,6 @@ function seededUnit(seed: string): number {
   return ((h >>> 0) % 100000) / 100000;
 }
 
-/**
- * Best-effort site coordinates, in priority order: Google Geocoding (if
- * GOOGLE_MAPS_API_KEY is set) -> OpenStreetMap's Nominatim (free, no
- * signup/key/card, but rate-limited to ~1 request/second — see the queue
- * above) -> a deterministic hash-based point near the country's centroid,
- * jittered by city+state so the same facility always lands in the same
- * spot rather than moving around on every request. ALWAYS tagged with
- * `source` so callers/UI know which tier produced it.
- */
 export async function geocodeApprox(
   city: string | null,
   state: string | null,
@@ -359,13 +319,9 @@ export async function geocodeApprox(
         });
       }
     } catch {
-      // Fall through to the free tier below.
     }
   }
 
-  // Free tier: OpenStreetMap Nominatim. Real geocoding, no signup/key/card
-  // — throttled to its ~1 request/second free-use policy via the queue
-  // above, and identified with a real User-Agent as that policy requires.
   try {
     const result = await scheduleOnNominatimQueue(async () => {
       const url = new URL("https://nominatim.openstreetmap.org/search");
@@ -385,7 +341,6 @@ export async function geocodeApprox(
     });
     if (result) return cacheAndReturn(result);
   } catch {
-    // Fall through to the deterministic approximation below.
   }
 
   const centroid =

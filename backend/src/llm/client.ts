@@ -184,10 +184,6 @@ Reply with ONLY a JSON object, no prose or markdown fences, in exactly this shap
   };
 }
 
-/* ---------------------------------------------------------------------- */
-/* Live-site KPI estimation                                               */
-/* ---------------------------------------------------------------------- */
-
 export interface SiteKpiEstimateInput {
   facilityName: string;
   city: string | null;
@@ -202,10 +198,6 @@ export interface SiteKpiEstimateInput {
   benchmark: LiveTrialBenchmark;
 }
 
-/** Raw KPI fields, mirroring EvaluationRow/ExtendedEvaluationRow exactly.
- * Any field the LLM has no reasonable basis to estimate should come back as
- * null — scoring.ts already treats null as "missing data, redistribute
- * weight," so an honest null is far better than a confident-looking guess. */
 export interface SiteKpiEstimateFields {
   "Investigator Experience Score (0-10)": number | null;
   "Years Experience": number | null;
@@ -259,17 +251,6 @@ const NUMERIC_FIELD_RANGES: Record<keyof SiteKpiEstimateFields, string> = {
   "Diversity Index (0-100)": "12-98",
 };
 
-/**
- * Estimates the raw Site_Evaluation KPI fields for a real, ClinicalTrials.gov
- * -sourced facility that has no measured operational data on file (that data
- * simply doesn't exist publicly). The LLM fills in the SAME raw fields your
- * Excel sheet fills in — nothing more — so the result runs through the exact
- * same deterministic scoreSites() formula as every Excel-sourced site.
- *
- * Throws (does not return mock/fallback data) if the LLM is unconfigured or
- * the call fails/doesn't parse, so callers can surface an explicit warning
- * instead of showing fabricated numbers.
- */
 export async function estimateSiteKpis(
   input: SiteKpiEstimateInput,
 ): Promise<SiteKpiEstimate> {
@@ -356,25 +337,6 @@ ${Object.entries(NUMERIC_FIELD_RANGES)
   };
 }
 
-/* ---------------------------------------------------------------------- */
-/* NOTE: Compliance risk estimation (estimateSiteRisks) was removed here. */
-/* It was the last risk-register category with no real/disclosed data     */
-/* behind it — every field (description, Likelihood, Impact, Overall,     */
-/* mitigation, owner) was the LLM's own invention, grounded only in the    */
-/* facility's name/location, yet it still fed into a site's Overall Risk  */
-/* rating like any real category. No live source exists to fix that (FDA  */
-/* BIMO is periodic/investigator-keyed only; India's CDSCO has no public   */
-/* API/database at all), so rather than keep shipping a fabricated rating */
-/* that can move a site's risk badge, this category was dropped entirely. */
-/* liveRiskAssessment.ts now surfaces a static, non-scored disclaimer      */
-/* instead, so the app can note that compliance/GCP history is unknown    */
-/* without inventing a number for it.                                     */
-/* ---------------------------------------------------------------------- */
-
-/* ---------------------------------------------------------------------- */
-/* Live-region metric estimation (no public source for these figures)     */
-/* ---------------------------------------------------------------------- */
-
 export interface RegionMetricsEstimateInput {
   region: string;
   country: string;
@@ -393,29 +355,6 @@ export interface RegionMetricsEstimate {
   rationale: string;
 }
 
-/**
- * Estimates region-level figures with no public source anywhere (disease
- * prevalence at this indication's granularity, regulatory approval time by
- * country, cost per patient by country/region). Grounded only in the
- * model's general country-level knowledge (regulatory maturity, healthcare
- * cost of living, disease context) — not a live lookup.
- *
- * Throws (does not return mock/fallback data) if the LLM is unconfigured or
- * the call fails/doesn't parse, so callers can surface an explicit warning
- * instead of showing fabricated numbers.
- */
-// Azure OpenAI's Responsible AI content filter occasionally blocks THIS
-// prompt for certain indications (observed: "Psoriasis (Moderate-Severe)")
-// even though the near-identical estimateSiteGeoRisk prompt for the same
-// indication goes through fine — RAI filtering runs over the model's actual
-// generated completion (which varies run-to-run at temperature 0.3), not
-// just the fixed input text, so a block is not guaranteed to repeat on a
-// retry of the exact same request. isContentFilterError/buildRegionMetricsPrompt
-// below let estimateRegionMetrics retry past a transient block, and fall
-// back to a reworded prompt (no disease-severity qualifier, explicitly
-// framed as a non-clinical business planning estimate) if it keeps
-// recurring — rather than the whole Site Map silently showing 0 for every
-// site in that country every time this specific indication is searched.
 function isContentFilterError(err: unknown): boolean {
   const e = err as { code?: string; error?: { code?: string } } | null;
   return e?.code === "content_filter" || e?.error?.code === "content_filter";
@@ -452,11 +391,6 @@ Reply with ONLY a JSON object, no prose or markdown fences, in exactly this shap
 }`;
   }
 
-  // Reworded fallback variant: strips any parenthetical severity/staging
-  // qualifier from the indication (e.g. "Psoriasis (Moderate-Severe)" ->
-  // "Psoriasis"), and reframes the ask as a business/market-sizing estimate
-  // rather than a clinical judgment, in case that framing is what trips the
-  // filter for certain indications.
   const plainIndication = input.indication.replace(/\s*\([^)]*\)\s*$/, "").trim();
   return `You are a market-sizing analyst supporting internal clinical-trial site-selection
 business planning (NOT medical advice, NOT a clinical diagnosis or treatment recommendation).
@@ -493,10 +427,6 @@ export async function estimateRegionMetrics(
     );
   }
 
-  // Attempt plan: same prompt twice (a content-filter block isn't
-  // guaranteed to repeat, since it's evaluated against the model's actual
-  // generated completion, which varies at temperature 0.3), then one
-  // reworded/de-clinicalized prompt as a last resort.
   const attempts: Array<"default" | "reworded"> = [
     "default",
     "default",
@@ -563,8 +493,6 @@ export async function estimateRegionMetrics(
     } catch (err) {
       lastErr = err;
       if (!isContentFilterError(err)) {
-        // Not a content-filter block (network error, rate limit, etc.) —
-        // retrying with a reworded prompt wouldn't help, so fail fast.
         throw err;
       }
       const contentFilterResult = (
@@ -586,10 +514,6 @@ export async function estimateRegionMetrics(
     : new Error("LLM region-metrics estimate failed after retries.");
 }
 
-/* ---------------------------------------------------------------------- */
-/* Live requirement-threshold estimation (no public source)               */
-/* ---------------------------------------------------------------------- */
-
 export interface RequirementThresholdEstimateInput {
   indication: string;
   specialty: string;
@@ -606,15 +530,6 @@ export interface RequirementThresholdEstimate {
   rationale: string;
 }
 
-/**
- * Estimates a trial's acceptable data-quality/screen-failure thresholds —
- * no public source discloses what a protocol's acceptable thresholds should
- * be, so this reasons from typical trial rigor for the given specialty/phase.
- *
- * Throws (does not return mock/fallback data) if the LLM is unconfigured or
- * the call fails/doesn't parse, so callers can surface an explicit warning
- * instead of showing fabricated numbers.
- */
 export async function estimateRequirementThresholds(
   input: RequirementThresholdEstimateInput,
 ): Promise<RequirementThresholdEstimate> {
@@ -689,19 +604,6 @@ Reply with ONLY a JSON object, no prose or markdown fences, in exactly this shap
   };
 }
 
-/* ---------------------------------------------------------------------- */
-/* Live specialty inference (open up the indication dropdown)             */
-/* ---------------------------------------------------------------------- */
-
-/**
- * Infers the single medical specialty required to run a clinical trial for
- * an arbitrary indication string, so the indication dropdown is not limited
- * to the static INDICATION_TO_SPECIALTY map. Callers are responsible for
- * caching the result (this function makes no caching decision itself).
- *
- * Throws if the LLM is unconfigured or the call fails/returns an unusable
- * value, so callers can fall back to the static map or surface an error.
- */
 export async function inferSpecialtyForIndication(
   indication: string,
 ): Promise<string> {
@@ -740,36 +642,11 @@ export function llmStatus(): { configured: boolean; model: string } {
   return { configured: !!client, model: MODEL };
 }
 
-/* ---------------------------------------------------------------------- */
-/* Eligibility-criteria filter impact estimation (Site Map feature)       */
-/* ---------------------------------------------------------------------- */
-
 export interface EligibilityFilterEstimateItem {
-  /** URL/DOM-safe slug derived from label, e.g. "pregnancy" or "prior-therapy". */
   id: string;
-  /**
-   * Short human-readable label for a checkbox — kept under
-   * MAX_FILTER_LABEL_LENGTH so it always reads as one clean line in the UI,
-   * e.g. "Pregnant or breastfeeding" rather than the full clinical sentence.
-   */
   label: string;
-  /**
-   * The fuller clinical wording behind the short label (closer to the
-   * original criteria text), shown in a tooltip rather than the checkbox
-   * itself — e.g. label "Pregnant or breastfeeding" might have detail
-   * "Pregnant, breastfeeding, or planning pregnancy during the study
-   * period; must use protocol-specified contraception." Falls back to
-   * equal to `label` if the model didn't have anything longer to add.
-   */
   detail: string;
   type: "inclusion" | "exclusion";
-  /**
-   * The analyst's best-informed estimate of what percentage of the general
-   * population of people WITH this indication would be screened out by this
-   * specific criterion alone (not cumulative with the others) — there is no
-   * public source for this figure; it is reasoned from general epidemiology
-   * and typical trial-eligibility patterns for this condition.
-   */
   estimatedExcludedPercent: number;
 }
 
@@ -778,19 +655,6 @@ export interface EligibilityFilterEstimate {
   rationale: string;
 }
 
-/**
- * Parses a trial's real, disclosed ClinicalTrials.gov EligibilityCriteria
- * free text into a short list of distinct, checkbox-able inclusion/exclusion
- * criteria, each with an estimated "% of the general <indication> patient
- * population this criterion alone would exclude." No public source
- * quantifies this — it is the LLM's best-informed estimate from general
- * epidemiology, grounded in the real criteria text (not invented criteria).
- *
- * Throws if the LLM is unconfigured or the call fails/returns nothing
- * usable, so callers can fall back to showing the raw criteria text with an
- * explicit "no impact estimate available" warning instead of a fabricated
- * percentage.
- */
 export async function estimateEligibilityFilterImpact(input: {
   indication: string;
   criteriaText: string;
@@ -876,20 +740,7 @@ Reply with ONLY a JSON object, no prose or markdown fences, in exactly this shap
     rationale?: string;
   }>(raw);
 
-  // No count cap here on purpose (see the prompt's "extract EVERY distinct,
-  // clinically meaningful criterion" instruction) — a criterion dropped here
-  // is still a real exclusion in the actual trial, it just wouldn't be
-  // selectable, silently understating how narrow the true patient
-  // population is. FILTER_COUNT_SAFETY_CAP exists only to bound a
-  // pathological response (e.g. the model mis-parsing the text into
-  // dozens of near-duplicate fragments), not as a design limit — a real
-  // trial's meaningful criteria essentially never reach this number, and
-  // the UI panel scrolls vertically to accommodate however many come back.
   const FILTER_COUNT_SAFETY_CAP = 40;
-  // Labels are enforced short server-side (not just requested in the
-  // prompt) so the UI never has to truncate/overflow — any excess text the
-  // model puts in "label" instead of "detail" is moved into detail instead
-  // of being silently lost.
   const MAX_FILTER_LABEL_LENGTH = 45;
 
   const seenIds = new Set<string>();
@@ -915,9 +766,6 @@ Reply with ONLY a JSON object, no prose or markdown fences, in exactly this shap
         trimmedLabel.length > MAX_FILTER_LABEL_LENGTH
           ? `${trimmedLabel.slice(0, MAX_FILTER_LABEL_LENGTH - 1).trimEnd()}…`
           : trimmedLabel;
-      // If the model put the long version in "label" and left "detail"
-      // empty/identical, the truncation above would otherwise lose text —
-      // preserve the full original label as the detail in that case.
       const detail =
         label !== trimmedLabel && fullDetail === trimmedLabel
           ? trimmedLabel
@@ -952,10 +800,6 @@ Reply with ONLY a JSON object, no prose or markdown fences, in exactly this shap
   };
 }
 
-/* ---------------------------------------------------------------------- */
-/* Live-site geographic risk estimation (Site Map feature)                */
-/* ---------------------------------------------------------------------- */
-
 export interface SiteGeoRiskInput {
   facilityName: string;
   city: string | null;
@@ -979,17 +823,6 @@ function clampScore(v: number): number {
   return Math.max(0, Math.min(100, Math.round(v)));
 }
 
-/**
- * Estimates a single 0-100 "site risk score" for the Site Map view. No
- * public database of per-site clinical-trial risk scores was found, so this
- * is grounded only in the facility's name/location/indication (same honesty
- * pattern as estimateSiteKpis) — the model's general knowledge of
- * regulatory maturity, healthcare infrastructure, and trial density for
- * that geography, NOT any measured fact about this specific facility.
- *
- * Throws if the LLM is unconfigured or the call fails, so callers show
- * riskLevel: "Unknown" instead of a fabricated score.
- */
 export async function estimateSiteGeoRisk(
   input: SiteGeoRiskInput,
 ): Promise<SiteGeoRiskEstimate> {

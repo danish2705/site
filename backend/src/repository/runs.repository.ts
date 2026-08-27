@@ -1,13 +1,6 @@
 import { requirePool } from "../db.js";
 import type { SaveRunInput, SavedRunSummary } from "../types.js";
 
-// Last line of defense before an integer/numeric DB column: /api/runs takes
-// a raw JSON body, so a caller (or a form field left blank upstream, e.g.
-// "" for an unset Target Enrollment) could still hand this a non-numeric
-// value even though SaveRunInput's TS types say `number`. Postgres rejects
-// "" for an integer column with "invalid input syntax for type integer:
-// ''" — coercing anything non-finite to null here means every numeric bind
-// below is guaranteed to be a real number or null, never a stray string.
 function toNullableNumber(value: unknown): number | null {
   if (value === null || value === undefined) return null;
   const n = typeof value === "number" ? value : Number(value);
