@@ -96,7 +96,8 @@ export async function postSiteCombination(
       specialty,
     });
     avgCostPerPatientUsd =
-      regionRow.regionMetricsSource === "llm-estimated"
+      regionRow.regionMetricsSource === "llm-estimated" ||
+      regionRow.regionMetricsSource === "claims-synthetic"
         ? regionRow["Avg Cost per Patient (USD)"]
         : null;
   } catch {

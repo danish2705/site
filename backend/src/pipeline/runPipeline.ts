@@ -428,7 +428,9 @@ export async function runPipelineStages1to3(
         : `Selected ${topRegion.Region}, ${topRegion.Country} (top-scoring of ${rankedRegions.length} regions considered — no region/country input given)`) +
       (topRegion.regionMetricsSource === "llm-estimated"
         ? " · Prevalence/Regulatory/Cost figures (AI-estimated)"
-        : "") +
+        : topRegion.regionMetricsSource === "claims-synthetic"
+          ? " · Prevalence/Regulatory/Cost figures (from a pre-built synthetic reference table)"
+          : "") +
       (regionMetricsWarnings.length > 0
         ? ` — ${regionMetricsWarnings.length} region(s) missing Prevalence/Regulatory/Cost data (see warnings)`
         : ""),
@@ -459,7 +461,9 @@ export async function runPipelineStages1to3(
       `~${estimatedPatients.toLocaleString()} estimated eligible patients (illustrative)` +
       (topRegion.regionMetricsSource === "llm-estimated"
         ? " — based on an (AI-estimated) prevalence figure"
-        : ""),
+        : topRegion.regionMetricsSource === "claims-synthetic"
+          ? " — based on a pre-built synthetic reference prevalence figure"
+          : ""),
   });
 
   return { indication, specialty, requirement, topRegion, estimatedPatients, ageGroups };
