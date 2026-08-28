@@ -20,7 +20,6 @@ export interface SiteCombinationParams {
   }[];
 }
 
-/** Which combination of already-found candidate sites reaches a target enrollment for the least cost/risk — see backend pipeline/siteCombinationOptimizer.ts for the (greedy, non-exhaustive) method. */
 export function fetchSiteCombination(
   params: SiteCombinationParams,
 ): Promise<SiteCombinationResponse> {
@@ -44,7 +43,6 @@ export interface OutreachDraftParams {
   }[];
 }
 
-/** Drafts (text only, never sent) a site-outreach email per site — see backend pipeline/outreachDraft.ts. Every contact address returned is a labeled synthetic placeholder. */
 export function fetchOutreachDraft(
   params: OutreachDraftParams,
 ): Promise<OutreachDraftResponse> {

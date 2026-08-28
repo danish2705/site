@@ -14,10 +14,6 @@ import type { FinalResult, OutreachDraft } from "../../types";
 
 type LiveStatusFilter = "RECRUITING" | "NOT_YET_RECRUITING" | "ACTIVE_NOT_RECRUITING";
 
-// Same three statuses/labels as the Ranking page's status filter (see
-// SiteRankingPanel.tsx) — kept as its own local copy rather than shared,
-// same "deliberately LOCAL to this page" approach already used for the
-// country picker below.
 const STATUS_OPTIONS: { value: LiveStatusFilter; label: string }[] = [
   { value: "RECRUITING", label: "Recruiting" },
   { value: "NOT_YET_RECRUITING", label: "Not Yet Recruiting" },
@@ -56,12 +52,6 @@ export default function RecommendationPanel() {
   } = usePipeline();
   const [saveDialogOpen, setSaveDialogOpen] = useState(false);
 
-  // Country picker — deliberately LOCAL to this page, not shared with Risk
-  // Register/Ranking: those each keep their own selection too. All three
-  // still read from the same PipelineContext analysisCache/
-  // prefetchingCountries, so switching country here is instant once that
-  // country has been analyzed, and only triggers a fresh fetch when it's
-  // genuinely not there yet.
   const [pageCountry, setPageCountry] = useState("");
 
   useEffect(() => {
@@ -78,7 +68,6 @@ export default function RecommendationPanel() {
           : selectedCountries[0],
       );
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedCountries.join("|"), topRegion, running]);
 
   useEffect(() => {
@@ -86,35 +75,22 @@ export default function RecommendationPanel() {
     if (analysisCache[pageCountry]) return;
     if (prefetchingCountries.has(pageCountry)) return;
     analyzeForCountry(pageCountry, { background: true });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pageCountry, analysisCache, prefetchingCountries]);
 
   const cached = pageCountry ? analysisCache[pageCountry] : undefined;
   const pageLoading =
     !!pageCountry && !cached && (running || analyzing || prefetchingCountries.has(pageCountry));
 
-  // Status dropdown — "best of Recruiting / Not Yet Recruiting / Active,
-  // Not Recruiting" (see backend's Stage 8: it always recommends the single
-  // best site across every status combined, which can silently be a site
-  // the Ranking page's default "Recruiting" filter never shows). Each
-  // status's result is fetched lazily and cached per country+status so
-  // switching back to one already seen is instant.
   const [statusFilter, setStatusFilter] = useState<LiveStatusFilter | "">("");
   const [recoByStatus, setRecoByStatus] = useState<Record<string, FinalResult>>({});
   const [statusLoading, setStatusLoading] = useState(false);
   const [statusError, setStatusError] = useState<string | null>(null);
 
-  // New country selected — the previous country's status choice doesn't
-  // carry over; the default below re-derives once that country's overall
-  // best result (already fetched by analyzeForCountry) is in.
   useEffect(() => {
     setStatusFilter("");
     setStatusError(null);
   }, [pageCountry]);
 
-  // Seed the cache for whichever status the country's overall-best site
-  // actually has, straight from the result analyzeForCountry already
-  // fetched — no extra request needed for that one status.
   useEffect(() => {
     if (!pageCountry || !cached?.finalResult) return;
     const s = normalizeStatus(cached.finalResult.status);
@@ -123,16 +99,12 @@ export default function RecommendationPanel() {
     setRecoByStatus((prev) => (prev[key] ? prev : { ...prev, [key]: cached.finalResult }));
   }, [pageCountry, cached?.finalResult]);
 
-  // Default the dropdown to that same status once it's known, so the page
-  // shows exactly what it always showed until the user picks a different
-  // status themselves.
   useEffect(() => {
     if (statusFilter) return;
     if (!cached?.finalResult) return;
     setStatusFilter(normalizeStatus(cached.finalResult.status) ?? "RECRUITING");
   }, [statusFilter, cached?.finalResult]);
 
-  // Fetch the best site for the selected status when it isn't cached yet.
   useEffect(() => {
     if (!pageCountry || !statusFilter) return;
     const analysisId = cached?.analysisId;
@@ -196,11 +168,6 @@ export default function RecommendationPanel() {
     </div>
   );
 
-  // Outreach draft for the recommended site — see backend
-  // pipeline/outreachDraft.ts. Draft text only, never actually sent: there
-  // is no live source for a facility's real contact email (ClinicalTrials.gov
-  // does not reliably disclose one), so the "To:" address below is a
-  // clearly-labeled SYNTHETIC placeholder, not a real inbox.
   const [draftOpen, setDraftOpen] = useState(false);
   const [draftLoading, setDraftLoading] = useState(false);
   const [draft, setDraft] = useState<OutreachDraft | null>(null);
@@ -208,9 +175,6 @@ export default function RecommendationPanel() {
 
   if (!finalResult) {
     if (pageLoading || statusLoading) {
-      // Keep the country/status pickers + action buttons visible and only
-      // put the loader in the body — a bare full-card loader used to blank
-      // out the dropdowns and Save/Draft buttons while a result was loading.
       return (
         <div className="card">
           <div className="pipeline-card-head">
@@ -260,10 +224,6 @@ export default function RecommendationPanel() {
     }
     return null;
   }
-  // Narrowed alias so the nested draftOutreach() below (a function
-  // declaration, not a same-scope block) can reference it without
-  // TypeScript widening it back to `FinalResult | null` — same value,
-  // just captured after the null check above.
   const site = finalResult;
 
   async function draftOutreach() {

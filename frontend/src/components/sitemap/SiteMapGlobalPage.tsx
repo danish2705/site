@@ -23,18 +23,10 @@ import {
 const WORLD_CENTER: [number, number] = [20, 0];
 const WORLD_ZOOM = 2;
 
-// A real Google-Maps-style map: OpenStreetMap's free raster tile server —
-// no API key, no billing account, no card required (same "free tier"
-// philosophy as the Nominatim geocoding elsewhere in this app). Usage
-// policy requires the attribution below and asks apps not to hammer it
-// with heavy traffic; fine for this app's per-search tile loads.
 const OSM_TILE_URL = "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png";
 const OSM_ATTRIBUTION =
   '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">OpenStreetMap</a> contributors';
 
-// Popup content for a site's map pin — built as an HTML string for
-// Leaflet's imperative popup API. All external/LLM-sourced text
-// (site name, rationale, city/state/country) is escaped before insertion.
 function buildPopupHtml(s: MapSiteRow, metric: "gross" | "net"): string {
   const location = [s.city, s.state, s.country]
     .filter((v): v is string => !!v)
@@ -65,12 +57,6 @@ function buildPopupHtml(s: MapSiteRow, metric: "gross" | "net"): string {
   `;
 }
 
-// Lightweight hover tooltip for a single site's pin — shorter than the
-// click popup (buildPopupHtml), just enough to orient without clicking:
-// name, location, and the patient-catchment numbers. There's no real
-// "registered for trial" count anywhere in this data — these are the same
-// estimated Gross Eligible / Net Available figures shown in the table and
-// popup (see liveMapData.ts for what's synthetic/estimated vs. live).
 function buildMarkerTooltipHtml(s: MapSiteRow): string {
   const location = [s.city, s.state, s.country]
     .filter((v): v is string => !!v)
@@ -88,9 +74,6 @@ function buildMarkerTooltipHtml(s: MapSiteRow): string {
   `;
 }
 
-// Hover tooltip for a cluster bubble (the green/orange/yellow circles) —
-// summarizes the sites bundled inside it rather than making the user click
-// to expand/zoom just to see what's there.
 function buildClusterTooltipHtml(sites: MapSiteRow[]): string {
   const totalGross = sites.reduce((sum, s) => sum + s.grossEligiblePatients, 0);
   const totalNet = sites.reduce((sum, s) => sum + s.netAvailablePatients, 0);
@@ -119,10 +102,6 @@ function buildClusterTooltipHtml(sites: MapSiteRow[]): string {
   `;
 }
 
-// Plain red pin (Google-Maps-style), built as inline-styled HTML rather
-// than an external icon image or CSS class — Leaflet's default marker
-// icon depends on image assets that are easy to lose track of through a
-// bundler, and an inline-styled divIcon can't break that way.
 function siteIcon(): L.DivIcon {
   return L.divIcon({
     className: "site-pin-icon",
@@ -145,22 +124,25 @@ export default function SiteMapGlobalPage() {
     data,
     loading,
     error,
+    runSearch,
     allSites,
   } = useIndependentSiteSearch();
-  // Local to this page only — Site Map Details no longer shares state with
-  // this page (each of the 3 Site Map pages now has its own independent
-  // country/site data, per request), so there's nothing else to sync a
-  // clicked pin's selection with.
   const [selectedSiteId, setSelectedSiteId] = useState<string | null>(null);
 
+  const [isFullScreen, setIsFullScreen] = useState(false);
   const mapContainerRef = useRef<HTMLDivElement | null>(null);
   const mapInstanceRef = useRef<L.Map | null>(null);
-  // leaflet.markercluster augments the Leaflet namespace at runtime; typed
-  // loosely here rather than depending on the exact @types/leaflet.markercluster
-  // augmentation shape.
   const clusterGroupRef = useRef<any>(null);
   const radiusCircleRef = useRef<L.Circle | null>(null);
   const markerByIdRef = useRef<Map<string, L.Marker>>(new Map());
+
+  useEffect(() => {
+    if (mapInstanceRef.current) {
+      setTimeout(() => {
+        mapInstanceRef.current?.invalidateSize();
+      }, 100);
+    }
+  }, [isFullScreen]);
 
   function showRadiusRing(site: MapSiteRow) {
     const map = mapInstanceRef.current;
@@ -179,7 +161,6 @@ export default function SiteMapGlobalPage() {
     }).addTo(map);
   }
 
-  // Create the Leaflet map once on mount and tear it down on unmount.
   useEffect(() => {
     if (!mapContainerRef.current || mapInstanceRef.current) return;
     const map = L.map(mapContainerRef.current, {
@@ -198,12 +179,7 @@ export default function SiteMapGlobalPage() {
       maxClusterRadius: 50,
     });
     clusterGroup.addTo(map);
-    // leaflet.markercluster builds/tears down cluster bubbles on the fly as
-    // you zoom, so there's no fixed list of "cluster markers" to attach a
-    // tooltip to up front — instead we (re)bind fresh content onto whatever
-    // cluster the mouse is currently over, standard practice for this
-    // plugin (mirrors its own README's `clustermouseover`-bound-popup
-    // example, just with a hover tooltip instead of a click popup).
+    
     clusterGroup.on("clustermouseover", (e: any) => {
       const cluster = e.layer;
       const sites: MapSiteRow[] = cluster
@@ -228,10 +204,6 @@ export default function SiteMapGlobalPage() {
     };
   }, []);
 
-  // Rebuild pins whenever the filtered site list changes (a new search, or
-  // the search box narrowing results, set on the Site Map Details page) and
-  // fit the view around them — a country-scoped search zooms to that
-  // country automatically instead of always showing the whole world.
   useEffect(() => {
     const map = mapInstanceRef.current;
     const clusterGroup = clusterGroupRef.current;
@@ -250,18 +222,12 @@ export default function SiteMapGlobalPage() {
         direction: "top",
         offset: [0, -10],
       });
-      // Stashed so the cluster-hover handler above can summarize whichever
-      // sites happen to be bundled into a given bubble at the current zoom.
       (marker as any).__siteData = s;
       marker.on("click", () => setSelectedSiteId(s.siteId));
       clusterGroup.addLayer(marker);
       markerByIdRef.current.set(s.siteId, marker);
       latLngs.push([s.lat, s.lng]);
     }
-    // The container is created while still effectively hidden (0-height,
-    // before any search result exists), so Leaflet's cached size is stale
-    // by the time real data arrives — invalidateSize() forces it to
-    // re-measure before we ask it to fit/frame anything.
     map.invalidateSize();
     if (latLngs.length > 0) {
       map.fitBounds(L.latLngBounds(latLngs), {
@@ -271,13 +237,8 @@ export default function SiteMapGlobalPage() {
     } else {
       map.setView(WORLD_CENTER, WORLD_ZOOM);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [allSites]);
 
-  // Focus whichever site is selected — whether that selection came from a
-  // pin click here, or a table-row click on the Site Map Details page.
-  // Keeps the two pages' selection in sync without duplicating the
-  // zoom/circle logic in both places.
   useEffect(() => {
     if (!selectedSiteId) return;
     const clusterGroup = clusterGroupRef.current;
@@ -288,7 +249,6 @@ export default function SiteMapGlobalPage() {
     clusterGroup.zoomToShowLayer(marker, () => {
       marker.openPopup();
     });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedSiteId, allSites]);
 
   return (
@@ -302,7 +262,6 @@ export default function SiteMapGlobalPage() {
             <Select
               value={country}
               onChange={setCountry}
-              disabled={loading}
               options={selectedCountries.map((c) => ({ value: c, label: c }))}
             />
           ) : (
@@ -315,13 +274,20 @@ export default function SiteMapGlobalPage() {
             </>
           )}
         </label>
-        {/* Compact inline notice instead of a large dashed placeholder box
-            taking up the whole panel below — the search itself now runs
-            automatically (see useIndependentSiteSearch) as soon as an
-            indication/country resolve, so there's no button to prompt. */}
+        <button
+          type="button"
+          className="predict-btn map-search-btn"
+          onClick={runSearch}
+          disabled={loading || !indication}
+        >
+          Search
+        </button>
+
+        {/* Compact inline notice next to the button instead of a large
+            dashed placeholder box taking up the whole panel below. */}
         {!data && !loading && !error && (
           <span className="map-no-search-note">
-            {indication ? "Loading sites…" : "Pick an indication to plot sites."}
+            No search yet — hit Search to plot sites.
           </span>
         )}
       </div>
@@ -346,9 +312,7 @@ export default function SiteMapGlobalPage() {
             ref={mapContainerRef}
             style={{
               width: "100%",
-              height: 480,
-              borderRadius: 10,
-              border: "1px solid #d7dbe6",
+              height: "100%",
             }}
           />
 

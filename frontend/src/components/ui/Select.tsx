@@ -7,23 +7,6 @@ export interface SelectOption {
   disabled?: boolean;
 }
 
-/**
- * Themed dropdown replacing the native <select> app-wide. A plain <select>'s
- * OPEN option list is rendered by the OS/browser and can't be restyled with
- * CSS in most browsers — it always shows up with the platform's own blue
- * highlight regardless of the app's own purple theme, which is what this
- * replaces. Renders a button showing the current value plus a custom
- * listbox styled to match the rest of the app (App.css's .ui-select-* rules),
- * with the same closed-state footprint as the old native selects so it drops
- * in without changing layout.
- *
- * The open menu is rendered through a portal into document.body, positioned
- * with `position: fixed` from the trigger button's own bounding rect. This
- * lets it visually overlap content below/around it (like a native <select>'s
- * option list does) instead of being clipped by an ancestor's
- * `overflow: auto/hidden` (e.g. the sidebar form's scroll container) or
- * forcing that ancestor to scroll just to reveal the options.
- */
 export default function Select({
   value,
   onChange,
@@ -37,12 +20,10 @@ export default function Select({
   value: string;
   onChange: (value: string) => void;
   options: SelectOption[];
-  /** Shown (grayed out) when value is "" and no option matches it — mirrors a disabled placeholder <option value="">. */
   placeholder?: string;
   disabled?: boolean;
   title?: string;
   className?: string;
-  /** Stretch to fill the parent (matches a native <select> inside a vertical form field). Default is content-sized, like an inline native <select> in a toolbar. */
   fullWidth?: boolean;
 }) {
   const [open, setOpen] = useState(false);
@@ -61,7 +42,6 @@ export default function Select({
   useLayoutEffect(() => {
     if (!open) return;
     updateMenuRect();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
   useEffect(() => {
@@ -80,9 +60,6 @@ export default function Select({
     function handleKey(e: KeyboardEvent) {
       if (e.key === "Escape") setOpen(false);
     }
-    // capture:true so this also fires for scrolls inside nested scroll
-    // containers (e.g. the sidebar form), which don't bubble as "scroll"
-    // events on window/document otherwise.
     function handleReposition() {
       updateMenuRect();
     }
@@ -137,11 +114,6 @@ export default function Select({
         menuRect &&
         createPortal(
           <ul
-            // The menu portals into document.body, so it's never actually
-            // a DOM descendant of the wrapper below — a CSS rule written
-            // as ".some-custom-class .ui-select-menu" can never match.
-            // Carrying the same custom class onto this element too lets
-            // per-instance overrides target it directly instead.
             className={`ui-select-menu ui-select-menu--portaled${className ? ` ${className}` : ""}`}
             role="listbox"
             ref={menuRef}
@@ -149,10 +121,6 @@ export default function Select({
               position: "fixed",
               top: menuRect.top,
               left: menuRect.left,
-              // Fixed to the trigger's own width (not minWidth) so the
-              // menu never grows past its container's edge (e.g. the
-              // sidebar form) — a long option label wraps onto a second
-              // line instead (.ui-select-option is white-space: normal).
               width: menuRect.width,
             }}
           >

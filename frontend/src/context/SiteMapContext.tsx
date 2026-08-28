@@ -25,17 +25,6 @@ import {
   type SortKey,
 } from "../utils/siteMapFormat";
 
-/**
- * All of the Site Map's data-fetching + filter/sort/selection state — moved
- * verbatim out of the old single-file SiteMapView.tsx (which was embedded
- * as a duplicated "Site Map (Global)" tab in 3 different panels) so the
- * new Site Map (Global) / Site Map Details / Site Combination Planner
- * pages can share one in-memory copy instead of each re-fetching. Nothing
- * here changes what's fetched or how it's computed — only where the state
- * lives. Leaflet map instance/marker refs are NOT here; those are
- * inherently tied to the Global page's DOM node and stay local to that
- * page component.
- */
 export interface SiteMapState {
   indication: string;
   selectedCountries: string[];
@@ -246,17 +235,12 @@ export function SiteMapProvider({ children }: { children: ReactNode }) {
     }
   }
 
-  // Keep `country` in sync with the trial form's selected region(s) —
-  // default to the first selected country, or clear it (falls back to a
-  // global search) if nothing is selected or the current pick fell out of
-  // the list.
   useEffect(() => {
     if (selectedCountries.length === 0) {
       if (country) setCountry("");
     } else if (!selectedCountries.includes(country)) {
       setCountry(selectedCountries[0]);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedCountries]);
 
   async function runSearch() {
@@ -290,18 +274,10 @@ export function SiteMapProvider({ children }: { children: ReactNode }) {
     }
   }, [running]);
 
-  // Searches automatically — for the default (first selected) country as
-  // soon as one resolves, and again every time the country dropdown
-  // changes — instead of requiring a manual "Search" click each time.
-  // Waits for `country` to actually settle to a real value (set by the
-  // sync effect above) rather than firing on the same-render "" — otherwise
-  // this would kick off an unscoped/all-countries search instead of the
-  // intended one.
   useEffect(() => {
     if (!indication) return;
     if (selectedCountries.length > 0 && !country) return;
     runSearch();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [indication, country, selectedCountries]);
 
   const filteredSites = useMemo(() => {
@@ -312,7 +288,6 @@ export function SiteMapProvider({ children }: { children: ReactNode }) {
         .filter(Boolean)
         .some((v) => (v as string).toLowerCase().includes(q)),
     );
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [allSites, search]);
 
   const sortedSites = useMemo(() => {

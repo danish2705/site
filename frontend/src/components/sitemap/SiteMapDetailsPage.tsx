@@ -13,14 +13,6 @@ import Select from "../ui/Select";
 import Tooltip from "../ui/Tooltip";
 import EmptyState from "../ui/EmptyState";
 
-/**
- * "Site Map Details" page — the sortable per-site table, per-site detail
- * panels (sample patients), and the combined-catchment comparator that used
- * to live below the map inside the old SiteMapView.tsx tab. Reads the same
- * shared SiteMapContext as the Site Map (Global) page, so search/sort/
- * filter/selection state is identical whichever page you're on — nothing
- * refetches when you switch between them.
- */
 export default function SiteMapDetailsPage() {
   const {
     indication,
@@ -62,12 +54,6 @@ export default function SiteMapDetailsPage() {
     expectedRecruitment,
   } = useSiteMap();
 
-  // The eligibility-filter dropdown (opened from the "Available" column
-  // header) is rendered through a portal into document.body, positioned
-  // via this header cell's own bounding rect — same reasoning as Select.tsx:
-  // an absolutely-positioned 380px-wide panel nested inside a fixed-layout
-  // <table>/<th> was both getting clipped by the table's scroll container
-  // and distorting the table's own column widths. A portal escapes both.
   const filterHeaderRef = useRef<HTMLTableCellElement>(null);
   const [filterPanelRect, setFilterPanelRect] = useState<{ top: number; left: number } | null>(null);
 
@@ -239,15 +225,6 @@ export default function SiteMapDetailsPage() {
                     </th>
                     <th
                       ref={filterHeaderRef}
-                      // No inline position:relative here — an inline style
-                      // always wins over the shared `th { position: sticky }`
-                      // rule regardless of specificity, which was silently
-                      // stopping just this one header cell from sticking.
-                      // The filter panel below is portaled and positioned
-                      // via getBoundingClientRect() already, so it never
-                      // actually needed this <th> to be a positioned
-                      // ancestor — sticky already counts as positioned for
-                      // any descendant that does need one.
                       data-tooltip={
                         excludeEnrolled
                           ? "Eligible patients minus an estimated already-enrolled-elsewhere share"
@@ -286,11 +263,7 @@ export default function SiteMapDetailsPage() {
                             top: filterPanelRect.top,
                             left: filterPanelRect.left,
                             zIndex: 3000,
-                            // Wider than before (320 -> 380) and no horizontal
-                            // scrolling — labels are now capped at 45 chars
-                            // server-side and wrap onto a second line if
-                            // needed instead of being cut off or requiring a
-                            // horizontal scrollbar to read.
+
                             width: 380,
                             maxHeight: 380,
                             overflowY: "auto",

@@ -2,12 +2,6 @@ import { CloseIcon } from "./Icons";
 import { buildGmailComposeUrl, buildOutlookComposeUrl } from "../../utils/emailLinks";
 import type { OutreachDraft } from "../../types";
 
-/**
- * Popup for a single outreach draft (used from both the Final Recommendation
- * panel and the Site Ranking table). Shown as a modal instead of expanding
- * inline in the page, since the inline block pushed surrounding content
- * around and read as clutter, especially inside a table row.
- */
 export default function OutreachDraftModal({
   draft,
   onClose,

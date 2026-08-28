@@ -1,9 +1,3 @@
-// Auto-generated data file — DO NOT hand-edit.
-// Source: world-atlas@2.0.2 land-110m.json (Mike Bostock, ISC license),
-// pre-built TopoJSON derived from Natural Earth 1:110m-scale public domain
-// coastline/land-polygon geography. Used only to draw the world map
-// background behind trial-site markers in SiteMapView — no trial, patient,
-// or risk data lives in this file.
 export const WORLD_LAND_TOPOLOGY: any = {
   type: "Topology",
   objects: {

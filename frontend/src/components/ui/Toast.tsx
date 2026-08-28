@@ -1,10 +1,3 @@
-/**
- * Dismissible, non-blocking notification — for informational messages
- * (e.g. a data source silently falling back) that must be visible but
- * shouldn't read like an error. Distinct in style from .shell-error/
- * .error-text (red) so a real problem and a "just so you know" never
- * look the same.
- */
 export default function Toast({
   message,
   onDismiss,
