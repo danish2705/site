@@ -63,7 +63,7 @@ export const config = {
     // show the shape of the breakdown Srikanth described (net-new and
     // non-responders are the realistic recruits; stable patients are not).
     // Replace with a real claims-data-driven segmentation once that source
-    // is integrated. Must sum to 1.
+    // is integrated.
     patientSegmentSplit: {
       newlyDiagnosed: Number(process.env.MAP_SEGMENT_NEWLY_DIAGNOSED) || 0.15,
       nonResponder: Number(process.env.MAP_SEGMENT_NON_RESPONDER) || 0.25,
