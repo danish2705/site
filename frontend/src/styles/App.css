@@ -23,10 +23,54 @@
   --radius-sm: 8px;
   --radius-pill: 999px;
   --nav-h: 64px;
+  --overlay-85: rgba(255, 255, 255, 0.85);
+  --overlay-92: rgba(255, 255, 255, 0.92);
+  --panel-subtle: #fbfbfe;
+  --success: #0a7d3c;
+  --success-bg: #e6f6ec;
+  --success-border: #b6e6c8;
+  --track-bg: #eaebf2;
+  --connector: #c3c8d9;
+  --border-strong: #c9cde0;
 }
 
-/* Any element carrying a tooltip (title attribute) should show a pointer on
-   hover */
+/* Dark theme overrides — toggled by adding the "dark" class to <html> */
+.dark {
+  --bg: #0f1117;
+  --card: #171a26;
+  --ink: #eef0f6;
+  --sub: #9aa0b4;
+  --line: #2a2e42;
+  --accent: #6672ff;
+  --accent-dark: #8b93ff;
+  --accent-soft: rgba(102, 114, 255, 0.18);
+  --low: #4ade80;
+  --low-bg: rgba(34, 197, 94, 0.16);
+  --med: #fbbf24;
+  --med-bg: rgba(251, 191, 36, 0.14);
+  --high: #f87171;
+  --high-bg: rgba(248, 113, 113, 0.14);
+  --no-data: #9aa0b4;
+  --no-data-bg: rgba(154, 160, 180, 0.14);
+  --info: #60a5fa;
+  --info-bg: rgba(96, 165, 250, 0.14);
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.35);
+  --shadow: 0 1px 2px rgba(0, 0, 0, 0.35), 0 10px 28px rgba(0, 0, 0, 0.5);
+  --overlay-85: rgba(15, 17, 26, 0.85);
+  --overlay-92: rgba(15, 17, 26, 0.92);
+  --panel-subtle: #1c1f2e;
+  --success: #4ade80;
+  --success-bg: rgba(34, 197, 94, 0.14);
+  --success-border: rgba(74, 222, 128, 0.3);
+  --track-bg: #262a3d;
+  --connector: #363b54;
+  --border-strong: #3a3f58;
+}
+
+.dark body {
+  color-scheme: dark;
+}
+
 [title]:not(button):not(a):not(input):not(select):not(textarea) {
   cursor: pointer;
 }
