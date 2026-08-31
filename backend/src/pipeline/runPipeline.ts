@@ -344,11 +344,7 @@ export async function runPipelineStages1to3(
         accreditationRequired: requirement["Accreditation Required"],
       },
       requirementSource: requirement.requirementSource ?? "live",
-      // Real, disclosed eligibility criteria from one representative trial
-      // for this indication (Srikanth's inclusion/exclusion-criteria ask) —
-      // informational only, NOT applied to filter any eligible-patient
-      // count elsewhere (see the field's doc comment on TrialRequirementRow
-      // in types.ts for why).
+      
       eligibility: {
         criteriaText: requirement.eligibilityCriteriaText ?? null,
         sex: requirement.eligibilitySex ?? null,

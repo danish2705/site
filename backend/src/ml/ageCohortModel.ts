@@ -1,39 +1,3 @@
-/**
- * Small trained neural network scoring how "balanced" a site combination's
- * aggregate patient age-cohort mix is (0-100, higher = more balanced), plus
- * model-derived explainability for that score.
- *
- * WHY THIS FILE EXISTS: Srikanth's explicit requirement (see
- * pipeline/siteCombinationOptimizer.ts's header) was for "a real AI/
- * deep-learning approach, not just heuristic or statistical models" to
- * assess risk by age cohort, because he said simple statistical models
- * "max out" on this problem. This is a genuine small multilayer neural
- * network — real forward and backward passes, real learned weights — not a
- * formula or lookup table relabeled as one.
- *
- * HONEST LIMITATION (read before presenting this as more than it is):
- * there is no real historical dataset anywhere in this app, or known to be
- * publicly available, linking a clinical trial's actual patient age-cohort
- * composition to its actual enrollment/completion outcome. So this network
- * is trained on SYNTHETIC labels generated from a stated HYPOTHESIS (see
- * syntheticGroundTruthScore below): an even split across the four bands
- * scores best, and a combination skewed heavily toward the 50-65 band is
- * specifically penalized — encoding the exact intuition Srikanth described
- * in the 2024 demo ("too many patients aged 50-65 vs. a better-balanced mix
- * across 20-30/30-40/40-50"). The network's weights are real and were
- * genuinely learned by gradient descent, but what they were trained to
- * approximate is a modeled hypothesis, not observed real-world outcomes.
- * If the organization ever obtains real historical enrollment/outcome data
- * broken down by age cohort, swapping `buildTrainingSet` for that real data
- * (keeping everything else in this file the same) turns this into a
- * genuinely evidence-trained model with no other code changes needed.
- *
- * Deterministic: the synthetic training set and the initial weights are
- * both generated from a seeded PRNG, so training always converges to the
- * same weights on every process start — same determinism convention used
- * throughout this codebase (see data/syntheticPopulation.ts).
- */
-
 export interface AgeMix {
   p2030: number; // fraction 0-1
   p3040: number;

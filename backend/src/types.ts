@@ -125,17 +125,6 @@ export interface MapSiteRow {
   assumedConsentRate: number;
   /** Deterministic SYNTHETIC per-site cost figure — see data/syntheticSiteCost.ts for why no live/LLM source exists for this. */
   siteCost: SyntheticSiteCost;
-  /**
-   * Srikanth's requirement #1 ("Eliminate Patients Already Enrolled in
-   * Another Trial"), made explicit: grossEligiblePatients minus
-   * netAvailablePatients, i.e. the same already-enrolled-elsewhere haircut
-   * that was always folded into netAvailablePatients, now surfaced as its
-   * own labeled number so a UI toggle can show "Available" (netAvailablePatients)
-   * vs. "Available + Enrolled" (grossEligiblePatients) side by side. Derived
-   * arithmetically (gross - net), not independently estimated, so the three
-   * numbers always reconcile exactly: grossEligiblePatients =
-   * alreadyEnrolledPatients + netAvailablePatients.
-   */
   alreadyEnrolledPatients: number;
   /**
    * Requirement #4 ("Update Synthetic Patient Data"): a small (25-row),
@@ -226,7 +215,6 @@ export interface SiteCombinationRequestSite {
 export interface SiteCombinationSelectedSite {
   siteId: string;
   siteName: string;
-  /** How many of this site's recruitable patients this strategy actually uses — may be less than recruitablePatientsAvailable when only a partial allocation is needed to reach the target (Srikanth: "some sites may not have enough population, so you have to pick maybe 5 from that site"). */
   patientsTaken: number;
   recruitablePatientsAvailable: number;
   riskScore: number | null;
@@ -244,14 +232,6 @@ export interface SiteCombinationStrategyResult {
   totalPatients: number;
   totalEstimatedCostUsd: number | null;
   averageRiskScore: number | null;
-  /**
-   * Sum, across every selected site, of (patientsTaken * riskScore / 100) —
-   * Srikanth's "every patient comes with a risk... keep adding all that risk
-   * for all the 300 patients, your net risk should be the lowest" idea,
-   * expressed as an expected count of at-risk patient-equivalents rather
-   * than a plain average of each site's own score. null if any selected
-   * site has no riskScore.
-   */
   portfolioRiskScore: number | null;
   meetsTarget: boolean;
 }

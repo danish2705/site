@@ -179,18 +179,6 @@ interface EligibilityStudiesResponse {
   }>;
 }
 
-/**
- * Real, disclosed eligibility criteria for one representative trial matching
- * this indication — surfaced to the user as informational context (Srikanth's
- * "clinicaltrials.gov has inclusion/exclusion criteria, right? ... you have to
- * include those" point), NOT applied as a filter that shrinks the synthetic
- * eligible-patient count: the synthetic population dataset used for that
- * count has no per-patient comorbidity/condition attributes to check the
- * criteria against, so pretending to filter on it would fabricate a number.
- * Prefers a currently-recruiting trial (freshest protocol) when one exists.
- * GET /studies?query.cond={condition}&filter.overallStatus=RECRUITING
- *     &fields=NCTId,BriefTitle,EligibilityCriteria,Sex,MinimumAge,MaximumAge,HealthyVolunteers&pageSize=1
- */
 export async function getEligibilityCriteriaSample(
   condition: string,
 ): Promise<EligibilityCriteriaSample | null> {

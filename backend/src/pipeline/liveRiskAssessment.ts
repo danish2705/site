@@ -696,19 +696,6 @@ function bandWorkloadCount(count: number): "Low" | "Medium" | "High" {
   return "Low";
 }
 
-/**
- * Real count of trials (ANY indication) this facility is CURRENTLY running —
- * same definition (RECRUITING/ACTIVE_NOT_RECRUITING/NOT_YET_RECRUITING/
- * ENROLLING_BY_INVITATION, from facilityWideHistory) as the Site Workload
- * risk-register category below. Exported so pipeline/liveCandidateSites.ts
- * can override the LLM-GUESSED "Competing Trials at Site" scoring field with
- * this same real number instead — Srikanth's requirement #5 benchmark found
- * that the ranking score's "Competing Trials at Site" field was previously
- * always an LLM guess even on live-sourced facilities, while this real count
- * already existed but was siloed inside the Risk Register only. Returns null
- * if there's no facility-wide history to count from (caller should then
- * leave whatever value — LLM guess or nothing — already on the row).
- */
 export function countActiveFacilityWorkload(
   facilityWideHistory: FacilityHistory | null | undefined,
 ): number | null {
@@ -720,20 +707,6 @@ export function countActiveFacilityWorkload(
   ).length;
 }
 
-/**
- * Real Site-Workload record (labeled "Site Workload," matching requirement
- * #6's benchmark parameter list — previously labeled "Site Capacity"):
- * Srikanth's "there's an upper limit on how many trials a site can
- * support... you don't want to hit the true limit because their quality
- * will go down" point. Counts how many trials — across ALL
- * indications on file (facilityWideHistory, the same broader sample used for
- * Data Integrity/Reporting Diligence above) — this facility is CURRENTLY
- * running (RECRUITING/ACTIVE_NOT_RECRUITING/NOT_YET_RECRUITING/
- * ENROLLING_BY_INVITATION), a real, disclosed OverallStatus count, not an
- * estimate. The threshold that turns a count into Low/Medium/High is a
- * stated heuristic (config.siteWorkload), not a published standard — there
- * is no public source for a facility's true capacity limit.
- */
 function siteCapacityRiskRecordFrom(
   siteId: string,
   facilityWideHistory: FacilityHistory | null | undefined,
@@ -803,22 +776,6 @@ function bandAdverseEventRate(ratePercent: number): "Low" | "Medium" | "High" {
   return "Low";
 }
 
-/**
- * Real Serious-Adverse-Events record: Srikanth's "adverse events, serious
- * adverse events" ask. Labeled "Serious Adverse Events" (not the broader
- * "Adverse Events") because that's exactly what the underlying field
- * measures — `resultsSignal.seriousAdverseEventRatePercent` (already
- * fetched, alongside dropout rate/diversity index, from ONE representative
- * posted-results trial at this facility — see getFacilityResultsSignal in
- * ctgov.client.ts) is a real, disclosed SERIOUS-event rate, not an estimate.
- * General/non-serious adverse-event frequency has no live source anywhere
- * in this data, so it deliberately isn't offered as a separate parameter —
- * doing so would mean either fabricating it or silently mislabeling this
- * same serious-event number as something broader than it is. Trial-wide,
- * not facility-specific (this API has no per-site adverse-event breakdown),
- * same scope caveat as dropout rate/diversity index reuse elsewhere in this
- * file.
- */
 function adverseEventsRiskRecordFrom(
   siteId: string,
   resultsSignal: FacilityResultsSignal | null | undefined,

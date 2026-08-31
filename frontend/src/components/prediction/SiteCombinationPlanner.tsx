@@ -39,23 +39,6 @@ import StageLoader from "../ui/StageLoader";
 import Select from "../ui/Select";
 import Tooltip from "../ui/Tooltip";
 
-/**
- * "Which sites, together, get me to my enrollment target" planner — the
- * combination-optimizer mechanic from Srikanth's 2024 intern demo (his
- * NCT-002+005 vs. NCT-008+108 total-cost/risk comparison). Sits below the
- * Site Map table as an additive panel: it reads the same site list already
- * fetched for the map/table above and never changes any of those numbers.
- *
- * Site-level cost figures used here (site.siteCost) are SYNTHETIC — see
- * backend data/syntheticSiteCost.ts — since no live or LLM-groundable source
- * exists for per-facility trial costs. recruitablePatients/assumedConsentRate
- * are ALSO synthetic now (same file's syntheticConsentRateFor): a per-site
- * variation around the app's configured consent-rate assumption, not one
- * flat percentage applied identically to every site — no live or LLM
- * source discloses a real per-site screening-to-enrollment conversion rate
- * either, so this is fabricated, deterministic, and clearly labeled as
- * such, same as the cost figures.
- */
 export default function SiteCombinationPlanner({
   indication,
   country,

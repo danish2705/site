@@ -18,18 +18,6 @@ function regionLabelForCountry(country: string): string {
   return match?.region ?? "Global";
 }
 
-/**
- * POST /api/site-combination
- * Body: { indication, country, targetEnrollment, sites: [{ siteId, siteName, city?, country?, recruitablePatients, riskScore, baseCostUsd?, perPatientCostUsd? }] }
- *
- * The "which combination of sites gets me to my enrollment target for the
- * least cost/risk" mechanic from Srikanth's 2024 intern demo — see
- * pipeline/siteCombinationOptimizer.ts for the (greedy, not exhaustive)
- * method and its caveats. `sites` is the candidate list already returned by
- * GET /api/live-map for this indication/country — this endpoint doesn't
- * re-fetch it, so the combination is always computed over exactly what the
- * caller is already looking at.
- */
 export async function postSiteCombination(
   req: Request,
   res: Response,
@@ -135,15 +123,6 @@ export async function postSiteCombination(
   res.json(response);
 }
 
-/**
- * POST /api/outreach-draft
- * Body: { indication, phase?, targetEnrollment?, senderOrganization?, sites: [{ siteId, siteName, city?, country? }] }
- *
- * Srikanth's "send notification to this sites requesting for support" ask —
- * see pipeline/outreachDraft.ts for exactly what this does and, importantly,
- * does NOT do (it drafts text only; it never sends anything, and every
- * contact address returned is a labeled synthetic placeholder).
- */
 export async function postOutreachDraft(
   req: Request,
   res: Response,

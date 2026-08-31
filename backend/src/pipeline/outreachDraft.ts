@@ -1,35 +1,5 @@
 import type { OutreachDraft } from "../types.js";
 
-/**
- * Site outreach — Srikanth's "once you identify the sites, send notification
- * to this sites requesting for support for clinical trial... probably there
- * would be an API that sends an email out to the sites" ask.
- *
- * WHAT THIS DOES: generates draft outreach text (subject + body) per
- * selected site, using real data already known about that site/trial. WHAT
- * THIS DELIBERATELY DOES NOT DO: actually send anything. Two real
- * constraints made that the right line to stop at, not a shortcut:
- *
- *  1. No reliable live contact address. ClinicalTrials.gov sometimes
- *     discloses a central sponsor/study contact, but that's the SPONSOR's
- *     contact for THEIR trial, not a general "we'd like to propose a new
- *     trial to you" address for the facility — and it's frequently absent
- *     entirely, especially on completed/closed studies. There is no live or
- *     public source of a facility's own business-development contact.
- *  2. Cold-emailing real medical facilities on a user's behalf is an
- *     action with real-world consequences (spam/consent/reputational risk
- *     for the requesting organization) that shouldn't happen silently
- *     inside a "generate a draft" feature — sending is a decision a human
- *     should make deliberately, with a real, verified contact, outside
- *     this app's auto-generated placeholder.
- *
- * So `contactEmail` here is a clearly-labeled SYNTHETIC placeholder
- * (contactEmailSource: "synthetic") — good enough to show the shape of the
- * feature and to let a user copy the draft text into their own outreach
- * tool once they've found the facility's real contact, but never presented
- * as a real address and never actually dispatched by this backend.
- */
-
 export interface OutreachDraftSiteInput {
   siteId: string;
   siteName: string;

@@ -134,11 +134,7 @@ function runStrategy(
   for (const site of ordered) {
     if (totalPatients >= targetEnrollment) break;
     if (site.recruitablePatients <= 0) continue;
-    // Partial allocation: only take as many of this site's recruitable
-    // patients as are actually needed to close the remaining gap —
-    // Srikanth's "some sites may not have enough population, so you have to
-    // pick maybe 5 from that side" point. The last site added to a
-    // combination will usually be only partially used.
+
     const remainingNeed = targetEnrollment - totalPatients;
     const patientsTaken = Math.min(site.recruitablePatients, remainingNeed);
     selected.push({
