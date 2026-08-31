@@ -53,6 +53,15 @@ export const config = {
       Number(process.env.MAP_BASELINE_RECRUITMENT_RATE) || 0.225,
     addressableFraction: Number(process.env.MAP_ADDRESSABLE_FRACTION) || 0.02,
 
+    // Illustrative baseline split of a site's net-available patients into
+    // treatment-stage buckets (newly-diagnosed/treatment-naive, on-drug
+    // non-responders, and already-stable patients) — NOT derived from real
+    // claims/EHR data. No live source distinguishes these three groups per
+    // site at this granularity; this fixed split exists only so the app can
+    // show the shape of the breakdown Srikanth described (net-new and
+    // non-responders are the realistic recruits; stable patients are not).
+    // Replace with a real claims-data-driven segmentation once that source
+    // is integrated.
     patientSegmentSplit: {
       newlyDiagnosed: Number(process.env.MAP_SEGMENT_NEWLY_DIAGNOSED) || 0.15,
       nonResponder: Number(process.env.MAP_SEGMENT_NON_RESPONDER) || 0.25,
