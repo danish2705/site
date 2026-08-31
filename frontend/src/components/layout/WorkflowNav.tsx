@@ -3,22 +3,6 @@ import { WORKFLOW_STEPS } from "../../constants/workflow";
 import { useRoute } from "../../context/RouteContext";
 import { usePipeline } from "../../hooks/usePipeline";
 
-/**
- * Persistent top-of-page workflow navigation — the guided workflow
- * requested in place of ad-hoc wizard steps + duplicated Site Map tabs.
- * Every numbered item here maps to an existing page — a way to jump
- * straight to any reachable step, see which ones are done, and go back/
- * forward without losing state (the underlying pages/contexts stay mounted
- * for the life of the app — see App.tsx). Rendered as a vertical
- * tick-icon-above-label layout per the requested design (never
- * label-beside-icon).
- *
- * "Predict Region with AI" is prepended ahead of step 1 as a leading,
- * unnumbered action rather than a real WORKFLOW_STEPS entry — it opens a
- * modal (App.tsx's Dashboard still owns that state), not a page, so it
- * doesn't have a route/hash of its own and isn't part of
- * workflowStepAvailable's gating.
- */
 export default function WorkflowNav({
   onOpenPredictModal,
 }: {
@@ -43,6 +27,10 @@ export default function WorkflowNav({
     return visited.has(stepKey);
   }
 
+  const activeSteps = WORKFLOW_STEPS.filter(
+    (step) => step.key !== "site-map-global"
+  );
+
   return (
     <nav className="workflow-nav" aria-label="Guided workflow">
       <ol className="workflow-nav-list">
@@ -51,16 +39,10 @@ export default function WorkflowNav({
             type="button"
             className="workflow-nav-item workflow-nav-item--predict"
             disabled={!predictAvailable}
-            // No tooltip here — this item sits right at the top of the
-            // page, so the hover bubble (positioned above the trigger) had
-            // nowhere to render and showed as a clipped/blank white shape
-            // instead of readable text, same issue as the modal's close
-            // button.
             onClick={() => predictAvailable && onOpenPredictModal()}
           >
             <span className="workflow-nav-index">
-              {/* Radar/scan icon — replaces the sparkle emoji, reads more
-                  like "scanning for a region" than a generic AI sparkle. */}
+              {}
               <svg
                 viewBox="0 0 24 24"
                 fill="none"
@@ -93,12 +75,6 @@ export default function WorkflowNav({
                     complete ? "complete" : ""
                   }`}
                   disabled={!available}
-                  // No tooltip here — this whole nav bar sits at the very
-                  // top of the page, so a hover bubble that opens upward
-                  // (the app's standard tooltip direction) has nowhere to
-                  // render and just showed up as an empty white box
-                  // clipped above the viewport, same issue "Predict Region
-                  // with AI" had.
                   onClick={() => available && setRoute(step.key)}
                 >
                   <span className="workflow-nav-index">

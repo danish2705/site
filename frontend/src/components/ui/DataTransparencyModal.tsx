@@ -3,17 +3,6 @@ import { useSiteMap } from "../../context/SiteMapContext";
 import { CloseIcon } from "./Icons";
 import EmptyState from "./EmptyState";
 
-/**
- * "Data Transparency" report — opened from the account menu. Walks the
- * CURRENT run's actual data (not a static description of the app) and
- * splits every field the app surfaces into two buckets: real/live data
- * pulled from ClinicalTrials.gov (or Google/OSRM for geocoding), versus
- * synthetic/LLM-estimated data fabricated because no live source exists.
- * Each row is derived from whatever is actually loaded right now — Site
- * Map, Ranking, Risk Register, Final Recommendation — so it stays accurate
- * as those pages are (re)run instead of describing the app in the abstract.
- */
-
 interface Row {
   label: string;
   detail: string;
@@ -120,7 +109,6 @@ export default function DataTransparencyModal({ onClose }: { onClose: () => void
   const { meta, ranking, riskAssessment, finalResult } = usePipeline();
   const { allSites } = useSiteMap();
 
-  // ---- Indication & trial vocabulary (meta) ----
   const metaLive: Row[] = [];
   const metaSynthetic: Row[] = [];
   if (meta) {
@@ -149,7 +137,6 @@ export default function DataTransparencyModal({ onClose }: { onClose: () => void
     }
   }
 
-  // ---- Site Map (geocoding, population, risk, cost) ----
   const mapLive: Row[] = [];
   const mapSynthetic: Row[] = [];
   if (allSites.length > 0) {
@@ -203,7 +190,6 @@ export default function DataTransparencyModal({ onClose }: { onClose: () => void
     });
   }
 
-  // ---- Ranking (site KPI scoring) ----
   const rankLive: Row[] = [];
   const rankSynthetic: Row[] = [];
   if (ranking && ranking.length > 0) {
@@ -240,7 +226,6 @@ export default function DataTransparencyModal({ onClose }: { onClose: () => void
     }
   }
 
-  // ---- Risk Register ----
   const riskLive: Row[] = [];
   const riskSynthetic: Row[] = [];
   if (riskAssessment && riskAssessment.length > 0) {
@@ -266,7 +251,6 @@ export default function DataTransparencyModal({ onClose }: { onClose: () => void
     }
   }
 
-  // ---- Final Recommendation ----
   const finalLive: Row[] = [];
   const finalSynthetic: Row[] = [];
   if (finalResult) {
@@ -284,7 +268,6 @@ export default function DataTransparencyModal({ onClose }: { onClose: () => void
     }
   }
 
-  // ---- Outreach ----
   const outreachSynthetic: Row[] = [
     {
       label: "Outreach contact email",

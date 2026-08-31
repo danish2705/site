@@ -5,11 +5,6 @@ import type {
   SiteCombinationStrategyResult,
 } from "../../types";
 
-// Short display labels for the strategy cards — the API's `label` field is a
-// full sentence (e.g. "Lowest risk first — accumulate the least-risky sites
-// until the target is met"), which reads as too much text on a compact card.
-// We keep the full sentence available as a hover tooltip instead of dropping
-// it.
 const STRATEGY_SHORT_LABEL: Record<
   SiteCombinationStrategyResult["strategy"],
   string
@@ -20,10 +15,6 @@ const STRATEGY_SHORT_LABEL: Record<
   balanced: "Balanced",
 };
 
-// A light tint per strategy so the four cards read as distinct at a
-// glance instead of four identical white boxes — reuses the app's own
-// existing color tokens (the same tints already used for risk/status
-// badges elsewhere) rather than introducing new colors.
 const STRATEGY_CARD_TINT: Record<
   SiteCombinationStrategyResult["strategy"],
   string
@@ -39,23 +30,6 @@ import StageLoader from "../ui/StageLoader";
 import Select from "../ui/Select";
 import Tooltip from "../ui/Tooltip";
 
-/**
- * "Which sites, together, get me to my enrollment target" planner — the
- * combination-optimizer mechanic from Srikanth's 2024 intern demo (his
- * NCT-002+005 vs. NCT-008+108 total-cost/risk comparison). Sits below the
- * Site Map table as an additive panel: it reads the same site list already
- * fetched for the map/table above and never changes any of those numbers.
- *
- * Site-level cost figures used here (site.siteCost) are SYNTHETIC — see
- * backend data/syntheticSiteCost.ts — since no live or LLM-groundable source
- * exists for per-facility trial costs. recruitablePatients/assumedConsentRate
- * are ALSO synthetic now (same file's syntheticConsentRateFor): a per-site
- * variation around the app's configured consent-rate assumption, not one
- * flat percentage applied identically to every site — no live or LLM
- * source discloses a real per-site screening-to-enrollment conversion rate
- * either, so this is fabricated, deterministic, and clearly labeled as
- * such, same as the cost figures.
- */
 export default function SiteCombinationPlanner({
   indication,
   country,
@@ -66,17 +40,11 @@ export default function SiteCombinationPlanner({
   defaultTargetEnrollment,
 }: {
   indication: string;
-  /** Required — the combination optimizer calls the same country-scoped cost estimate the rest of the app uses, so a specific country (not a global/all-countries search) is needed. */
   country: string;
-  /** The trial's selected region(s) countries — populates the Country dropdown, same list Site Map (Global)/Details use. */
   selectedCountries?: string[];
-  /** Switches which country's sites this planner (and the shared Site Map data) is scoped to. */
   onCountryChange?: (country: string) => void;
-  /** Optional — accepted for callers that still pass it; no longer used here since the search now runs automatically on country change (see useIndependentSiteSearch) instead of needing a manual trigger. */
   onSearchCountry?: () => void;
-  /** True while the country search is in flight (still used for the loading overlay). */
   countrySearchLoading?: boolean;
-  /** Optional — accepted for callers that still pass it; no longer used here since outreach-draft generation was removed. */
   phase?: string;
   sites: MapSiteRow[];
   defaultTargetEnrollment?: number;
@@ -87,15 +55,7 @@ export default function SiteCombinationPlanner({
   const [result, setResult] = useState<SiteCombinationResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
-  // Once the user types into the Target Enrollment field themselves, stop
-  // overwriting it with the sidebar's value — a deliberate what-if edit
-  // here shouldn't get silently reverted if the sidebar value changes.
   const userEditedTargetRef = useRef(false);
-  // The last defaultTargetEnrollment value this component has already
-  // auto-filled + auto-run for, so a value that arrives or changes AFTER
-  // mount (not just the one present at first mount) still gets picked up
-  // exactly once each, instead of only ever checking once at mount time.
   const lastAutoRunForRef = useRef<number | null>(null);
 
   async function run(overrideTarget?: number) {
@@ -131,10 +91,6 @@ export default function SiteCombinationPlanner({
     }
   }
 
-  // Keep the Target Enrollment field mirroring the sidebar's value —
-  // whenever one is provided there (at mount, or typed in afterward while
-  // this page is already open), reflect it here too — but only for as
-  // long as the user hasn't typed their own number into this field.
   useEffect(() => {
     if (userEditedTargetRef.current) return;
     if (typeof defaultTargetEnrollment === "number" && defaultTargetEnrollment > 0) {
@@ -142,15 +98,6 @@ export default function SiteCombinationPlanner({
     }
   }, [defaultTargetEnrollment]);
 
-  // Auto-find the combination whenever a positive Target Enrollment from
-  // the sidebar and the site list are both available — reacts any time
-  // that value appears or changes (not just once at mount), same as if
-  // the user had typed it in here and clicked "Find combination"
-  // themselves. Calls run() with the value directly (not the `target`
-  // state) so it can't race the field-sync effect above, which only takes
-  // effect on the next render. Stays quiet once the user has taken over
-  // the field manually, and only re-fires for a genuinely new default
-  // value (not on every unrelated re-render/site refetch).
   useEffect(() => {
     if (userEditedTargetRef.current) return;
     if (typeof defaultTargetEnrollment !== "number" || defaultTargetEnrollment <= 0) {
@@ -168,11 +115,7 @@ export default function SiteCombinationPlanner({
   return (
     <div className="card">
       <div className="card-scroll-body" style={{ position: "relative" }}>
-      {/* Overlays whatever's already on screen (stale results, or nothing
-          yet) instead of squeezing its own StageLoader in above them, so it
-          sits centered in the middle of the panel — same pattern as Site
-          Map Details. Covers both loading states this page has: refetching
-          sites for a newly picked country, and computing a combination. */}
+      {}
       {showLoadingOverlay && (
         <div className="table-loading-overlay">
           <StageLoader
@@ -187,10 +130,7 @@ export default function SiteCombinationPlanner({
       <div className="map-controls">
         {selectedCountries && selectedCountries.length > 0 ? (
           <>
-            {/* No label span here (unlike Target Enrollment below) — pushed
-                down 20px to match where a label would otherwise put it, same
-                trick .map-search-btn already uses to line up with a labeled
-                field beside it. */}
+            {}
             <label className="map-field" style={{ marginTop: 20 }}>
               <Select
                 value={country}
@@ -220,8 +160,7 @@ export default function SiteCombinationPlanner({
             }}
           />
         </label>
-        {/* Same — no spinner/"Computing..." swap, the centered overlay
-            above covers this button's loading state too. */}
+        {}
         <button
           type="button"
           className="predict-btn map-search-btn"

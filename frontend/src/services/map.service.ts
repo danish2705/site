@@ -3,10 +3,8 @@ import { apiJson, postJson } from "./api";
 
 export interface LiveSiteMapParams {
   indication: string;
-  /** Omit for a global search across every country ClinicalTrials.gov returns. */
   country?: string;
   radiusMiles?: number;
-  /** The trial form's selected Age Group(s) (e.g. "Adult (18–64)") — see backend data/ageDemographics.ts. Omit/empty = all ages. */
   ageGroups?: string[];
 }
 
@@ -29,11 +27,9 @@ export interface CombinedCatchmentParams {
   country: string;
   radiusMiles: number;
   sites: { siteId: string; lat: number; lng: number; netAvailablePatients: number }[];
-  /** Same Age Group narrowing as LiveSiteMapParams. Omit/empty = all ages. */
   ageGroups?: string[];
 }
 
-/** De-duplicated patient count for a set of selected sites together — see backend pipeline/liveMapData.ts's buildCombinedCatchment for why summing each site's own number would double-count overlap. */
 export function fetchCombinedCatchment(
   params: CombinedCatchmentParams,
 ): Promise<CombinedCatchmentResponse> {

@@ -62,7 +62,6 @@ export type CatchmentDistanceSource = MapSiteRow["catchmentDistanceSource"];
 interface CatchmentResult {
   populationInRadius: number;
   distanceSource: CatchmentDistanceSource;
-  /** Postal-region ids actually counted inside the radius — used by buildCombinedCatchment to de-duplicate overlap across multiple sites. */
   coveredRegions: SyntheticPostalRegion[];
 }
 
@@ -102,10 +101,7 @@ async function computeCatchment(
       : sawLive && sawApprox
         ? "mixed"
         : sawLive
-          ? // Prefer reporting whichever live tier was actually used; both
-            // tiers are grouped as "live" here since a mixed google/osrm
-            // split isn't distinguished per-point by this function — good
-            // enough for an honesty signal, not meant as a precise audit.
+          ? 
             (distances.find((d) => d.source !== "approximate-haversine")
               ?.source ?? "live-google")
           : "approximate-haversine";
@@ -113,12 +109,6 @@ async function computeCatchment(
   return { populationInRadius, distanceSource, coveredRegions };
 }
 
-/**
- * Illustrative split of a site's net-available patients into treatment-stage
- * buckets (see config.map.patientSegmentSplit's doc comment for why this is
- * a fixed heuristic, not real claims data). Returns null for a
- * netAvailablePatients of 0 — there's nothing to split.
- */
 function splitPatientSegments(netAvailablePatients: number): PatientSegments | null {
   if (netAvailablePatients <= 0) return null;
   const split = config.map.patientSegmentSplit;
@@ -147,24 +137,12 @@ function siteIdFor(
 export interface BuildLiveSiteMapParams {
   indication: string;
   specialty: string;
-  /** Omit/empty = global — every country ClinicalTrials.gov returns for this indication. */
   country?: string;
   radiusMiles?: number;
-  /** Cap on how many real facilities to plot — each one costs an LLM risk-estimate call. */
   maxSites?: number;
-  /** Trial form's selected Age Group label(s) (e.g. "Adult (18–64)") — see data/ageDemographics.ts. Empty/absent = all ages, no narrowing. */
   ageGroups?: string[];
 }
 
-// Only these three statuses represent a site that could still be recruited
-// into THIS trial (a site not yet started, or one actively enrolling) — the
-// same "real" tier set Risk Register/Ranking restrict to (see
-// liveCandidateSites.ts's CANDIDATE_STATUS_TIERS; kept as a separate local
-// copy per this codebase's existing per-component convention). Previously
-// this fetch applied no status filter at all, so the map plotted every
-// status ClinicalTrials.gov returned — including COMPLETED/TERMINATED/
-// WITHDRAWN/SUSPENDED sites that have nothing to do with where you'd
-// actually place this trial.
 const MAP_STATUS_TIERS = [
   "RECRUITING",
   "NOT_YET_RECRUITING",
@@ -183,22 +161,8 @@ export async function buildLiveSiteMapData(
 
   const rawFacilities = await getFacilitiesForCondition(params.indication, {
     country: params.country || undefined,
-    // Bumped alongside adding the status filter below: restricting to 3
-    // statuses server-side (via ClinicalTrials.gov's own filter.overallStatus)
-    // means a shallow page can now come back thin or empty even when plenty
-    // of matching sites exist deeper in the real result set — the same class
-    // of bug already fixed for Ongoing Trials/Risk Register (see
-    // liveTrials.controller.ts and liveCandidateSites.ts). Matches the
-    // Math.max(maxSites * 6, 200) depth those already use.
     pageSize: Math.max(maxSites * 6, 200),
-    // Real filter on which studies/facilities come back at all — see
-    // ctgov.client.ts's studyAgeGroups for exactly what this does and
-    // how it differs from the population-share scaling further down this
-    // function.
     ageGroups: params.ageGroups,
-    // Restrict the map to sites that are actually still recruitable for this
-    // trial (Recruiting / Not Yet Recruiting / Active Not Recruiting) —
-    // matches Risk Register/Ranking's own status scope, per user request.
     statuses: MAP_STATUS_TIERS,
   });
   const facilities = dedupeFacilities(rawFacilities).slice(0, maxSites);
@@ -229,11 +193,6 @@ export async function buildLiveSiteMapData(
     () => null,
   );
 
-  // Prevalence is region/country-specific (LLM-estimated — no public source
-  // publishes it at this granularity, see liveRegionMetrics.ts) — cache one
-  // lookup per distinct country present in this run's facilities instead of
-  // one per site, since a global search can span dozens of sites per
-  // country.
   const countries = [
     ...new Set(
       facilities.map((f) => f.country).filter((c): c is string => !!c),
@@ -253,13 +212,6 @@ export async function buildLiveSiteMapData(
           specialty: params.specialty,
         });
         regionRowByCountry.set(country, row);
-        // buildLiveRegionRow doesn't throw just because prevalence came back
-        // 0/null (e.g. the LLM returned null for that one field while still
-        // returning the other two) — it only throws on a total failure. So
-        // metricsWarning can be set on a row that still reached this line
-        // successfully. Surface it here too, not just in the catch block
-        // below, otherwise a silent-zero-prevalence row never gets reported
-        // to the terminal or the API response at all.
         if (row.metricsWarning) {
           console.error(
             `[liveMapData] region metrics warning for ${country}: ${row.metricsWarning}`,
@@ -301,22 +253,10 @@ export async function buildLiveSiteMapData(
 
       const regionRow = regionRowByCountry.get(country);
       const prevalencePer100k = regionRow?.["Prevalence (per 100k)"] ?? 0;
-      // Real fix for the Age Group selector: it used to be a cosmetic label
-      // only (see runPipeline.ts's requirement text) with zero effect on any
-      // number below. Now it actually scales grossEligiblePatients down to
-      // just the selected group(s)' share of this site's country population
-      // — see data/ageDemographics.ts. fraction is 1 (no change) when no
-      // Age Group was selected, matching the sidebar's own "leave unset to
-      // include all ages" hint.
       const ageEligibility = getAgeEligibleFraction(params.ageGroups, country);
       if (params.ageGroups && params.ageGroups.length > 0 && !ageEligibility.matched) {
         ageFallbackCountries.add(country);
       }
-      // Raw prevalence math (population-in-radius x prevalence-per-100k)
-      // counts every person with the condition, not just the fraction
-      // actually reachable/eligible for THIS site — see config.map's
-      // addressableFraction doc comment for why that haircut exists. Now
-      // also scaled by ageEligibility.fraction for the same reason.
       const grossEligiblePatients = Math.round(
         ((populationInRadius * prevalencePer100k) / 100000) *
           config.map.addressableFraction *
@@ -334,19 +274,6 @@ export async function buildLiveSiteMapData(
 
       const siteId = siteIdFor(f.facility ?? "unknown", f.city, country);
       const siteCost = syntheticSiteCostFor(siteId, country);
-
-      // Second, distinct haircut from recruitmentRate above: netAvailablePatients
-      // already estimates "how many eligible patients aren't already absorbed
-      // by other trials" — this answers "of those, how many will actually
-      // consent to enroll in THIS trial once approached," which no live or
-      // LLM source discloses (see config.siteCombination.assumedConsentRate's
-      // doc comment). Previously this was one flat rate applied identically
-      // to every site, which looked suspiciously uniform across a whole
-      // results table. This now generates a deterministic per-site VARIATION
-      // around that same configured center — still fabricated (no live/LLM
-      // source exists for a real per-site consent rate either), but no
-      // longer an obviously-repeated constant. See
-      // data/syntheticSiteCost.ts's syntheticConsentRateFor for the range.
       const assumedConsentRate = syntheticConsentRateFor(
         siteId,
         country,
@@ -357,18 +284,11 @@ export async function buildLiveSiteMapData(
         Math.round(netAvailablePatients * assumedConsentRate),
       );
 
-      // Requirement #1: "eligible − already enrolled = available," made
-      // explicit rather than left implicit inside netAvailablePatients.
-      // Derived arithmetically (not re-estimated) so the three numbers
-      // always reconcile exactly: gross = alreadyEnrolled + netAvailable.
       const alreadyEnrolledPatients = Math.max(
         0,
         grossEligiblePatients - netAvailablePatients,
       );
-      // Requirement #4: small illustrative per-site patient-record sample,
-      // whose Available/Enrolled mix matches this exact recruitmentRate —
-      // see data/syntheticPatients.ts for why this is a sample, not the
-      // full population.
+
       const patientSample = buildSyntheticPatientSample(
         siteId,
         params.indication,
@@ -442,12 +362,6 @@ export async function buildLiveSiteMapData(
     );
   }
 
-  // Coordinates are only "approximate" (not real geocoding) if BOTH the
-  // Google tier (no key configured, or the call failed) and the free
-  // Nominatim tier (network hiccup, no match, etc.) fell through for a
-  // given site — see services/geo.service.ts's fallback chain. Report the
-  // count actually affected rather than a blanket warning, since most
-  // sites should resolve via one of the two live tiers.
   const approxCoordsCount = sites.filter(
     (s) => s.coordsSource === "approximate",
   ).length;
@@ -491,18 +405,15 @@ export interface CombinedCatchmentSiteInput {
   siteId: string;
   lat: number;
   lng: number;
-  /** This site's own netAvailablePatients, as already returned by buildLiveSiteMapData — reused as-is here (rather than recomputed) so the "naive sum" side of the comparison always matches exactly what the caller is already showing the user. */
   netAvailablePatients: number;
 }
 
 export interface BuildCombinedCatchmentParams {
   indication: string;
   specialty: string;
-  /** All input sites are assumed to be in this single country — the synthetic catchment dataset and prevalence estimate are both country-scoped (see data/syntheticPopulation.ts), so mixing countries in one combined-catchment call isn't supported. */
   country: string;
   radiusMiles?: number;
   sites: CombinedCatchmentSiteInput[];
-  /** Same Age Group narrowing as buildLiveSiteMapData — see data/ageDemographics.ts. Empty/absent = all ages. */
   ageGroups?: string[];
 }
 
@@ -557,9 +468,6 @@ export async function buildCombinedCatchment(
     );
   }
 
-  // Same real fix as buildLiveSiteMapData: scale by the selected Age
-  // Group(s)' share of this country's population instead of ignoring the
-  // selection entirely.
   const ageEligibility = getAgeEligibleFraction(params.ageGroups, params.country);
   if (params.ageGroups && params.ageGroups.length > 0) {
     warnings.push(

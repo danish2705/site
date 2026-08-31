@@ -1,11 +1,3 @@
-/**
- * Row-shaped loading placeholder for a data table — shown in place of
- * StageLoader's centered spinner+caption specifically where a table is
- * about to appear (Ranking, Site Map Details, Ongoing Trials). Mimicking
- * the eventual row/column layout means nothing visually "jumps" once the
- * real data lands, unlike a spinner that gets swapped for an unrelated
- * shape.
- */
 const WIDTH_PATTERN = [92, 62, 78, 45, 84, 58, 70];
 
 export default function TableSkeleton({

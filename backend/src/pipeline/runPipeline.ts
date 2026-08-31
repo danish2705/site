@@ -283,21 +283,11 @@ export interface Stage1to3Result {
   ageGroups?: string[];
 }
 
-/**
- * Stages 1-3: parse the trial's requirements, pick the best region/country,
- * and estimate the eligible patient population there. Split out from the
- * original single runPipeline() so a caller can review/replace what happens
- * next (Stage 4's candidate-site list) before continuing — see
- * runSiteAnalysis() below, which picks up exactly where this leaves off.
- */
 export async function runPipelineStages1to3(
   input: PipelineInput,
   send: SendFn,
 ): Promise<Stage1to3Result> {
   const { indication, phase, ageGroups } = input;
-  // Sanitize once at the entry — see toPositiveNumberOrUndefined above —
-  // so a blank form field ("") never reaches the requirement builder or the
-  // saved-run values as a literal empty string.
   const sampleSize = toPositiveNumberOrUndefined(input.sampleSize);
   const durationMonths = toPositiveNumberOrUndefined(input.durationMonths);
 
@@ -344,11 +334,6 @@ export async function runPipelineStages1to3(
         accreditationRequired: requirement["Accreditation Required"],
       },
       requirementSource: requirement.requirementSource ?? "live",
-      // Real, disclosed eligibility criteria from one representative trial
-      // for this indication (Srikanth's inclusion/exclusion-criteria ask) —
-      // informational only, NOT applied to filter any eligible-patient
-      // count elsewhere (see the field's doc comment on TrialRequirementRow
-      // in types.ts for why).
       eligibility: {
         criteriaText: requirement.eligibilityCriteriaText ?? null,
         sex: requirement.eligibilitySex ?? null,
@@ -411,11 +396,6 @@ export async function runPipelineStages1to3(
     return scoreOf(b) - scoreOf(a);
   });
 
-  // Live candidate sites are discovered AFTER a region is picked (Stage 4,
-  // below) — there is no more Excel Candidate_Sites list to pre-filter
-  // eligible regions against, so the top-scoring region by the formula
-  // above is simply selected. If Stage 4 then finds zero live candidates
-  // there, the existing empty-candidate check below throws a clear error.
   const topRegion = rankedRegions[0];
   await sleep(STEP_DELAY_MS);
   send("stage", {
@@ -428,7 +408,9 @@ export async function runPipelineStages1to3(
         : `Selected ${topRegion.Region}, ${topRegion.Country} (top-scoring of ${rankedRegions.length} regions considered — no region/country input given)`) +
       (topRegion.regionMetricsSource === "llm-estimated"
         ? " · Prevalence/Regulatory/Cost figures (AI-estimated)"
-        : "") +
+        : topRegion.regionMetricsSource === "claims-synthetic"
+          ? " · Prevalence/Regulatory/Cost figures (from a pre-built synthetic reference table)"
+          : "") +
       (regionMetricsWarnings.length > 0
         ? ` — ${regionMetricsWarnings.length} region(s) missing Prevalence/Regulatory/Cost data (see warnings)`
         : ""),
@@ -459,7 +441,9 @@ export async function runPipelineStages1to3(
       `~${estimatedPatients.toLocaleString()} estimated eligible patients (illustrative)` +
       (topRegion.regionMetricsSource === "llm-estimated"
         ? " — based on an (AI-estimated) prevalence figure"
-        : ""),
+        : topRegion.regionMetricsSource === "claims-synthetic"
+          ? " — based on a pre-built synthetic reference prevalence figure"
+          : ""),
   });
 
   return { indication, specialty, requirement, topRegion, estimatedPatients, ageGroups };
@@ -473,22 +457,9 @@ export interface RunSiteAnalysisParams {
   topRegion: RegionRow;
   estimatedPatients: number;
   ageGroups?: string[];
-  /**
-   * Real ClinicalTrials.gov facility rows to analyze — when provided (e.g.
-   * exactly what the user reviewed on the Ongoing Trials tab), Stage 4 uses
-   * this list instead of re-querying ClinicalTrials.gov itself. See
-   * buildLiveCandidateSites's `facilities` param.
-   */
   facilities?: LiveFacility[];
 }
 
-/**
- * Stages 4-8: build/score candidate sites, assess risk, rank, and recommend.
- * Picks up from runPipelineStages1to3()'s result. Kept as a separate
- * function (rather than inlined in runPipeline()) so /api/site-analysis can
- * call it directly with a caller-supplied `facilities` list — see
- * controllers/siteAnalysis.controller.ts.
- */
 export async function runSiteAnalysis(
   params: RunSiteAnalysisParams,
   send: SendFn,
@@ -505,8 +476,6 @@ export async function runSiteAnalysis(
   } = params;
 
   send("stage", { stage: 4, name: STAGE_NAMES[4], status: "in-progress" });
-  // Candidate sites are sourced live from ClinicalTrials.gov only — the
-  // Excel Candidate_Sites sheet is intentionally not used here.
   let liveCandidates: LiveCandidateSite[] = [];
   try {
     liveCandidates = await buildLiveCandidateSites({
@@ -518,13 +487,6 @@ export async function runSiteAnalysis(
       regionCompetingTrials: topRegion["Active Competing Trials"],
       avgCostPerPatient: topRegion["Avg Cost per Patient (USD)"],
       facilities,
-      // Real fix: this used to only affect Stage 1's text label (see the
-      // requirement["Age Group"] detail string above) — the actual
-      // candidate sites feeding Stages 4-7 (Ongoing Trials, Risk Register,
-      // Ranking, Final Recommendation) never filtered on it at all. Now
-      // the same live StdAge filter used by the Site Map tab applies here
-      // too, so every stage after this one is working from the same
-      // age-eligible site list, not two different unrelated lists.
       ageGroups,
     });
   } catch (err) {
@@ -572,9 +534,6 @@ export async function runSiteAnalysis(
 
   send("stage", { stage: 5, name: STAGE_NAMES[5], status: "in-progress" });
 
-  // Candidate sites are 100% live-sourced at this point (buildLiveCandidateSites
-  // above), so every eval row is looked up from liveEvalById only — there is
-  // no Excel-backed fallback map to fall through to anymore.
   const getEvalRow = (siteId: string): ExtendedEvaluationRow | undefined =>
     liveEvalById.get(siteId);
 
@@ -636,19 +595,11 @@ export async function runSiteAnalysis(
     })),
   });
 
-  // Risk Register and Ranking show sites of every real recruiting status
-  // (Recruiting, Not Yet Recruiting, Completed, Terminated, etc.) — no
-  // status is excluded server-side. Each site carries its real status
-  // (site.recruitingStatus, surfaced below as `status`) so the UI can offer
-  // its own status filter instead.
   send("stage", { stage: 6, name: STAGE_NAMES[6], status: "in-progress" });
   const riskWarnings: string[] = [];
   const withRisk: RankedSite[] = await Promise.all(
     evaluated.map(async (site) => {
       const siteId = site["Site ID"];
-      // candidateSites is 100% live-sourced (buildLiveCandidateSites, Stage 4
-      // above), so every siteId is present in liveCandidateBySiteId — there
-      // is no Excel-backed risk list to fall through to anymore.
       const live = liveCandidateBySiteId.get(siteId);
       if (!live) {
         throw new Error(
@@ -679,11 +630,6 @@ export async function runSiteAnalysis(
       ).length;
       const overallRisk: RiskLevel =
         highCount > 0 ? "High" : medCount > 0 ? "Medium" : "Low";
-      // True only when the ENTIRE risk list for this site is the single
-      // "no data available" placeholder (see liveRiskAssessment.ts) — not
-      // when a site genuinely has one real Low-rated record. Used so the UI
-      // can show "No Data" instead of a "Low Risk" badge that would look
-      // identical to a site that was actually assessed and found clean.
       const riskDataUnavailable =
         risks.length === 1 && risks[0]["Risk Category"] === "Data Availability";
       return {
@@ -717,20 +663,12 @@ export async function runSiteAnalysis(
       riskDataUnavailable: s.riskDataUnavailable,
       riskRecords: s.risks.map(toRiskRecord),
       dataSource: s.evalRow.dataSource ?? "llm-estimated",
-      // Real, raw ClinicalTrials.gov status (e.g. "RECRUITING",
-      // "NOT_YET_RECRUITING", "COMPLETED"...) — the UI derives its own
-      // display label/color and offers its own status filter from this.
       status: s.recruitingStatus ?? null,
     })),
     warnings: riskWarnings,
   });
 
   send("stage", { stage: 7, name: STAGE_NAMES[7], status: "in-progress" });
-  // Every scored candidate is ranked and returned — no top-N cap. The
-  // Ranking page shows "X of Y site(s)" against the full candidate pool
-  // (see runPipeline Stage 6's data), so silently dropping everyone past
-  // rank 10 would make that count misleading and hide real candidates the
-  // user asked to see.
   const ranked = [...withRisk].sort((a, b) => {
     const aOk = a.requirementChecks.every((c) => c.pass);
     const bOk = b.requirementChecks.every((c) => c.pass);
@@ -790,11 +728,6 @@ export async function runSiteAnalysis(
     top,
     riskExplanation: top.riskExplanation,
   });
-  // Cache the full scored pool so the Final Recommendation page's status
-  // dropdown (best of Recruiting / Not Yet Recruiting / Active, Not
-  // Recruiting — see RecommendationPanel.tsx) can ask for a different
-  // status's top site later without re-running Stages 4-6. See
-  // analysisCache.ts / siteRecommendation.controller.ts.
   const analysisId = storeAnalysis({ input, topRegion, estimatedPatients, ranked });
   send("stage", {
     stage: 8,
@@ -811,15 +744,6 @@ export async function runSiteAnalysis(
   });
 }
 
-/**
- * One-shot entry point used by POST /api/run: runs Stages 1-3 then
- * immediately continues into Stages 4-8 with a self-fetched candidate-site
- * list (no `facilities` override) — this is the original, unchanged
- * end-to-end behavior. A caller that wants Stage 4 to analyze a specific,
- * already-reviewed set of live sites (e.g. from the Ongoing Trials tab)
- * should call runPipelineStages1to3() and runSiteAnalysis() directly instead
- * — see controllers/siteAnalysis.controller.ts.
- */
 export async function runPipeline(
   input: PipelineInput,
   send: SendFn,

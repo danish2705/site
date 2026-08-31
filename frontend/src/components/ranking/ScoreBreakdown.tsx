@@ -12,12 +12,6 @@ const SCORE_COMPONENTS: {
   { key: "cost", label: "Cost", weight: 10 },
 ];
 
-// A component can now be backed by more than one real (non-LLM-estimated)
-// field — e.g. Recruitment is real if EITHER Historical Enrollment Rate OR
-// the real facility-workload count (Competing Trials at Site — see
-// pipeline/liveCandidateSites.ts's applyLiveKpiOverrides) was used, so the
-// "live" highlight below reflects either real signal, not just the first
-// one this file happened to know about.
 const LIVE_FIELDS_FOR_COMPONENT: Partial<Record<keyof ComponentScores, string[]>> = {
   recruitment: ["Historical Enrollment Rate (pts/month)", "Competing Trials at Site"],
   retention: ["Dropout Rate (%)"],
@@ -31,11 +25,8 @@ export default function ScoreBreakdown({
   raceBreakdown,
 }: {
   components: ComponentScores;
-  /** Raw KPI field names on this site's row that are real ClinicalTrials.gov data rather than an LLM estimate. */
   liveKpiFields?: string[];
-  /** The NCTId Dropout Rate/Diversity Index (if real) were sourced from — trial-wide, not this site alone. */
   liveKpiSourceNctId?: string | null;
-  /** Real race/ethnicity category breakdown behind the Diversity component, when real. null/undefined when it's LLM-estimated instead. */
   raceBreakdown?: { category: string; percent: number }[] | null;
 }) {
   return (
@@ -47,12 +38,6 @@ export default function ScoreBreakdown({
         const liveFields = LIVE_FIELDS_FOR_COMPONENT[key];
         const isPartlyLive = !!liveFields?.some((f) => liveKpiFields?.includes(f));
 
-        // Diversity-specific: when it's real, build a quick "White 61% ·
-        // Black 19% · ..." line from the actual reported category
-        // breakdown instead of just the collapsed 0-100 index — this is
-        // the tooltip-list option (no extra click), so it has to stay
-        // short; showing every category is fine since there are usually
-        // only 4-6 of them.
         const raceBreakdownLine =
           key === "diversity" && raceBreakdown && raceBreakdown.length > 0
             ? raceBreakdown

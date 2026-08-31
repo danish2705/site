@@ -25,19 +25,7 @@ export default function RiskAssessmentPanel() {
     countryErrors,
     analyzeForCountry,
   } = usePipeline();
-  // Default to Recruiting per request — the strongest, currently-live signal.
-  // Only these three statuses are offered; Completed/Terminated/Withdrawn/
-  // Suspended/unknown-status sites aren't useful candidates here.
   const [statusFilter, setStatusFilter] = useState<LiveStatusFilter>("RECRUITING");
-
-  // Country picker — deliberately LOCAL to this page, not shared with
-  // Ranking/Final Recommendation: those each keep their own selection too,
-  // so picking a country here doesn't jump the other pages to it. All
-  // three still read from the same PipelineContext analysisCache/
-  // prefetchingCountries, so switching country here is instant once that
-  // country has been analyzed (by Run Analysis, the background prefetch,
-  // or any page having picked it before), and only triggers a fresh fetch
-  // when it's genuinely not there yet.
   const [pageCountry, setPageCountry] = useState("");
 
   useEffect(() => {
@@ -54,7 +42,6 @@ export default function RiskAssessmentPanel() {
           : selectedCountries[0],
       );
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedCountries.join("|"), topRegion, running]);
 
   useEffect(() => {
@@ -62,7 +49,6 @@ export default function RiskAssessmentPanel() {
     if (analysisCache[pageCountry]) return;
     if (prefetchingCountries.has(pageCountry)) return;
     analyzeForCountry(pageCountry, { background: true });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pageCountry, analysisCache, prefetchingCountries]);
 
   const cached = pageCountry ? analysisCache[pageCountry] : undefined;
@@ -91,11 +77,6 @@ export default function RiskAssessmentPanel() {
 
   if (!riskAssessment) {
     if (pageLoading) {
-      // Keep the same card shell (country/status dropdowns up top, the
-      // Ongoing Trials/Ranking nav at the bottom) as the loaded state below
-      // — only the middle scroll body swaps for a centered loader. Previously
-      // this returned a bare full-card loader, which blanked out the
-      // dropdowns and nav buttons while a country's data was loading.
       return (
         <div className="card">
           <div className="predict-head">
@@ -125,10 +106,6 @@ export default function RiskAssessmentPanel() {
         </div>
       );
     }
-    // Stage 4-8 no longer auto-populate this from a fresh CT.gov fetch of
-    // their own — they only run once the user picks a country here (see
-    // PipelineContext's analyzeForCountry) or sends a reviewed site list
-    // from Ongoing Trials (analyzeOngoingTrialSites).
     return (
       <div className="card">
         {countryPicker && <div className="map-controls">{countryPicker}</div>}

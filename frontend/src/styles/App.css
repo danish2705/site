@@ -25,8 +25,6 @@
   --nav-h: 64px;
 }
 
-/* Any element carrying a tooltip (title attribute) should show a pointer on
-   hover */
 [title]:not(button):not(a):not(input):not(select):not(textarea) {
   cursor: pointer;
 }
@@ -35,12 +33,6 @@
   box-sizing: border-box;
 }
 
-/* Global keyboard-focus ring — most interactive controls (buttons, table
-   action links, custom Select/Tooltip triggers) had no visible focus state
-   at all, so keyboard users got no feedback about where they were. A
-   couple of components (e.g. .ui-select-control) already define their own
-   more specific focus-visible treatment above/below and simply layer on
-   top of this default. */
 button:focus-visible,
 a:focus-visible,
 input:focus-visible,
@@ -339,9 +331,7 @@ body {
   font-weight: 500;
   flex-shrink: 0;
 }
-/* Dismissible info Toast (Toast.tsx) — deliberately NOT styled like
-   .shell-error above (red, unmissable) since it's a "just so you know",
-   not something blocking the user. */
+
 .app-toast {
   display: flex;
   align-items: flex-start;
@@ -391,9 +381,7 @@ body {
   min-height: 0;
   overflow: hidden;
 }
-/* Collapsible wrapper around <Sidebar> — collapsing/expanding is purely a
-   layout change (width + fade/slide) so the sidebar's form component stays
-   mounted the whole time and every entered value/filter is preserved. */
+
 .sidebar-shell {
   position: relative;
   flex-shrink: 0;
@@ -406,9 +394,7 @@ body {
 .sidebar-shell.collapsed {
   width: 20px;
 }
-/* Separate clipping layer from the positioning layer above (.sidebar-shell)
-   so the collapse toggle button — which pokes out past the shell's edge —
-   never gets clipped along with the sidebar content. */
+
 .sidebar-shell-clip {
   width: 100%;
   height: 100%;
@@ -787,18 +773,7 @@ body {
 .wizard-panel > *:not(:first-child) {
   flex-shrink: 0;
 }
-/* A nested .table-scroll's own `overflow-x: auto` forces its "visible"
-   overflow-y to compute to "auto" too per spec (no way around this by
-   setting overflow-y explicitly on that same element — one axis can't
-   really stay "visible" once the other isn't). That silently makes
-   .table-scroll itself the "nearest scrolling ancestor" that a sticky
-   <th> inside it sticks relative to, instead of this element (the one
-   that actually scrolls vertically) — since .table-scroll's own height
-   always matches its content, sticky positioning there has no scroll
-   range to work with, so the header just scrolls away with the rows.
-   Fix: make THIS element responsible for horizontal scroll too (so a
-   sticky <th> can correctly target it), and stop .table-scroll from
-   competing for the role. */
+
 .card-scroll-body {
   flex: 1;
   min-height: 0;
@@ -874,13 +849,6 @@ body {
   flex-shrink: 0;
 }
 
-
-/* ---- Custom themed dropdown (components/ui/Select.tsx) — replaces native
-   <select> app-wide since the native open option list can't be restyled
-   with CSS in most browsers and always shows the OS's own blue highlight
-   regardless of this app's purple theme. Closed-state footprint matches
-   the old native selects (same padding/border/radius) so swapping it in
-   doesn't shift any layout. ---- */
 .ui-select {
   position: relative;
   display: inline-block;
@@ -944,22 +912,10 @@ body {
   position: absolute;
   top: calc(100% + 6px);
   left: 0;
-  /* Leaflet's own panes/controls (Site Map's map) escape to the top-level
-     stacking context and use z-index up to 1000 by default (same issue as
-     .run-modal-backdrop below) — 200 lost to that and the map rendered on
-     top of this menu. 3000 comfortably clears it while staying under
-     modals (5000). */
   z-index: 3000;
   min-width: 100%;
   max-height: 280px;
   overflow-y: auto;
-  /* .ui-select-option below is white-space: nowrap (option labels never
-     wrap) — without an explicit overflow-x this would otherwise compute to
-     "auto" per spec and show a horizontal scrollbar clipping any option
-     wider than the trigger (e.g. "All selected countries" next to a short
-     "India" trigger). Select.tsx's portaled menu instead sets its own
-     min-width (not width) from the trigger's rect, so the menu itself
-     grows to fit its widest option and nothing needs to scroll. */
   overflow-x: hidden;
   margin: 0;
   padding: 6px;
@@ -970,10 +926,6 @@ body {
   box-shadow: 0 10px 28px rgba(15, 23, 42, 0.14);
 }
 .ui-select-menu--portaled {
-  /* Select.tsx sets an inline `width` from the trigger's own rect — the
-     base rule's `min-width: 100%` above resolves against the viewport for
-     a position:fixed element with no positioned ancestor, not the trigger,
-     which would otherwise force the menu wider than its container. */
   min-width: 0;
 }
 .ui-select-option {
@@ -991,8 +943,6 @@ body {
   color: var(--ink);
   text-align: left;
   cursor: pointer;
-  /* Wraps rather than forcing the menu (Select.tsx sizes it to the
-     trigger's own width) to grow past its container's edge. */
   white-space: normal;
   overflow-wrap: break-word;
   line-height: 1.3;
@@ -1020,10 +970,6 @@ body {
   height: 100%;
 }
 
-/* Hide the native up/down spinner on every number input app-wide (Target
-   Enrollment, Duration, etc.) — the value is still fully editable by typing
-   or with the keyboard arrow keys, this just removes the tiny stepper
-   buttons. */
 input[type="number"] {
   -moz-appearance: textfield;
   appearance: textfield;
@@ -1034,7 +980,6 @@ input[type="number"]::-webkit-inner-spin-button {
   margin: 0;
 }
 
-/* ---- Cards ---- */
 .card {
   background: var(--card);
   border: 1px solid var(--line);
@@ -1307,11 +1252,7 @@ input[type="number"]::-webkit-inner-spin-button {
 
 .table-scroll {
   overflow-x: auto;
-  /* NOTE: setting overflow-y here to anything (including "visible")
-     doesn't actually avoid the CSS-spec coercion below — see
-     .card-scroll-body .table-scroll further down for the real fix used
-     wherever a sticky header needs .card-scroll-body (not this element)
-     to be the scrolling ancestor. */
+
 }
 table {
   width: 100%;
@@ -1342,15 +1283,9 @@ th {
   background: var(--bg);
   position: sticky;
   top: 0;
-  /* Keeps the sticky header painting above scrolled-under row content
-     (badges, checkboxes, etc. can otherwise end up establishing their own
-     stacking context and bleed over the header at the boundary). */
   z-index: 1;
 }
-/* Zebra striping (even rows only, so bordered/pinned rows aren't
-   double-tinted) plus a real hover highlight — previously every row was
-   visually identical, which makes it easy to lose your place scanning
-   across a wide row. */
+
 tbody tr:not(.pinned-row):nth-child(even) {
   background: #fbfbfe;
 }
@@ -1360,10 +1295,7 @@ tbody tr {
 tbody tr:hover {
   background: var(--accent-soft);
 }
-/* Site Map facility table: rows are shorter/denser than the default table,
-   and the facility-name column wraps instead of forcing a wide nowrap row
-   (raw ClinicalTrials.gov facility names occasionally include long contact
-   instructions rather than just a short site name). */
+
 .site-map-table th,
 .site-map-table td {
   padding: 6px 10px;
@@ -1378,11 +1310,7 @@ tbody tr:hover {
   font-size: 11.5px;
   color: var(--sub);
 }
-/* Other Ongoing Trials table (CompetingTrialsPanel): table-layout: fixed +
-   equal <colgroup> widths so all 5 columns share the row evenly instead of
-   the browser's default auto-layout collapsing short columns (Status, Last
-   Updated) down to their content width and leaving a large blank gap on one
-   side. */
+
 .competing-trials-table {
   table-layout: fixed;
 }
@@ -1571,22 +1499,11 @@ tbody tr:hover {
   border-radius: 12px;
   padding: 13px 15px;
 }
-/* Site Combination Planner's strategy cards now sit on a light color tint
-   of their own (STRATEGY_CARD_TINT in SiteCombinationPlanner.tsx) — the
-   shared .final-grid .item's grey (#f7f8fb) read as muddy against that
-   tint, so these specific cards get white metric boxes instead. Scoped
-   to .combo-strategy-card only; every other .final-grid usage (Final
-   Recommendation, Site Map Details, Eligibility Criteria) keeps the grey. */
+
 .combo-strategy-card .final-grid .item {
   background: #fff;
 }
-/* Final Recommendation's own 5 metric boxes — each gets a faint (4-6%)
-   wash of a color tied to what it represents, instead of the shared flat
-   grey, so the row reads at a glance instead of five identical boxes.
-   Scoped to .final-grid--reco (RecommendationPanel.tsx only) since the
-   plain grey is still right for every other .final-grid usage. Order is
-   fixed (Region, Population, Site, Score, Risk Level), so nth-child is
-   reliable here. */
+
 .final-grid--reco .item:nth-child(1) {
   background: rgba(29, 95, 191, 0.045);
 }
@@ -1602,18 +1519,12 @@ tbody tr:hover {
 .final-grid--reco .item:nth-child(5) {
   background: rgba(194, 59, 59, 0.055);
 }
-/* "Why this site is rated X" card — light blue instead of the plain
-   white it had (WhyThisRating.tsx renders this same card in Risk
-   Register too, but only via the RecommendationPanel usage does
-   .final-why wrap it, so this stays scoped to Final Recommendation). */
+
 .final-why .why-risk {
   background: rgba(29, 95, 191, 0.05);
   border-color: #dde6f5;
 }
-/* AI Recommendation paragraph — a light purple wash to set the model's
-   own writeup apart from the plain metric/explanation text above it.
-   .final-text--reco only (SavedRunModal reuses the base .final-text
-   class and should keep its plain background). */
+
 .final-text--reco {
   background: rgba(79, 91, 255, 0.04);
   border-radius: 10px;
@@ -1681,11 +1592,7 @@ tbody tr:hover {
   gap: 10px;
   flex-shrink: 0;
 }
-/* Bare <select>/<input> elements dropped directly into these toolbars (e.g.
-   Ongoing Trials' Country/Status dropdowns) otherwise fall back to the
-   browser's own default control height, which sits visibly shorter than
-   .predict-btn's 10px 18px padding — this brings them up to the same
-   height/border/radius so the whole row lines up. */
+
 .predict-head-actions select,
 .map-controls select,
 .map-controls input:not(.map-search-input) {
@@ -1727,9 +1634,7 @@ tbody tr:hover {
   border-color: rgba(255, 255, 255, 0.35);
   border-top-color: #fff;
 }
-/* Compact circular icon-only variant of .predict-btn — used for the
-   per-row "Draft email" action in the Site Ranking table, where a text
-   label was too wide for the column and just needs a recognizable icon. */
+
 .predict-btn-icon {
   padding: 0;
   width: 34px;
@@ -1785,13 +1690,7 @@ tbody tr:hover {
   color: var(--sub);
   line-height: 1.5;
 }
-/* A <td colSpan={N} className="predict-placeholder"> ("no rows match")
-   inherits the rule above, but `display: flex` on a table cell breaks out
-   of the fixed-table-layout column-width algorithm in most browsers — the
-   cell collapses toward its content/first-column width instead of actually
-   spanning all N columns, so the message renders in a narrow box pinned to
-   the left instead of centered across the table. Cells need to stay
-   `display: table-cell` and center via text-align/vertical-align instead. */
+
 td.predict-placeholder {
   display: table-cell;
   text-align: center;
@@ -2236,17 +2135,9 @@ tr.row-pick td {
   letter-spacing: 0.04em;
   text-transform: uppercase;
   color: #9297a8;
-  /* Wide enough for a 4-char label PLUS the live-data dot's 8px
-     padding-left below — otherwise the "live" rows (which get that extra
-     padding but kept the same box width) overflowed past this box and ran
-     straight into the progress track with no visible gap. */
   width: 34px;
   flex-shrink: 0;
   white-space: nowrap;
-  /* Reserve the dot's space on every row (live or not) so the label text
-     itself always starts at the same x position — otherwise non-live rows
-     (no dot, no padding) start 8px to the left of live rows and the column
-     looks staggered instead of aligned. */
   padding-left: 8px;
 }
 .score-component-track {
@@ -2264,9 +2155,6 @@ tr.row-pick td {
   border-radius: 2px;
   background: var(--accent);
 }
-/* Marks a component row whose value is (at least partly) real
-   ClinicalTrials.gov data rather than a pure LLM estimate — a small dot
-   before the label, explained further in the row's title tooltip. */
 .score-component--live .score-component-label {
   position: relative;
 }
@@ -2396,9 +2284,6 @@ tr.row-pick td {
   align-items: center;
   justify-content: center;
   padding: 24px;
-  /* Above .run-modal-backdrop (5000) and Leaflet's escaped z-index (up to
-     ~1000) alike — this overlay should sit above literally everything else
-     on screen for the duration of Run Analysis. */
   z-index: 6000;
 }
 .run-loading-card {
@@ -2445,11 +2330,6 @@ tr.row-pick td {
   align-items: center;
   justify-content: center;
   padding: 24px;
-  /* Leaflet's own controls (.leaflet-control, e.g. the zoom +/- buttons on
-     Site Map (Global)) use z-index: 1000 by default — well above this
-     backdrop's old z-index: 100, so the map behind the modal bled through
-     on top of it whenever a modal opened while that page was mounted.
-     5000 comfortably clears every Leaflet pane/control z-index. */
   z-index: 5000;
   animation: modalBackdropIn 0.15s ease;
 }
@@ -2493,14 +2373,7 @@ tr.row-pick td {
     transition: none;
   }
 }
-/* The browser's default scrollbar track is an opaque rectangle that sits
-   flush against this box's right edge and doesn't follow its
-   border-radius (most visible on a tall modal whose content actually
-   overflows, e.g. Predict Region/Country once results load) — the corner
-   there reads as squared-off even though border-radius is set. A
-   transparent track + a rounded thumb lets the modal's own rounded
-   corner show through instead. Chromium/Safari only; Firefox keeps its
-   own native scrollbar, which already respects overflow clipping. */
+
 .run-modal::-webkit-scrollbar {
   width: 10px;
 }
@@ -2519,10 +2392,7 @@ tr.row-pick td {
   width: min(1360px, 96vw);
   max-height: 92vh;
 }
-/* Small-content dialogs (e.g. Save this run — just a name field and two
-   buttons) looked like a wide, short strip at the default 1000px width.
-   Capping the width and adding extra top/bottom padding gives it a more
-   balanced, closer-to-square footprint instead. */
+
 .run-modal.run-modal-square {
   width: min(480px, 100%);
   padding-top: 32px;
@@ -2554,12 +2424,7 @@ tr.row-pick td {
   margin: 0;
   font-size: 12px;
 }
-/* Pins the close button (and title) to the top of the modal while its body
-   scrolls underneath — used on long-content modals like Data Transparency
-   so closing never requires scrolling back up first. Pulls the header out
-   over the parent .run-modal's own padding (negative margin matching it)
-   and re-applies that padding on itself so it still lines up flush with
-   the modal's edges once stuck. */
+
 .run-modal-head--sticky {
   position: sticky;
   top: -24px;
@@ -2572,50 +2437,25 @@ tr.row-pick td {
 .run-modal-wide .run-modal-head--sticky {
   top: -24px;
 }
-/* .run-modal-square adds extra top/bottom padding (32px vs the base
-   24px) for a more balanced footprint on short-content dialogs (e.g.
-   Save this run) — the sticky bar's pull-out margin has to match that
-   larger padding or it leaves an 8px gap of the modal's own background
-   peeking out above the bar. */
+
 .run-modal-square .run-modal-head--sticky {
   top: -32px;
   margin-top: -32px;
   padding-top: 32px;
 }
 
-/* ---- Predict Region with AI modal ----
-   Was using .run-modal-wide (1360px) — way more than its actual content
-   (a single-column stack of prediction cards) needs, which made it render
-   as a very wide, short strip instead of a normal dialog. A dedicated,
-   more square-ish width fits its content instead. */
 .predict-region-modal {
   position: relative;
-  /* Starts compact — while a prediction is running there's only a title
-     and a button, and the earlier fixed 820px width left a large empty
-     gap next to them. Widens via .predict-region-modal--wide (below)
-     only once a result actually arrives with content that needs the
-     extra room (recommendation writeup, key-factor chips, watch-outs,
-     alternative-region cards). */
   width: min(480px, 96vw);
   max-height: 90vh;
   transition: width 0.15s ease;
 }
 .predict-region-modal--wide {
-  /* Widened further — the Scored Candidates table (Region/Score/Est.
-     Patients/Sites/Approval/Competing/Cost columns) still needed a
-     horizontal scrollbar at 820px. */
   width: min(1140px, 96vw);
 }
 .predict-region-modal:focus {
   outline: none;
 }
-/* Sticky close-button bar instead of a plain position:absolute button —
-   .run-modal (this modal's own outer box) is itself the scrolling
-   container once content overflows max-height, so a plain absolutely
-   positioned button here would scroll away with the rest of the content
-   instead of staying put. Mirrors .run-modal-head--sticky's convention:
-   pinned to the top of the scroll container via negative margins matching
-   .run-modal's own padding, re-applying that padding on itself. */
 .predict-region-modal-close-bar {
   position: sticky;
   top: -24px;
@@ -2625,9 +2465,6 @@ tr.row-pick td {
   justify-content: flex-end;
   background: #fff;
   z-index: 3;
-  /* Matches .run-modal's own 14px border-radius on this bar's top corners
-     — without this, the bar's square corners poked out past the modal's
-     rounded top edge as a small white rectangle sitting above the curve. */
   border-top-left-radius: 14px;
   border-top-right-radius: 14px;
 }
@@ -2637,7 +2474,6 @@ tr.row-pick td {
   gap: 16px;
 }
 
-/* ---- Predicted Region / Site Map tabs ---- */
 .predict-tabs {
   display: flex;
   gap: 6px;
@@ -2665,21 +2501,12 @@ tr.row-pick td {
   border-bottom-color: var(--accent);
 }
 
-/* ---- Site Map ---- */
-/* ---- Ongoing Trials (CompetingTrialsPanel): icon stat cards + unified
-   search/filter toolbar. Scoped with a "ct-" prefix (not reusing
-   .map-controls/.map-search-input/.map-table-count) since those classes are
-   shared with Site Map Details' own toolbar and must not be touched here. */
 .ct-stat-item {
   display: flex;
   align-items: center;
   gap: 10px;
   flex-shrink: 0;
 }
-/* Compact variant used inline in the single-row .ct-toolbar (as opposed to
-   the larger standalone card look .ct-stat-item has by default) — smaller
-   icon, tighter gap, no card chrome of its own since the whole bar already
-   has one. */
 .ct-stat-item--inline .ct-stat-icon {
   width: 30px;
   height: 30px;
@@ -2740,9 +2567,6 @@ tr.row-pick td {
   padding: 10px 14px;
   background: #fff;
   margin: 4px 0 6px;
-  /* Never wrap to a second line — if the row is narrower than its content,
-     scroll horizontally within the bar instead of stacking stats/search/
-     filter onto separate rows (which read as disconnected floating pills). */
   flex-wrap: nowrap;
   overflow-x: auto;
 }
@@ -2797,10 +2621,6 @@ tr.row-pick td {
   border-radius: 50%;
   pointer-events: none;
 }
-/* Status filter pill inside .ct-toolbar — uses the themed Select component
-   (see components/ui/Select.tsx) for its open menu, but keeps its own
-   borderless "blends into the bar" trigger look instead of Select's default
-   boxed appearance. */
 .ct-status-select .ui-select-control {
   min-width: 0;
   border: none;
@@ -2812,25 +2632,10 @@ tr.row-pick td {
 .ct-status-select .ui-select-control:hover {
   background: var(--bg);
 }
-/* .ui-select-menu.ct-status-select — NOT ".ct-status-select .ui-select-menu"
-   — the menu portals into document.body, so it's never a DOM descendant
-   of the trigger wrapper; Select.tsx now carries this class directly onto
-   the portaled element so it can be targeted here. Also widens it:
-   Select.tsx sizes the menu to the trigger's own width, which is fine for
-   most selects but this trigger is only as wide as its current value
-   ("Recruiting") — too narrow for longer options like "Active, Not
-   Recruiting" to fit on one line. min-width (with !important, since
-   Select.tsx sets width as an inline style) keeps the menu wide enough
-   regardless of which option is currently selected. */
 .ui-select-menu.ct-status-select {
   left: -26px;
   min-width: 210px !important;
 }
-/* Same fix as .ct-status-select above, for the other two places a
-   live-status Select uses the same option set (Site Map's Available
-   Sites table and Risk Register) — "Active, Not Recruiting" otherwise
-   wraps onto two lines whenever a shorter status ("Recruiting") is the
-   current selection and sizes the trigger/menu to match. */
 .ui-select-menu.status-filter-select {
   min-width: 210px !important;
 }
@@ -2857,10 +2662,6 @@ tr.row-pick td {
   background: var(--bg);
 }
 .map-search-btn {
-  /* .map-field stacks a label line above its <select> (see .map-field's
-     gap:5px + the label span's own line-height) — this button has no label
-     line above it, so without this offset it sits flush with the "COUNTRY"
-     text instead of level with the dropdown box itself. */
   margin-top: 20px;
 }
 .map-no-search-note {
@@ -2869,22 +2670,11 @@ tr.row-pick td {
   font-weight: 600;
   color: var(--high);
 }
-/* Site Map Details merges its site-search input, result count, and Export
-   CSV button into this same .map-controls row as the Country field/Search
-   button (see SiteMapDetailsPage.tsx) — same reasoning as .map-search-btn
-   above: without this offset they sit flush with the "COUNTRY" label text
-   instead of level with the dropdown/button beside them. */
 .map-controls .map-search-input,
 .map-controls .map-table-count,
 .map-controls .map-csv-btn {
   margin-top: 20px;
 }
-/* Site Map Details' Country field has no "COUNTRY" label text above it
-   (removed — see SiteMapDetailsPage.tsx), so none of the 20px label-offset
-   hacks above apply here: everything in this row is the same short height,
-   so centering them (instead of the default flex-start the shared
-   .map-controls uses for the label+select stack elsewhere) lines them all
-   up cleanly without any per-item offset. */
 .map-controls--flush {
   align-items: center;
 }
@@ -2919,10 +2709,7 @@ tr.row-pick td {
   background: #fff;
   min-width: 160px;
 }
-/* Country/status dropdowns in this toolbar now use the themed Select's
-   default sizing (matching the Site Map pages' dropdowns) rather than a
-   smaller compact override — both are label-less now, so nothing here
-   needs the old alignment-matching shrink. */
+
 .map-field-note {
   display: block;
   max-width: 240px;
@@ -3170,8 +2957,6 @@ tr.pinned-row {
   line-height: 1.6;
 }
 
-/* ---- Workflow nav (persistent, above the right-side page card only —
-   not above the sidebar's input form) ---- */
 .workflow-nav {
   flex-shrink: 0;
   background: #fff;
@@ -3197,26 +2982,15 @@ tr.pinned-row {
   flex-shrink: 1;
   min-width: 0;
 }
-/* Thin connecting line between each step's circle, so the row reads as one
-   continuous progress track rather than disconnected icons. Sits at the
-   circle's vertical center: the button's 8px top padding plus half the
-   26px .workflow-nav-index circle = 21px down from the button's top edge.
-   flex:1 lets it stretch to fill whatever gap sits between two items at
-   the current width, min-width keeps a visible line even in a cramped
-   layout. */
 .workflow-nav-connector {
   flex: 1 1 16px;
   min-width: 12px;
   height: 2px;
-  /* var(--line) (#e6e8f0) is too close to the card's white background to
-     read at 1-2px — this needs to be visibly darker than an ordinary
-     hairline border to actually show up as a connecting track. */
   background: #c3c8d9;
   margin-top: 20px;
   align-self: flex-start;
 }
-/* Vertical layout per the requested design: tick/number icon on top,
-   label directly below it — never side-by-side with the icon. */
+
 .workflow-nav-item {
   display: flex;
   flex-direction: column;
@@ -3238,9 +3012,6 @@ tr.pinned-row {
   transition: background 0.15s ease, color 0.15s ease;
 }
 .workflow-nav-item:hover:not(:disabled) {
-  /* No background on the whole button (that read as a stray square box
-     behind the icon+label) — the hover feedback lives on the circle
-     itself instead, via the ring below. */
   color: var(--ink);
 }
 .workflow-nav-item:hover:not(:disabled) .workflow-nav-index {
@@ -3248,9 +3019,6 @@ tr.pinned-row {
   transform: translateY(-1px);
 }
 .workflow-nav-item.active {
-  /* No background pill here on purpose — it visually cut the connector
-     line running behind this item. The filled accent circle + accent text
-     color below are enough to mark the active step. */
   color: var(--accent-dark);
 }
 .workflow-nav-item.complete .workflow-nav-index {
@@ -3282,6 +3050,14 @@ tr.pinned-row {
 .workflow-nav-label {
   line-height: 1.25;
 }
+/* Distinguishes the leading "Predict Region with AI" action from the
+   numbered workflow steps beside it — it opens a modal, not a page, so it
+   gets its own accent-filled look instead of the plain numbered-circle
+   treatment (and a small divider to visually separate it from step 1). */
+.workflow-nav-item--predict {
+  /* No divider border here on purpose — it read as a separate boxed-off
+     section instead of part of the same connected step row. */
+}
 .workflow-nav-item--predict .workflow-nav-index {
   background: var(--accent);
   color: #fff;
@@ -3291,8 +3067,6 @@ tr.pinned-row {
   background: var(--accent-dark);
 }
 
-/* Smooth page transition when switching between workflow steps — purely
-   cosmetic, runs once on mount of whichever page just swapped in. */
 .wizard-panel > * {
   animation: workflow-page-fade-in 0.18s ease;
 }
@@ -3307,9 +3081,6 @@ tr.pinned-row {
   }
 }
 
-/* ---- Stage loader — a page's own loading state while its backend stage
-   is still running (used by Risk Register / Ranking / Final Recommendation
-   before their data has arrived) ---- */
 .stage-loader {
   display: flex;
   flex-direction: column;
@@ -3359,9 +3130,7 @@ tr.pinned-row {
     animation: none;
   }
 }
-/* Overlays the Site Map (Global) map box while a search is loading, so the
-   spinner sits centered over the map area itself instead of floating in
-   its own space above a tall empty map placeholder. */
+
 .map-loading-overlay {
   position: absolute;
   inset: 0;
@@ -3370,18 +3139,11 @@ tr.pinned-row {
   justify-content: center;
   background: rgba(255, 255, 255, 0.85);
   border-radius: 10px;
-  /* Comfortably clears Leaflet's own escaped z-index (up to ~1000) within
-     this same local stacking context. */
   z-index: 1500;
 }
 .map-loading-overlay .stage-loader {
   padding: 0;
 }
-/* Same idea as .map-loading-overlay, for a table-based page (Site Map
-   Details) instead of the Leaflet map box — overlays the panel's visible
-   area (its parent .card-scroll-body needs position:relative, set inline
-   where this is used) so the spinner sits centered in the middle of the
-   panel instead of in its own slot above a stale table. */
 .table-loading-overlay {
   position: absolute;
   inset: 0;
@@ -3403,21 +3165,6 @@ tr.pinned-row {
   font-size: 13px;
   color: var(--sub);
 }
-/* ===== Themed tooltips (replaces the browser's native black `title`
-   tooltip app-wide) =====
-   Two mechanisms, same visual theme:
-   1. [data-tooltip] — CSS-only, via ::after, for ordinary elements (most
-      title= usages: buttons, badges, nav items, icons, form fields).
-   2. .app-tooltip — rendered by Tooltip.tsx through a React portal into
-      document.body, for the handful of elements that ALSO truncate their
-      own text with overflow:hidden (table cells showing "…"), where a
-      ::after on that same element would just get clipped by its own
-      overflow. */
-/* :where() keeps this selector's specificity at zero, so it never
-   outranks a component's own `position: absolute/fixed` (e.g. a modal's
-   close button, which also carries data-tooltip="Close") — without this,
-   whichever rule happened to come later in this file would silently win
-   and break that element's real positioning. */
 :where([data-tooltip]:not([data-tooltip=""])) {
   position: relative;
 }
@@ -3471,49 +3218,20 @@ tr.pinned-row {
   z-index: 6500;
 }
 
-/* Ranking table's "Site" column (site name + LIVE-xxxx id) — the browser's
-   default auto table layout let this column balloon to fit the longest
-   site name, squeezing Region/Score/Breakdown/etc. into a leftover strip.
-   Capping its width and allowing the name to wrap keeps it from
-   dominating the row. */
 .ranking-site-col {
-  /* max-width no longer needed now that .ranking-table's fixed layout +
-     colgroup already caps this column to a fixed 24% share. */
   line-height: 1.35;
 }
 
-/* Predict Region/Country modal header — stack the action button below the
-   title instead of the shared .predict-head-top's default side-by-side
-   row (used elsewhere by Risk Register/Ranking/Ongoing Trials, left
-   untouched via this modifier rather than changing the base class). */
 .predict-head-top--stacked {
   flex-direction: column;
   align-items: flex-start;
   gap: 12px;
 }
-/* Square-cornered variant of .predict-btn for this same button — the
-   shared .predict-btn's 9px radius plus its pill-like padding around
-   short text ("Predicting…") read as a capsule; this squares the corners
-   off without touching .predict-btn everywhere else it's used. */
 .predict-btn--square {
   border-radius: var(--radius-sm);
 }
 
-/* Ranking table (Rank/Site/Region/Score/Breakdown/Protocol Fit/Risk/
-   Status/Outreach) — 9 columns of default-density th/td padding plus the
-   per-site breakdown bars added up to more than the card's width, forcing
-   a horizontal scrollbar. Denser padding/font (same convention as
-   .site-map-table) shrinks every column a bit, which is enough for the
-   whole row to fit without scrolling in the normal card width. */
 .ranking-table {
-  /* Percentage <colgroup> widths (in SiteRankingPanel.tsx) only take
-     effect under table-layout: fixed — under the default "auto" layout
-     the browser still sizes every column by its content's natural width
-     first and only reconciles with the table's own width afterward, which
-     is exactly how 9 content-heavy columns kept forcing a horizontal
-     scrollbar despite the denser padding below. Fixed layout instead
-     locks each column to its assigned share of 100% up front and wraps
-     content to fit, guaranteeing the row never exceeds the card. */
   table-layout: fixed;
   width: 100%;
 }
@@ -3521,15 +3239,10 @@ tr.pinned-row {
 .ranking-table td {
   padding: 8px 10px;
   font-size: 12.5px;
-  /* The shared th/td rule defaults to nowrap, which is what needs fixed
-     column widths above to force wrapping instead of clipping/overflow. */
   white-space: normal;
   overflow-wrap: break-word;
 }
 .ranking-table .score-component-track {
-  /* Was flex:1 (grows to fill however much space this column happens to
-     get) — capping it keeps the Breakdown column from claiming more width
-     than the mini bar chart actually needs. */
   flex: none;
   width: 70px;
 }
@@ -3537,29 +3250,10 @@ tr.pinned-row {
   white-space: nowrap;
 }
 
-/* Ranking page's scroll body specifically — table-layout: fixed + the
-   colgroup above (SiteRankingPanel.tsx) already keep the table itself at
-   exactly 100% width, but a stray bit of unbreakable content (e.g. a
-   long facility name segment) can still visually spill a few pixels past
-   its own fixed-width cell, which is enough for .card-scroll-body's
-   overflow-x: auto to register it and show a scrollbar anyway. Hidden
-   here specifically (not on .card-scroll-body generally, which other
-   pages rely on for real horizontal scrolling) since the fixed layout
-   above already guarantees nothing meaningful is actually cut off. */
 .ranking-scroll-body {
   overflow-x: hidden;
 }
 
-/* Common laptop widths (roughly 1024-1280px) previously had no rule of
-   their own — the 9-column table just compressed every column until
-   labels started to clip, since the only breakpoints defined were far
-   wider (1450px, unrelated pages) or far narrower (720px, phone-width
-   stacking). Rather than keep squeezing all 9 columns, the two least
-   essential at a glance (Region — already visible via Site's own
-   detail — and Protocol fit) drop out entirely; the remaining columns'
-   <colgroup> widths are re-percentaged (with !important, since
-   SiteRankingPanel.tsx sets them as inline styles) to fill the freed
-   space instead of leaving a gap. */
 @media (max-width: 1280px) and (min-width: 901px) {
   .ranking-table th:nth-child(3),
   .ranking-table td:nth-child(3),
@@ -3594,13 +3288,6 @@ tr.pinned-row {
   }
 }
 
-/* Predict Region/Country modal's initial loading state — plain centered
-   loader + Cancel instead of the modal collapsing to just a title and a
-   "Predicting…" button with nothing else. Reuses the same
-   .run-loading-spinner/.run-loading-title/.run-loading-cancel pieces as
-   the full-screen Run Analysis overlay, just laid out inline here instead
-   of inside that overlay's own card chrome (this already sits inside the
-   modal's own white card). */
 .predict-card-content--loading {
   display: flex;
   flex-direction: column;

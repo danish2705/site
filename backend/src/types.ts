@@ -10,11 +10,8 @@ export interface RegionRow {
   "Regulatory Approval Time (weeks)": number;
   "Active Competing Trials": number;
   "Avg Cost per Patient (USD)": number;
-  /** Set by services/liveRegionData.ts once a row has been enriched. */
   competingTrialsSource?: "live" | "excel";
-  /** Source of Prevalence/Regulatory/Cost fields on this row — see pipeline/liveRegionMetrics.ts. */
-  regionMetricsSource?: "live" | "llm-estimated" | "unavailable";
-  /** Set when regionMetricsSource is "unavailable" (LLM not configured or the call failed), explaining why those fields are 0 rather than a real/estimated figure. */
+  regionMetricsSource?: "live" | "llm-estimated" | "claims-synthetic" | "unavailable";
   metricsWarning?: string;
 }
 
@@ -26,7 +23,6 @@ export interface LiveFacilityRow {
   state: string | null;
   country: string | null;
   status: string | null;
-  /** When the sponsor last updated this trial's record on ClinicalTrials.gov (protocolSection.statusModule.lastUpdatePostDateStruct.date). */
   lastUpdatePostDate: string | null;
 }
 
@@ -43,14 +39,12 @@ export interface LiveTrialLandscapeResponse {
   country: string | null;
   activeCompetingTrials: number | null;
   facilities: LiveFacilityRow[];
-  /** Which OverallStatus values are currently configured to count toward activeCompetingTrials — see config.ts's competingTrials.statuses. Sent so the UI can badge each facility row as counted/not-counted without duplicating this business rule on the frontend. */
   competingStatuses: string[];
   benchmark: LiveTrialBenchmark;
   fetchedAt: string;
   warnings: string[];
 }
 
-/** One trial site plotted on the Site Map tab — see pipeline/liveMapData.ts for exactly what's live vs. synthetic vs. approximate in each field. */
 export interface MapSiteRow {
   siteId: string;
   siteName: string;
@@ -60,125 +54,49 @@ export interface MapSiteRow {
   status: string | null;
   lat: number;
   lng: number;
-  /** "live-google" if GOOGLE_MAPS_API_KEY is configured and Google's geocode call succeeded; "live-nominatim" if the free OpenStreetMap Nominatim lookup succeeded instead; "approximate" only if both live tiers were unavailable (deterministic placement near the country/city, not precisely geocoded) — see services/geo.service.ts. */
   coordsSource: "live-google" | "live-nominatim" | "approximate";
   radiusMiles: number;
-  /** Sum of synthetic catchment population within radiusMiles of this site — see data/syntheticPopulation.ts for why this is synthetic, not real, data. */
   populationInRadius: number;
   populationSource: "synthetic";
-  /** LLM-estimated prevalence per 100k for this indication/country — see liveRegionMetrics.ts (no live source exists at this granularity). */
   prevalencePer100k: number;
   grossEligiblePatients: number;
   netAvailablePatients: number;
-  /** Fraction of gross-eligible patients assumed already enrolled elsewhere — derived from the real completed-trial benchmark median sample size when available, else a fixed baseline (config.map.baselineRecruitmentRate). */
   recruitmentRateAssumed: number;
   riskScore: number | null;
   riskLevel: "Low" | "Medium" | "High" | "Unknown";
   riskRationale: string;
   riskSource: "llm-estimated" | "unavailable";
-  /**
-   * Illustrative split of `netAvailablePatients` into treatment-stage
-   * buckets — see config.map.patientSegmentSplit. NOT derived from real
-   * claims/EHR data (no live source distinguishes these groups per site at
-   * this granularity); null only if netAvailablePatients is 0.
-   */
   patientSegments: PatientSegments | null;
   patientSegmentSource: "heuristic-illustrative";
-  /**
-   * Which distance tier actually decided this site's catchment radius (see
-   * services/geo.service.ts's getDistancesMilesBatch): "live-google"/
-   * "live-osrm" if every catchment point counted was checked with a real
-   * driving-distance lookup, "approximate-haversine" if every one fell back
-   * to straight-line distance, "mixed" if some of each, "none" if the site
-   * had zero candidate points to check in the first place. Distinct from
-   * `coordsSource`, which is about the site's own pin location, not the
-   * distance used to decide what's inside its radius.
-   */
   catchmentDistanceSource:
     | "live-google"
     | "live-osrm"
     | "approximate-haversine"
     | "mixed"
     | "none";
-  /**
-   * netAvailablePatients further reduced by this site's own assumedConsentRate
-   * — a second, distinct haircut from recruitmentRateAssumed above.
-   * netAvailablePatients already estimates "how many eligible patients
-   * aren't already absorbed by other trials"; this answers a different
-   * question — "of those, how many will actually consent to enroll in THIS
-   * trial once approached" — which no live or LLM source discloses. This is
-   * the number the Site Combination Planner accumulates toward a target
-   * enrollment, not netAvailablePatients directly (100 eligible ≠ 100
-   * enrolled).
-   */
   recruitablePatients: number;
-  /**
-   * Per-site SYNTHETIC consent/conversion rate (see
-   * data/syntheticSiteCost.ts's syntheticConsentRateFor) — a deterministic
-   * variation around config.siteCombination.assumedConsentRate, the app's
-   * configured center value. Not one flat rate applied identically to every
-   * site: no live or LLM source discloses a real per-site
-   * screening-to-enrollment conversion rate, so rather than showing an
-   * obviously-uniform percentage on every row, this fabricates a
-   * plausible, stable-per-site spread around the configured center.
-   */
   assumedConsentRate: number;
-  /** Deterministic SYNTHETIC per-site cost figure — see data/syntheticSiteCost.ts for why no live/LLM source exists for this. */
   siteCost: SyntheticSiteCost;
-  /**
-   * Srikanth's requirement #1 ("Eliminate Patients Already Enrolled in
-   * Another Trial"), made explicit: grossEligiblePatients minus
-   * netAvailablePatients, i.e. the same already-enrolled-elsewhere haircut
-   * that was always folded into netAvailablePatients, now surfaced as its
-   * own labeled number so a UI toggle can show "Available" (netAvailablePatients)
-   * vs. "Available + Enrolled" (grossEligiblePatients) side by side. Derived
-   * arithmetically (gross - net), not independently estimated, so the three
-   * numbers always reconcile exactly: grossEligiblePatients =
-   * alreadyEnrolledPatients + netAvailablePatients.
-   */
   alreadyEnrolledPatients: number;
-  /**
-   * Requirement #4 ("Update Synthetic Patient Data"): a small (25-row),
-   * deterministic, illustrative SAMPLE of individual synthetic patient
-   * records for this site — Patient ID, disease, age, named comorbidity
-   * flags, and a fabricated Trial Status ("Available" | "Enrolled"). See
-   * data/syntheticPatients.ts for why this is a sample rather than one row
-   * per real eligible patient, and why every value here is fabricated, not
-   * derived from any real EHR/claims/CTMS source.
-   */
   patientSample: SyntheticPatientRecord[];
-  /**
-   * 0-1 multiplier actually applied to this site's grossEligiblePatients to
-   * reflect the trial form's selected Age Group(s) — see
-   * data/ageDemographics.ts's getAgeEligibleFraction. 1 when no Age Group
-   * was selected (all ages included, no narrowing).
-   */
   ageEligibleFraction: number;
-  /** Which Age Group label(s) were actually applied to this site's numbers — empty when none were selected. */
   ageGroupsApplied: string[];
 }
 
-/** See MapSiteRow.patientSegments. */
 export interface PatientSegments {
-  /** Treatment-naive patients recently diagnosed — the strongest recruits. */
   newlyDiagnosed: number;
-  /** On an existing treatment with an inadequate response — realistic switch/add-on candidates. */
   nonResponder: number;
-  /** Stable/responding on their current treatment — unlikely to enroll. */
   stableOnTreatment: number;
 }
 
 export interface LiveMapResponse {
   indication: string;
-  /** null = global search across every country ClinicalTrials.gov returned. */
   country: string | null;
   radiusMiles: number;
   sites: MapSiteRow[];
   warnings: string[];
   fetchedAt: string;
-  /** The Age Group label(s) the trial form had selected for this request — empty means "all ages" (no narrowing applied). */
   ageGroupsRequested: string[];
-  /** What the per-site age-eligibility adjustment is and isn't — see data/ageDemographics.ts. null when ageGroupsRequested is empty (nothing to disclose). */
   ageEligibilityDisclosure: string | null;
 }
 
@@ -193,11 +111,8 @@ export interface CombinedCatchmentResponse {
   country: string;
   radiusMiles: number;
   siteCount: number;
-  /** Sum of every selected site's own netAvailablePatients — what you'd get (incorrectly) by adding each site's number together. */
   sumOfIndividualNetAvailablePatients: number;
-  /** The de-duplicated figure — each synthetic catchment point counted once even if multiple selected sites' radii cover it. */
   combinedNetAvailablePatients: number;
-  /** How many patients the naive sum double-counted (sumOfIndividual - combined), i.e. the overlap between the selected sites' catchments. */
   overlapPatients: number;
   prevalencePer100k: number;
   warnings: string[];
@@ -208,17 +123,8 @@ export interface SiteCombinationRequestSite {
   siteName: string;
   city?: string | null;
   country?: string | null;
-  /**
-   * How many patients this site could realistically contribute toward the
-   * target — already netted for competing/already-enrolled patients AND for
-   * the assumed consent rate (MapSiteRow.recruitablePatients on the Site Map
-   * response). Older callers passing the pre-consent-rate
-   * `netAvailablePatients` figure still work (see the controller's fallback),
-   * but will overstate what a site can realistically deliver.
-   */
   recruitablePatients: number;
   riskScore: number | null;
-  /** Per-site SYNTHETIC cost (see data/syntheticSiteCost.ts) — optional; when omitted the optimizer falls back to the single region-wide avgCostPerPatientUsd for that site. */
   baseCostUsd?: number | null;
   perPatientCostUsd?: number | null;
 }
@@ -226,7 +132,6 @@ export interface SiteCombinationRequestSite {
 export interface SiteCombinationSelectedSite {
   siteId: string;
   siteName: string;
-  /** How many of this site's recruitable patients this strategy actually uses — may be less than recruitablePatientsAvailable when only a partial allocation is needed to reach the target (Srikanth: "some sites may not have enough population, so you have to pick maybe 5 from that site"). */
   patientsTaken: number;
   recruitablePatientsAvailable: number;
   riskScore: number | null;
@@ -244,14 +149,6 @@ export interface SiteCombinationStrategyResult {
   totalPatients: number;
   totalEstimatedCostUsd: number | null;
   averageRiskScore: number | null;
-  /**
-   * Sum, across every selected site, of (patientsTaken * riskScore / 100) —
-   * Srikanth's "every patient comes with a risk... keep adding all that risk
-   * for all the 300 patients, your net risk should be the lowest" idea,
-   * expressed as an expected count of at-risk patient-equivalents rather
-   * than a plain average of each site's own score. null if any selected
-   * site has no riskScore.
-   */
   portfolioRiskScore: number | null;
   meetsTarget: boolean;
 }
@@ -259,7 +156,6 @@ export interface SiteCombinationStrategyResult {
 export interface SiteCombinationResponse {
   targetEnrollment: number;
   avgCostPerPatientUsd: number | null;
-  /** The app's CONFIGURED CENTER consent-rate assumption (config.siteCombination.assumedConsentRate) — each site's own recruitablePatients actually used a per-site SYNTHETIC rate varying around this center (see MapSiteRow.assumedConsentRate / data/syntheticSiteCost.ts's syntheticConsentRateFor), not this single flat number applied identically to every site. Shown here as the reference center value, not the literal per-site rate. */
   assumedConsentRate: number;
   strategies: SiteCombinationStrategyResult[];
   recommendedStrategy: SiteCombinationStrategyResult["strategy"] | null;
@@ -272,7 +168,6 @@ export interface OutreachDraft {
   siteName: string;
   city: string | null;
   country: string | null;
-  /** SYNTHETIC placeholder address — ClinicalTrials.gov only sometimes discloses a central sponsor contact and never a reliable per-facility email; this is fabricated, not a real address, and this app never actually sends anything to it. */
   contactEmail: string;
   contactEmailSource: "synthetic";
   subject: string;
@@ -301,16 +196,6 @@ export interface TrialRequirementRow {
   "Max Acceptable Screen Failure (%)": number | null;
   "Accreditation Required": string;
   "Required Infrastructure": string;
-  /**
-   * Real, disclosed eligibilityModule fields from one representative trial
-   * for this indication (see getEligibilityCriteriaSample in
-   * ctgov.client.ts) — informational only. NOT applied as a filter on the
-   * synthetic eligible-patient counts shown elsewhere (Site Map, region
-   * prevalence): that dataset has no per-patient comorbidity/condition
-   * attributes to filter against, so pretending to apply these criteria to
-   * it would fabricate a number. All fields null/undefined if no trial for
-   * this indication discloses eligibility data.
-   */
   eligibilityCriteriaText?: string | null;
   eligibilitySex?: string | null;
   eligibilityMinimumAge?: string | null;
@@ -335,9 +220,7 @@ export interface SiteRow {
   "Therapeutic Area": string;
   "Hospital Type": string;
   Accreditation: string;
-  /** "live" = real facility pulled from ClinicalTrials.gov this run; absent/"excel" = from Candidate_Sites. */
   dataSource?: "excel" | "live";
-  /** Real, live OverallStatus for this facility's trial from ClinicalTrials.gov (e.g. "RECRUITING", "NOT_YET_RECRUITING", "COMPLETED"...). null/absent for a non-live site or if the source facility had no status. Used to restrict Risk Register/Ranking to only actively-or-soon recruiting sites and to label the Status column shown on those pages. */
   recruitingStatus?: string | null;
 }
 
@@ -404,9 +287,7 @@ export interface RiskRow {
   "Mitigation Plan": string;
   Owner: string;
   "Risk Score (Numeric)": number;
-  /** "live" = real, disclosed ClinicalTrials.gov trial-status fact; "llm-estimated" = AI-estimated for a category with no public source; absent/"excel" = from Risk_Register. */
   dataSource?: "excel" | "live" | "llm-estimated";
-  /** Which regulatory/registration standard the category's underlying field(s) come from (e.g. "FDAAA 801", "42 CFR Part 11") — for UI attribution only, not a compliance claim. Absent for the no-data placeholder row. */
   "Standard Reference"?: string;
 }
 
@@ -444,7 +325,6 @@ export interface PipelineInput {
   durationMonths?: number;
   budgetTier?: string;
   regions?: RegionSelection[];
-  /** Eligible patient age group(s) for this trial (e.g. "Adult (18-64)"). Optional — empty/absent means all ages. */
   ageGroups?: string[];
 }
 
@@ -507,7 +387,6 @@ export interface RiskRecord {
   owner: string;
   riskScore: number;
   dataSource?: "excel" | "live" | "llm-estimated";
-  /** Which regulatory/registration standard the category's underlying field(s) come from (e.g. "FDAAA 801", "42 CFR Part 11") — for UI attribution only, not a compliance claim. Null for the no-data placeholder row. */
   standardReference?: string | null;
 }
 
@@ -519,7 +398,6 @@ export interface RiskAssessmentRow {
   highRiskCount: number;
   mediumRiskCount: number;
   riskRecords: RiskRecord[];
-  /** Real, raw ClinicalTrials.gov status for this site (e.g. "RECRUITING", "NOT_YET_RECRUITING", "COMPLETED"...) — null if the source facility had no disclosed status. Every real status is included here (not filtered server-side); the UI derives its own display label/color and status filter from this. Not to be confused with RiskRow.Status, which is a risk-mitigation workflow status (e.g. "Open"). */
   status: string | null;
 }
 
@@ -532,7 +410,6 @@ export interface StageEvent {
   detail?: string;
   data?: unknown;
   llm?: string;
-  /** Explicit per-item issues (e.g. a live site that couldn't be scored) — sibling to `data`, not nested in it. */
   warnings?: string[];
 }
 
@@ -550,7 +427,6 @@ export interface RankedSite extends SiteRow {
   mediumRiskCount: number;
   overallRisk: RiskLevel;
   riskExplanation: RiskExplanation;
-  /** True when `risks` is just the single "no data available" placeholder — lets the UI show "No Data" instead of a misleadingly clean "Low Risk" badge. */
   riskDataUnavailable: boolean;
 }
 

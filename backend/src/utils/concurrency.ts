@@ -19,13 +19,6 @@ export async function mapWithConcurrency<T, R>(
   return results;
 }
 
-/**
- * Like `Promise.allSettled(items.map(fn))`, but at most `limit` calls to
- * `fn` are in flight at once. Same settled-result shape
- * (`{status:"fulfilled", value}` / `{status:"rejected", reason}`) and
- * ordering as the built-in, so existing `.map((r) => r.status === ...)`
- * call sites need no changes beyond the call itself.
- */
 export async function allSettledWithConcurrency<T, R>(
   items: readonly T[],
   limit: number,

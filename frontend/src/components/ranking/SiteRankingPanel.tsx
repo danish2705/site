@@ -59,16 +59,7 @@ export default function SiteRankingPanel() {
     countryErrors,
     analyzeForCountry,
   } = usePipeline();
-  // Default to Recruiting per request — the strongest, currently-live
-  // signal. Only these three statuses are offered.
   const [statusFilter, setStatusFilter] = useState<LiveStatusFilter>("RECRUITING");
-
-  // Country picker — deliberately LOCAL to this page, not shared with Risk
-  // Register/Final Recommendation: those each keep their own selection
-  // too. All three still read from the same PipelineContext analysisCache/
-  // prefetchingCountries, so switching country here is instant once that
-  // country has been analyzed, and only triggers a fresh fetch when it's
-  // genuinely not there yet.
   const [pageCountry, setPageCountry] = useState("");
 
   useEffect(() => {
@@ -85,7 +76,6 @@ export default function SiteRankingPanel() {
           : selectedCountries[0],
       );
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedCountries.join("|"), topRegion, running]);
 
   useEffect(() => {
@@ -93,7 +83,6 @@ export default function SiteRankingPanel() {
     if (analysisCache[pageCountry]) return;
     if (prefetchingCountries.has(pageCountry)) return;
     analyzeForCountry(pageCountry, { background: true });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pageCountry, analysisCache, prefetchingCountries]);
 
   const cached = pageCountry ? analysisCache[pageCountry] : undefined;
@@ -103,21 +92,11 @@ export default function SiteRankingPanel() {
 
   const filteredRanking = useMemo(() => {
     if (!ranking) return [];
-    // ranking already arrives sorted best-to-worst (backend Stage 7); filter
-    // by the selected status then re-derive rank 1..N from what's LEFT,
-    // rather than keeping each site's original overall-pool rank — so
-    // switching the filter always shows a clean 1..N ranking of exactly the
-    // sites currently visible, not gaps from sites that got filtered out.
     return ranking
       .filter((r) => (r.status ?? "").toUpperCase() === statusFilter)
       .map((r, i) => ({ ...r, rank: i + 1 }));
   }, [ranking, statusFilter]);
 
-  // Per-site outreach draft state — see backend pipeline/outreachDraft.ts.
-  // IMPORTANT: this only ever generates draft text; it never sends an email.
-  // ClinicalTrials.gov does not reliably disclose a real per-facility
-  // contact, so there is no live email address to send to — the contact
-  // shown is a clearly-labeled SYNTHETIC placeholder, not a real inbox.
   const [openDraftSiteId, setOpenDraftSiteId] = useState<string | null>(null);
   const [draftLoadingSiteId, setDraftLoadingSiteId] = useState<string | null>(
     null,
@@ -127,12 +106,10 @@ export default function SiteRankingPanel() {
 
   async function draftOutreachFor(row: RankingRow) {
     if (openDraftSiteId === row.siteId) {
-      // Already open — treat the button as a toggle/close.
       setOpenDraftSiteId(null);
       return;
     }
     if (drafts[row.siteId]) {
-      // Already drafted this site once — just reopen it, no refetch.
       setOpenDraftSiteId(row.siteId);
       return;
     }
@@ -170,10 +147,6 @@ export default function SiteRankingPanel() {
 
   if (!ranking) {
     if (pageLoading) {
-      // Keep the card shell (country/status dropdowns, footer nav) in place
-      // and only swap the middle scroll body for a centered loader — a bare
-      // full-card loader here blanks out the dropdowns and nav buttons
-      // while a country's ranking is loading.
       return (
         <div className="card">
           <div className="predict-head">

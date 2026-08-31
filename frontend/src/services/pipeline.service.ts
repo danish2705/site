@@ -30,16 +30,9 @@ export interface SiteAnalysisParams {
   ageGroups?: string[];
   region: string;
   country: string;
-  /** The exact live ClinicalTrials.gov rows already reviewed on the Ongoing Trials tab — see PipelineContext's `ongoingTrialSites`. */
   facilities: LiveFacilityRow[];
 }
 
-/**
- * Streams Stages 4-8 (Candidate Site Identification through Final
- * Recommendation) run over exactly `params.facilities`, instead of Stage 4
- * re-fetching its own live site list — see backend's
- * controllers/siteAnalysis.controller.ts.
- */
 export async function streamSiteAnalysis(
   params: SiteAnalysisParams,
 ): Promise<Response> {
@@ -54,14 +47,6 @@ export async function streamSiteAnalysis(
   return res;
 }
 
-/**
- * Fetches the best-scored site for one live ClinicalTrials.gov status
- * ("RECRUITING" | "NOT_YET_RECRUITING" | "ACTIVE_NOT_RECRUITING") from an
- * already-computed candidate pool, with its own AI recommendation — powers
- * the status dropdown on the Final Recommendation page. Cheap relative to
- * streamSiteAnalysis: no live ClinicalTrials.gov re-fetch, just one LLM
- * call server-side (see backend's siteRecommendation.controller.ts).
- */
 export function fetchRecommendationForStatus(
   analysisId: string,
   status: string,

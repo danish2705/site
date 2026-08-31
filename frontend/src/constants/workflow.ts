@@ -10,7 +10,6 @@ export type WorkflowStep =
 export interface WorkflowStepDef {
   key: WorkflowStep;
   label: string;
-  /** URL hash for this step — enables real browser Back/Forward + shareable links without any backend routing change. */
   hash: string;
 }
 

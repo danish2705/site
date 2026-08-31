@@ -46,12 +46,6 @@ function monthsBetween(start: string, end: string): number | null {
   return months > 0 ? months : null;
 }
 
-/**
- * Real, facility-specific enrollment-rate proxy: median of
- * (ACTUAL EnrollmentCount ÷ StartDate→PrimaryCompletionDate months) across
- * this facility's own on-file trials. null if no trial has enough real data
- * to compute even one rate — callers then keep the LLM estimate.
- */
 function computeRealEnrollmentRate(
   trials: FacilityTrialRecord[],
 ): number | null {
@@ -68,12 +62,6 @@ function computeRealEnrollmentRate(
   return median(rates);
 }
 
-/**
- * Picks one NCTId to pull a posted-results signal from: the facility's most
- * recently-completed on-file trial that has HasResults = true, preferring
- * the broader facility-wide pool (bigger sample) over the indication-scoped
- * one. null if nothing on file has posted results.
- */
 function pickResultsNctId(
   history: FacilityHistory | undefined,
   facilityWideHistory: FacilityHistory | null | undefined,
@@ -91,28 +79,11 @@ function pickResultsNctId(
   return pool[0].nctId;
 }
 
-/**
- * Overrides specific LLM-estimated KPI fields with real ClinicalTrials.gov
- * data when it's available, and records exactly which fields were replaced
- * (liveKpiFields) so the UI/caveats can say so honestly rather than treating
- * the whole row as either "all real" or "all estimated." Leaves every other
- * field (Quality, Cost, Staff Turnover, etc. — no live source exists) as the
- * LLM produced it.
- */
 function applyLiveKpiOverrides(
   evalRow: ExtendedEvaluationRow,
   real: {
     realEnrollmentRate: number | null;
     resultsSignal: FacilityResultsSignal | null;
-    /**
-     * Real count of trials (any indication) this facility is currently
-     * running — same number already used for the Risk Register's Site
-     * Capacity category (see liveRiskAssessment.ts's
-     * countActiveFacilityWorkload). Requirement #5 benchmark finding: this
-     * real signal previously never reached the ranking score at all — the
-     * "Competing Trials at Site" field scoring.ts reads was always an LLM
-     * guess, even for a live-sourced facility with real data available.
-     */
     realActiveWorkload: number | null;
   },
 ): ExtendedEvaluationRow {
@@ -131,9 +102,6 @@ function applyLiveKpiOverrides(
   if (real.resultsSignal?.diversityIndex != null) {
     out["Diversity Index (0-100)"] = real.resultsSignal.diversityIndex;
     liveKpiFields.push("Diversity Index (0-100)");
-    // Carry the real category-by-category breakdown along too, not just
-    // the collapsed index — lets the UI show the actual race/ethnicity
-    // ratio instead of only a single 0-100 number.
     out.raceBreakdown = real.resultsSignal.raceBreakdown ?? null;
   }
   if (real.realActiveWorkload !== null) {
@@ -160,45 +128,11 @@ export interface LiveCandidateSite {
   site: SiteRow;
   evalRow: ExtendedEvaluationRow | null;
   warning: string | null;
-  /** Real trial-status history for this facility, SCOPED TO THIS INDICATION — used for the per-trial category rows (Enrollment/Safety/Operational/etc, Protocol Complexity) and as a fallback rate source. */
   history?: FacilityHistory;
-  /**
-   * Real trial-status history for this facility across ALL indications
-   * (query.locn on facility name, no condition filter) — a bigger, steadier
-   * sample for the Trial History Likelihood rate and the Data Integrity
-   * overdue-results check than the indication-scoped `history` above, which
-   * is often just 1-2 trials. null if the lookup found nothing or failed;
-   * callers should fall back to `history` in that case. See the precision
-   * caveat on getFacilityWideHistory in ctgov.client.ts.
-   */
   facilityWideHistory?: FacilityHistory | null;
-  /**
-   * Real, per-facility count of OTHER actively-recruiting/not-yet-recruiting
-   * trial locations for this indication in the same city — used for the
-   * Competitive risk-register category instead of reusing one country-wide
-   * total for every site in the run. Capped by COMPETING_POOL_PAGE_SIZE, so
-   * a very crowded field could still undercount rather than overcount.
-   */
   nearbyCompetingTrials: number;
-  /**
-   * Real median completed-trial sample size for this indication (from
-   * getCompletedTrialBenchmarks, already fetched once per region/indication
-   * for the LLM KPI estimate) — reused for the Enrollment-shortfall risk
-   * signal, comparing a facility's own ACTUAL enrollment counts against this
-   * benchmark. null if the LLM benchmark call wasn't made/failed.
-   */
   benchmarkMedianSampleSize: number | null;
-  /**
-   * Real posted-results signal (dropout rate, diversity index, serious
-   * adverse-event rate) from one representative completed trial at this
-   * facility — already fetched for the live KPI overrides below, exposed
-   * here as-is so runPipeline.ts can pass it into buildLiveRiskRecords for
-   * the Adverse Events risk category, instead of re-fetching. null if no
-   * facility trial has posted results, or if LLM isn't configured (in which
-   * case this field is never fetched at all — see the early-return below).
-   */
   resultsSignal: FacilityResultsSignal | null;
-  /** Deterministic SYNTHETIC per-site cost figure — see data/syntheticSiteCost.ts for why no live/LLM source exists for this. */
   siteCost: SyntheticSiteCost;
 }
 
@@ -207,10 +141,6 @@ export const RECRUITING_LOCATION_STATUSES = new Set([
   "NOT_YET_RECRUITING",
 ]);
 
-// Deliberately larger than the maxSites*2 pull used to find candidate sites
-// themselves — this pool exists purely to count nearby competing activity,
-// so it needs broader coverage of the same indication/country, not just
-// enough rows to find a handful of candidates.
 const COMPETING_POOL_PAGE_SIZE = 150;
 
 function countNearbyCompetingTrials(
@@ -223,8 +153,6 @@ function countNearbyCompetingTrials(
   return pool.filter((p) => {
     if (!p.city || p.city.trim().toLowerCase() !== cityKey) return false;
     if (!p.status || !RECRUITING_LOCATION_STATUSES.has(p.status)) return false;
-    // Exclude this exact facility's own listing(s) so a site never counts as
-    // its own competitor.
     if (ownName && (p.facility ?? "").trim().toLowerCase() === ownName) {
       return false;
     }
@@ -233,10 +161,6 @@ function countNearbyCompetingTrials(
 }
 
 interface EstimateCacheEntry {
-  // SiteKpiEstimateFields (not Partial<ExtendedEvaluationRow>) — this is the
-  // LLM's actual return shape, where an un-estimable field is `null`, not
-  // `undefined`. The `as unknown as ExtendedEvaluationRow` casts below
-  // handle reconciling that with EvaluationRow's stricter field types.
   fields: SiteKpiEstimateFields;
   rationale: string;
   expiresAt: number;
@@ -249,20 +173,12 @@ function siteIdFor(facility: string, city: string | null, country: string | null
   return `LIVE-${hash}`;
 }
 
-// ClinicalTrials.gov sponsors commonly register a generic placeholder instead
-// of the real facility name for blinded/anonymized site listings — there is
-// no real name to recover underneath. This only makes such rows
-// distinguishable using OTHER real fields we already have (city/state),
-// never a fabricated name.
 const GENERIC_FACILITY_NAME =
   /^(research site|clinical (trial |research )?site|investigational site|site\s*\d*|study site)$/i;
 
 function displayNameFor(f: LiveFacility): string {
   const base = (f.facility ?? "Unknown facility").trim();
   if (!GENERIC_FACILITY_NAME.test(base)) return base;
-  // Generic placeholder ("Research Site", etc.) — show the real locality
-  // alone rather than prefixing the generic label, since the label itself
-  // carries no identifying information.
   const locality = [f.city, f.state].filter(Boolean).join(", ") || f.country;
   return locality || base;
 }
@@ -280,33 +196,12 @@ function dedupeFacilities(facilities: LiveFacility[]): LiveFacility[] {
   return out;
 }
 
-/**
- * The three statuses the Risk Register / Ranking status filter actually
- * offers (see RiskAssessmentPanel.tsx / SiteRankingPanel.tsx) — kept as a
- * local copy per this codebase's existing per-component convention.
- */
 const CANDIDATE_STATUS_TIERS = [
   "RECRUITING",
   "NOT_YET_RECRUITING",
   "ACTIVE_NOT_RECRUITING",
 ];
 
-/**
- * Picks up to maxSites facilities, split as evenly as possible across
- * RECRUITING / NOT_YET_RECRUITING / ACTIVE_NOT_RECRUITING (round-robin, one
- * from each tier in turn) rather than taking whichever status happens to
- * fill up first. A strict "best status wins" ordering was tried first and
- * overshot: when a condition/country combo has 40+ real RECRUITING
- * facilities, taking the single highest-priority status first fills every
- * slot with RECRUITING and leaves NONE of the other two statuses
- * represented at all — which defeats the point of a 3-way status filter
- * that a user can actually switch between. Round-robin instead guarantees
- * every status with real data gets a fair share of the limited slots
- * (falling back to whatever's left once a tier runs dry). A status outside
- * these three (e.g. ENROLLING_BY_INVITATION, still fetched because it's in
- * config.competingTrials.statuses) is deprioritized last since none of the
- * three UI filter options can ever surface it.
- */
 function selectBalancedByStatus(
   facilities: LiveFacility[],
   maxSites: number,
@@ -314,16 +209,6 @@ function selectBalancedByStatus(
   const realBuckets = CANDIDATE_STATUS_TIERS.map((tier) =>
     facilities.filter((f) => (f.status ?? "").toUpperCase() === tier),
   );
-  // Anything outside the three real tiers (ENROLLING_BY_INVITATION,
-  // COMPLETED, TERMINATED, WITHDRAWN, SUSPENDED, unrecognized/null) — none
-  // of these are selectable in Risk Register/Ranking's own status filter
-  // (RiskAssessmentPanel.tsx / SiteRankingPanel.tsx only offer Recruiting /
-  // Not Yet Recruiting / Active Not Recruiting), so a site landing here is
-  // effectively invisible once analyzed. Kept separate from the round-robin
-  // below (previously round-robinned as an equal 4th bucket, which meant up
-  // to 1/4 of the maxSites budget silently went to sites the UI could never
-  // filter to — e.g. 10 of a 40-site cap, matching only the 3 real tiers'
-  // ~10 each).
   const otherBucket = facilities.filter(
     (f) => !CANDIDATE_STATUS_TIERS.includes((f.status ?? "").toUpperCase()),
   );
@@ -341,10 +226,6 @@ function selectBalancedByStatus(
       }
     }
   }
-  // Only once the three real, filterable tiers are exhausted (not enough
-  // real-status facilities to reach maxSites) do we fall back to filling
-  // remaining slots from `otherBucket` — real, currently-relevant statuses
-  // get full priority for the limited budget.
   while (result.length < maxSites && otherBucket.length > 0) {
     result.push(otherBucket.shift() as LiveFacility);
   }
@@ -359,20 +240,8 @@ export interface BuildLiveCandidateSitesParams {
   regulatoryWeeks: number;
   regionCompetingTrials: number;
   avgCostPerPatient: number;
-  /** Cap on how many real facilities to pull/estimate per run — each one costs an LLM call. */
   maxSites?: number;
-  /** Trial form's selected Age Group label(s) — see services/ctgov.client.ts's studyAgeGroups and data/ageDemographics.ts. Empty/absent = all ages, no filtering. */
   ageGroups?: string[];
-  /**
-   * Real ClinicalTrials.gov facility rows the caller already has on hand —
-   * e.g. exactly the sites a user reviewed on the Ongoing Trials tab
-   * (GET /api/live-trials), forwarded here so Risk Register/Ranking analyze
-   * THAT set instead of this function silently re-querying ClinicalTrials.gov
-   * on its own and potentially landing on a different list of sites. When
-   * omitted/empty, falls back to the original behavior of fetching the pool
-   * itself (used by the one-shot /api/run flow, which has no prior Ongoing
-   * Trials selection to reuse).
-   */
   facilities?: LiveFacility[];
 }
 
@@ -386,36 +255,10 @@ export async function buildLiveCandidateSites(
       ? params.facilities
       : await getFacilitiesForCondition(params.indication, {
           country: params.country,
-          // Fetch a substantially larger raw pool than we'll actually keep
-          // (maxSites, after dedupe+balanced-status-selection below) — a small
-          // multiplier here meant a page dominated by one status could exhaust
-          // itself before ever reaching enough of another status to keep the
-          // 3-way filter balanced.
           pageSize: Math.max(maxSites * 6, 200),
-          // Real filter: only sites from trials whose disclosed StdAge eligibility
-          // includes the selected group(s) — same mechanism as the Site Map tab
-          // (pipeline/liveMapData.ts). Left OFF the competing-pool fetch further
-          // below (deliberately): "how many other trials compete for the same
-          // pool of staff/patients here" is still a meaningful signal even when
-          // those competing trials have a different age scope than THIS trial.
           ageGroups: params.ageGroups,
-          // Restrict the raw pull itself to live/active statuses (Risk Register
-          // and Ranking only ever show Recruiting / Active Not Recruiting sites —
-          // see RiskAssessmentPanel.tsx / SiteRankingPanel.tsx). Without this, the
-          // fixed-size page above can fill up with Completed/Terminated studies
-          // before ever reaching a Recruiting one, so a trial that's clearly
-          // Recruiting on the Ongoing Trials tab could otherwise never make it
-          // into the candidate pool here at all.
           statuses: config.competingTrials.statuses,
         });
-  // Split the limited maxSites slots as evenly as possible across
-  // RECRUITING / NOT_YET_RECRUITING / ACTIVE_NOT_RECRUITING — see
-  // selectBalancedByStatus's doc comment for why a strict "best status
-  // wins" ordering isn't used here. Applies even when `params.facilities`
-  // was supplied directly (e.g. from the Ongoing Trials tab) — maxSites is
-  // still a real cost cap (one LLM call per site), so a caller-provided list
-  // larger than that cap is balanced/trimmed the same way a self-fetched
-  // pool would be, not silently truncated from one end.
   const facilities = selectBalancedByStatus(
     dedupeFacilities(rawFacilities),
     maxSites,
@@ -479,19 +322,11 @@ export async function buildLiveCandidateSites(
           facilityWideHistory,
           nearbyCompetingTrials,
           benchmarkMedianSampleSize,
-          // Not fetched in this branch (see the comment below on why
-          // getFacilityResultsSignal is skipped when the site won't be
-          // scored anyway) — the Adverse Events risk category will show as
-          // no-signal for this site rather than fetching just for it.
           resultsSignal: null,
           siteCost,
         };
       }
 
-      // Real KPI signal, computed only once we know this site will actually
-      // be scored (LLM configured) — avoids a wasted extra API call
-      // (getFacilityResultsSignal) for sites that would just get evalRow:
-      // null and never use it anyway.
       const enrollmentPool =
         facilityWideHistory?.trials ?? history?.trials ?? [];
       const realEnrollmentRate = computeRealEnrollmentRate(enrollmentPool);

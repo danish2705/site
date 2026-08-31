@@ -10,24 +10,6 @@ const VALID_STATUSES = new Set([
   "ACTIVE_NOT_RECRUITING",
 ]);
 
-/**
- * POST /api/site-recommendation-by-status
- * Body: { analysisId: string, status: "RECRUITING" | "NOT_YET_RECRUITING" | "ACTIVE_NOT_RECRUITING" }
- *
- * Powers the Final Recommendation page's status dropdown (see
- * components/recommendation/RecommendationPanel.tsx): re-uses the already
- * fully-scored candidate pool from a prior /api/run or /api/site-analysis
- * call (cached under `analysisId` — see analysisCache.ts) instead of
- * re-running Stages 4-6, picks the best-ranked site whose live
- * ClinicalTrials.gov status matches `status`, and generates a fresh AI
- * recommendation for just that one site.
- *
- * `ranked` is already sorted meets-requirements-first then score-desc
- * (see runSiteAnalysis's Stage 7) — the same order the Ranking page's own
- * status filter relies on — so the first match here is exactly the site
- * that would show as "rank 1" if the Ranking page were filtered to this
- * same status.
- */
 export async function postSiteRecommendationByStatus(
   req: Request,
   res: Response,

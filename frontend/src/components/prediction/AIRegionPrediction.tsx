@@ -14,20 +14,8 @@ export default function AIRegionPrediction({
   form: TrialForm;
   disabled: boolean;
   onApply: (region: string, country: string) => void;
-  /** Kick off a prediction as soon as this mounts (once), instead of
-   * waiting for the user to click "Predict Region with AI" a second time
-   * inside the modal — used by PredictRegionModal, since opening the modal
-   * already IS the "predict" action from the user's point of view. */
   autoPredict?: boolean;
-  /** Fires whenever a result becomes available/unavailable — lets
-   * PredictRegionModal widen itself once there's an actual recommendation
-   * to show, instead of sitting at a wide fixed width during the initial
-   * "Predicting…" state when there's nothing but a title and a button. */
   onResultChange?: (hasResult: boolean) => void;
-  /** Called when the user cancels the very first (autoPredict) prediction
-   * — closes the modal entirely instead of leaving it open on an empty
-   * "No prediction yet" placeholder with just a button, which read like a
-   * broken/stuck state rather than a completed cancel. */
   onCancelClose?: () => void;
 }) {
   const [result, setResult] = useState<RegionPredictionResponse | null>(null);
@@ -38,7 +26,6 @@ export default function AIRegionPrediction({
 
   useEffect(() => {
     onResultChange?.(!!result);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [result]);
 
   useEffect(() => {
@@ -59,7 +46,6 @@ export default function AIRegionPrediction({
       autoPredictedRef.current = true;
       predict();
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [autoPredict, disabled, form.indication]);
 
   const predictAbortRef = useRef<AbortController | null>(null);
@@ -84,7 +70,6 @@ export default function AIRegionPrediction({
       setResult(data);
     } catch (err) {
       if ((err as Error).name === "AbortError") {
-        // Cancelled by the user — not a real failure, stay silent.
         return;
       }
       setError((err as Error).message);
@@ -96,9 +81,6 @@ export default function AIRegionPrediction({
 
   function cancelPredict() {
     predictAbortRef.current?.abort();
-    // Only closing on the initial (autoPredict) prediction — cancelling a
-    // later "Re-predict" should just fall back to the existing result
-    // rather than closing a modal the user is actively looking at.
     if (!result) onCancelClose?.();
   }
 
@@ -107,13 +89,6 @@ export default function AIRegionPrediction({
     ? (result?.candidates ?? [])
     : (result?.candidates ?? []).slice(0, 5);
 
-  // Before a result exists, "loading" IS the whole modal (title + a
-  // "Predicting…" button and nothing else beneath it) — replacing that
-  // with a plain centered loader + Cancel matches every other
-  // long-running step in this app (Run Analysis, Risk Register, Ranking)
-  // instead of a one-off button-spinner look. Once a result exists, a
-  // later "Re-predict" keeps the small inline spinner instead, so the
-  // existing recommendation stays visible while the new one loads.
   if (loading && !result) {
     return (
       <div className="predict-card-content predict-card-content--loading">

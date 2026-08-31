@@ -13,9 +13,7 @@ export default function CompetingTrialsPanel({
   ageGroups = [],
 }: {
   indication: string;
-  /** Countries pulled from the trial form's already-selected regions — same convention as SiteMapView. Empty = only "All countries" is offered. */
   selectedCountries?: string[];
-  /** The trial form's selected Age Group(s) — same real StdAge eligibility filter Risk Register/Ranking/Site Map already apply. Applied here too so a trial that isn't actually age-eligible for this run doesn't show up as "live competition." Empty = all ages, no filtering. */
   ageGroups?: string[];
 }) {
   const [country, setCountry] = useState("");
@@ -40,7 +38,6 @@ export default function CompetingTrialsPanel({
     } else if (!selectedCountries.includes(country)) {
       setCountry(selectedCountries[0]);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedCountries]);
 
   const countryResolved = selectedCountries.length === 0 || country !== "";
@@ -64,25 +61,14 @@ export default function CompetingTrialsPanel({
     }
   }
 
-  // Searches automatically — on first load once the indication/default
-  // country resolve, and again every time the country dropdown changes —
-  // instead of requiring a manual "Search" click each time. Clears the
-  // previous country's rows first so the table shows its loading skeleton
-  // instead of leaving stale rows on screen while the new country loads.
   useEffect(() => {
     if (!indication || !countryResolved) return;
     setData(null);
     runSearch(country);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [indication, country, countryResolved]);
 
   const facilities = data?.facilities ?? [];
 
-  // Requirement: only show trials updated within the last RECENT_YEARS years
-  // — the raw ClinicalTrials.gov result includes everything on record for
-  // this indication going back decades, which is too much history to be
-  // useful here. Rows with no parseable "Last Updated" date are excluded
-  // rather than assumed-recent, since we have no evidence either way.
   const RECENT_YEARS = 3;
   const recentFacilities = useMemo(() => {
     const cutoff = new Date();
@@ -95,26 +81,10 @@ export default function CompetingTrialsPanel({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [facilities]);
 
-  // Hands this exact, already-reviewed live site list to PipelineContext so
-  // "Send to Risk Assessment & Ranking" below (and analyzeOngoingTrialSites)
-  // analyzes THESE rows — not a second, independent ClinicalTrials.gov
-  // fetch. Uses the full 3-year-recency window (not the transient
-  // statusFilter view below), since the status dropdown is just a lens for
-  // browsing, not a hard exclusion for what counts as a candidate site.
   useEffect(() => {
     if (recentFacilities.length > 0) setOngoingTrialSites(recentFacilities);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [recentFacilities]);
 
-  // Groups each real, disclosed OverallStatus value into the buckets the
-  // Status filter offers. Recruiting / Not Yet Recruiting / Active Not
-  // Recruiting / Enrolling By Invitation are kept as four SEPARATE buckets
-  // (rather than one combined "active" bucket) so the filter can show each
-  // status on its own — these are meaningfully different competitive
-  // signals (currently enrolling vs. about to vs. no longer taking new
-  // patients), not interchangeable. "Other" (not silently hidden — always
-  // selectable) covers TERMINATED/WITHDRAWN/SUSPENDED and any
-  // unrecognized/null status.
   function statusGroupFor(
     status: string | null,
   ):
@@ -140,20 +110,11 @@ export default function CompetingTrialsPanel({
     "enrolling_by_invitation",
   ];
 
-  // KPI tile: count of individual SITES (trial/site rows) currently in any
-  // live/competing status, not distinct trials — a single multi-site trial
-  // (one NCT ID) can occupy several sites, and each of those is separate
-  // competition for patients at that site. Derived from recentFacilities
-  // (already deduped to the same last-RECENT_YEARS window as the table)
-  // rather than the backend's activeCompetingTrials (a distinct-trial count
-  // from ClinicalTrials.gov's countTotal), so the KPI always matches what's
-  // actually in the table below it.
   const activeCompetingSites = useMemo(
     () =>
       recentFacilities.filter((f) =>
         LIVE_STATUS_GROUPS.includes(statusGroupFor(f.status)),
       ).length,
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     [recentFacilities],
   );
 
@@ -179,19 +140,6 @@ export default function CompetingTrialsPanel({
       .join(" ");
   }
 
-  // Colors each trial's status the same way the Risk Register colors its
-  // risk levels — reusing the same .badge/--low/--med/--high/--no-data
-  // classes/tokens, instead of the flat neutral .chip this table used
-  // before, so a status carries the same at-a-glance visual weight here as
-  // a risk rating does there. RECRUITING reads as "healthy" (green);
-  // COMPLETED gets its own distinct blue ("info") rather than sharing
-  // green with Recruiting, since "still enrolling" and "already finished"
-  // are different states worth telling apart at a glance;
-  // ACTIVE_NOT_RECRUITING/NOT_YET_RECRUITING/ENROLLING_BY_INVITATION read as
-  // an in-between/caution state (amber); the stopped-for-cause statuses
-  // (TERMINATED/WITHDRAWN/SUSPENDED) as high (red); anything else
-  // (null/unrecognized) falls back to the same grey "no-data" treatment
-  // used for an unassessed risk record.
   function statusBand(
     status: string | null,
   ): "low" | "medium" | "high" | "info" | "no-data" {
@@ -209,9 +157,6 @@ export default function CompetingTrialsPanel({
     return "no-data";
   }
 
-  // Dot color for the status pill in the toolbar — mirrors statusBand's
-  // groupings (recruiting=green, in-between=amber, stopped-for-cause=red,
-  // completed=blue-ish info) using the same design tokens as .badge.
   function statusFilterDotColor(filter: StatusFilter): string {
     switch (filter) {
       case "recruiting":
@@ -233,9 +178,7 @@ export default function CompetingTrialsPanel({
     <div className="card">
       <div className="predict-head">
         <div className="predict-head-top">
-          {/* Country picker kept on the left (predict-head-top's default
-              flex start alignment) per request. Picking a country here
-              searches automatically — no separate Search button. */}
+          {}
           <div className="predict-head-actions">
             {selectedCountries.length > 0 && (
               <Select
@@ -333,10 +276,7 @@ export default function CompetingTrialsPanel({
 
           <div className="table-scroll">
             <table className="competing-trials-table">
-              {/* Equal 20% columns left a big blank gap in Status/Last
-                  Updated (short content) while Trial/Site got truncated
-                  (long content) — weighted instead so each column's width
-                  roughly matches what it actually holds. */}
+              {}
               <colgroup>
                 <col style={{ width: "32%" }} />
                 <col style={{ width: "12%" }} />

@@ -2,6 +2,7 @@ import type { RegionRow } from "../types.js";
 import { getActiveCompetingTrialsCount } from "../services/ctgov.client.js";
 import { estimateRegionMetrics, llmStatus } from "../llm/client.js";
 import { config } from "../config.js";
+import { getClaimsRegionMetrics } from "./claimsRegionMetrics.js";
 
 export interface BuildLiveRegionRowParams {
   region: string;
@@ -36,6 +37,22 @@ export async function buildLiveRegionRow(
   let avgCostPerPatient = 0;
   let regionMetricsSource: RegionRow["regionMetricsSource"] = "unavailable";
   let metricsWarning: string | undefined;
+
+  const claimsMetrics = getClaimsRegionMetrics(params.indication, params.country);
+  if (claimsMetrics) {
+    return {
+      Region: params.region,
+      Country: params.country,
+      Indication: params.indication,
+      "Prevalence (per 100k)": claimsMetrics.prevalencePer100k,
+      "Regulatory Approval Time (weeks)": claimsMetrics.regulatoryApprovalWeeks,
+      "Active Competing Trials": competingTrials,
+      "Avg Cost per Patient (USD)": claimsMetrics.avgCostPerPatientUsd,
+      competingTrialsSource: "live",
+      regionMetricsSource: "claims-synthetic",
+      metricsWarning: undefined,
+    };
+  }
 
   const cached = metricsCache.get(cacheKey);
   if (cached && Date.now() < cached.expiresAt) {

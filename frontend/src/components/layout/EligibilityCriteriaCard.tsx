@@ -12,16 +12,6 @@ interface Stage1Data {
   eligibility?: EligibilityData;
 }
 
-/**
- * Srikanth's inclusion/exclusion-criteria ask — shows the real, disclosed
- * EligibilityCriteria text ClinicalTrials.gov requires sponsors to post,
- * pulled from one representative live trial for this indication (see
- * backend services/ctgov.client.ts's getEligibilityCriteriaSample). This is
- * informational context only: it is NOT applied to filter any
- * eligible-patient count shown elsewhere in the app (Site Map, region
- * prevalence), since those datasets have no per-patient attributes to
- * filter against.
- */
 export default function EligibilityCriteriaCard({
   data,
 }: {
