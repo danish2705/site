@@ -3050,13 +3050,7 @@ tr.pinned-row {
 .workflow-nav-label {
   line-height: 1.25;
 }
-/* Distinguishes the leading "Predict Region with AI" action from the
-   numbered workflow steps beside it — it opens a modal, not a page, so it
-   gets its own accent-filled look instead of the plain numbered-circle
-   treatment (and a small divider to visually separate it from step 1). */
 .workflow-nav-item--predict {
-  /* No divider border here on purpose — it read as a separate boxed-off
-     section instead of part of the same connected step row. */
 }
 .workflow-nav-item--predict .workflow-nav-index {
   background: var(--accent);
