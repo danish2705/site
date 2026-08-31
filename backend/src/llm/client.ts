@@ -121,7 +121,7 @@ Required site specialty: ${specialty}
 Phase: ${input.phase || "n/a"}
 Target sample size: ${input.sampleSize ?? "n/a"}
 Planned duration: ${input.durationMonths ?? "n/a"} months
-Budget tier: ${input.budgetTier || "n/a"}
+Budget tier: ${input.budgetTier === "All" ? "All (no budget constraint — cost was excluded from the candidate scoring below)" : input.budgetTier || "n/a"}
 
 CANDIDATE REGIONS (pre-computed from the trial database — every figure below is already
 calculated; do NOT recompute, rescale or invent any number, and do NOT propose a region

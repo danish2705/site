@@ -68,7 +68,7 @@ function Section({
                   width: 7,
                   height: 7,
                   borderRadius: "50%",
-                  background: "#2e9e6b",
+                  background: "var(--success)",
                   marginTop: 5,
                   flexShrink: 0,
                 }}
@@ -99,7 +99,7 @@ function Section({
                   width: 7,
                   height: 7,
                   borderRadius: "50%",
-                  background: "#d99a2b",
+                  background: "var(--warning)",
                   marginTop: 5,
                   flexShrink: 0,
                 }}
@@ -307,8 +307,8 @@ export default function DataTransparencyModal({ onClose }: { onClose: () => void
           <div>
             <h2>Data Transparency</h2>
             <p className="muted">
-              What's real vs. synthetic in this run — <span style={{ color: "#2e9e6b" }}>●</span> live data from
-              ClinicalTrials.gov / Google / OpenStreetMap, <span style={{ color: "#d99a2b" }}>●</span> synthetic
+              What's real vs. synthetic in this run — <span style={{ color: "var(--success)" }}>●</span> live data from
+              ClinicalTrials.gov / Google / OpenStreetMap, <span style={{ color: "var(--warning)" }}>●</span> synthetic
               or LLM-estimated data used where no live source exists.
             </p>
           </div>

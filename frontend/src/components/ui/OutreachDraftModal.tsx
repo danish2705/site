@@ -51,7 +51,7 @@ export default function OutreachDraftModal({
               whiteSpace: "pre-wrap",
               marginTop: 6,
               fontFamily: "inherit",
-              background: "#f7f8fb",
+              background: "var(--background)",
               border: "1px solid var(--line)",
               borderRadius: 10,
               padding: "12px 14px",

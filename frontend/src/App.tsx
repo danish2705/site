@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import "./styles/App.css";
 import { PipelineProvider } from "./context/PipelineContext";
 import { RouteProvider, useRoute } from "./context/RouteContext";
@@ -6,7 +6,8 @@ import { SiteMapProvider } from "./context/SiteMapContext";
 import { usePipeline } from "./hooks/usePipeline";
 import Toast from "./components/ui/Toast";
 import TopBar from "./components/layout/TopBar";
-import Sidebar from "./components/layout/Sidebar";
+import ParametersFormPage from "./components/layout/ParametersFormPage";
+import EditParametersModal from "./components/layout/EditParametersModal";
 import WorkflowNav from "./components/layout/WorkflowNav";
 import PredictRegionModal from "./components/ui/PredictRegionModal";
 import CompetingTrialsPanel from "./components/prediction/CompetingTrialsPanel";
@@ -19,16 +20,16 @@ import SiteCombinationPlannerPage from "./components/sitemap/SiteCombinationPlan
 import HistoryModal from "./components/runs/HistoryModal";
 import ErrorBoundary from "./components/ui/ErrorBoundary";
 import RunAnalysisOverlay from "./components/ui/RunAnalysisOverlay";
+import LandingScreen from "./components/landing/LandingScreen";
 import { countriesFromRegionKeys } from "./utils/region";
 
 function Dashboard() {
   const [historyOpen, setHistoryOpen] = useState(false);
   const [predictModalOpen, setPredictModalOpen] = useState(false);
-  // Collapsed by default = false (expanded) per spec; toggled by a button
-  // on the sidebar shell. Lives here (not inside Sidebar) purely so the
-  // main-panel layout can react to it — no form/filter state moves, so
-  // collapsing/expanding never touches any entered values.
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  // Opens EditParametersModal — the Analysis Parameters form no longer lives
+  // as a permanent sidebar; this is the only way back into it once a run has
+  // started (see TopBar's "Edit Parameters" button).
+  const [editParametersOpen, setEditParametersOpen] = useState(false);
   const {
     form,
     meta,
@@ -38,28 +39,7 @@ function Dashboard() {
     dismissNotice,
     setForm,
     workflowStepAvailable,
-    cancelSignal,
   } = usePipeline();
-  // Auto-collapse the Analysis Parameters sidebar the moment "Run Analysis"
-  // starts (running flips true) — the input form isn't needed anymore once
-  // the pipeline is off and running, and it just eats space next to the
-  // results panels. Only the user's own click on the collapse-toggle button
-  // reopens it again; finishing the run does not auto-expand it back.
-  useEffect(() => {
-    if (running) {
-      setSidebarCollapsed(true);
-    }
-  }, [running]);
-  // Cancelling a run is different from finishing/failing one: there's
-  // nothing to look at yet (no results panel to switch to), so re-expand
-  // the form immediately instead of leaving the user stuck looking at a
-  // collapsed sidebar and a locked step with no way back in except the
-  // manual toggle.
-  useEffect(() => {
-    if (cancelSignal > 0) {
-      setSidebarCollapsed(false);
-    }
-  }, [cancelSignal]);
   const { route } = useRoute();
   // Gates a step's real content behind workflowStepAvailable() — closes the
   // gap where WorkflowNav disabling the nav button only stops NEW clicks:
@@ -74,40 +54,13 @@ function Dashboard() {
   return (
     <div className="app-shell">
       <RunAnalysisOverlay />
-      <TopBar onOpenHistory={() => setHistoryOpen(true)} />
+      <TopBar
+        onOpenHistory={() => setHistoryOpen(true)}
+        onEditParameters={() => setEditParametersOpen(true)}
+      />
 
       <div className="dashboard-body">
-        <div
-          className={`sidebar-shell ${sidebarCollapsed ? "collapsed" : ""}`}
-        >
-          <button
-            type="button"
-            className="sidebar-collapse-toggle"
-            onClick={() => setSidebarCollapsed((c) => !c)}
-            // No tooltip here — this button sits right at the top edge of
-            // the sidebar, just below the top bar, so a hover bubble that
-            // opens upward has nowhere to render and just showed up as a
-            // box clipped above the viewport.
-            aria-expanded={!sidebarCollapsed}
-            aria-label={
-              sidebarCollapsed
-                ? "Expand Analysis Parameters"
-                : "Collapse Analysis Parameters"
-            }
-          >
-            {sidebarCollapsed ? "›" : "‹"}
-          </button>
-          <div className="sidebar-shell-clip">
-            <div className="sidebar-shell-inner">
-              <Sidebar />
-            </div>
-          </div>
-        </div>
-
         <main className="main-panel">
-          {/* Sits above the right-side page card only — not above the
-              sidebar's input form — since the workflow steps describe the
-              analysis output on this side, not the input parameters. */}
           <WorkflowNav onOpenPredictModal={() => setPredictModalOpen(true)} />
 
           {error && (
@@ -122,8 +75,8 @@ function Dashboard() {
             {locked ? (
               <div className="card">
                 <p className="predict-placeholder">
-                  This step isn't available yet — click "Run Analysis" in the
-                  sidebar first.
+                  This step isn't available yet — it unlocks as the analysis
+                  progresses.
                 </p>
               </div>
             ) : (
@@ -149,6 +102,10 @@ function Dashboard() {
 
       {historyOpen && <HistoryModal onClose={() => setHistoryOpen(false)} />}
 
+      {editParametersOpen && (
+        <EditParametersModal onClose={() => setEditParametersOpen(false)} />
+      )}
+
       {predictModalOpen && (
         <PredictRegionModal
           form={form}
@@ -164,6 +121,46 @@ function Dashboard() {
       )}
     </div>
   );
+}
+
+/**
+ * Gates the app behind the landing/start screen (NCT lookup or manual entry)
+ * on every fresh load — plain component state, not persisted, so a reload
+ * always lands back on the landing screen. Sits inside every provider (same
+ * as Dashboard did before) since LandingScreen's NCT flow needs usePipeline()
+ * (setForm/runAnalysis) to auto-fill and kick off the analysis itself.
+ *
+ * Three modes, not two: "landing" -> "form" -> "dashboard".
+ * - NCT search still skips straight from "landing" to "dashboard" with zero
+ *   form interaction (handleConfirmRun already calls onEnterDashboard()
+ *   itself before kicking off runAnalysis).
+ * - "Enter Study Details Manually" now goes to "form" instead — the
+ *   Analysis Parameters form as its own full page, "Start Analysis" bottom
+ *   right (see ParametersFormPage). Submitting there moves to "dashboard"
+ *   and starts the run, same handoff pattern as the NCT flow.
+ * - Once in "dashboard", editing parameters again goes through
+ *   EditParametersModal (opened from TopBar) rather than back through this
+ *   full page — entryMode itself never needs to leave "dashboard" again.
+ */
+function AppShell() {
+  const [entryMode, setEntryMode] = useState<"landing" | "form" | "dashboard">(
+    "landing",
+  );
+
+  if (entryMode === "landing") {
+    return (
+      <LandingScreen
+        onEnterDashboard={() => setEntryMode("dashboard")}
+        onStartManual={() => setEntryMode("form")}
+      />
+    );
+  }
+  if (entryMode === "form") {
+    return (
+      <ParametersFormPage onEnterDashboard={() => setEntryMode("dashboard")} />
+    );
+  }
+  return <Dashboard />;
 }
 
 export default function App() {
@@ -189,7 +186,7 @@ export default function App() {
       <RouteProvider>
         <PipelineProvider>
           <SiteMapProvider>
-            <Dashboard />
+            <AppShell />
           </SiteMapProvider>
         </PipelineProvider>
       </RouteProvider>

@@ -5,6 +5,7 @@ import WizardNextLink from "../ui/WizardNextLink";
 import StageLoader from "../ui/StageLoader";
 import Select from "../ui/Select";
 import EmptyState from "../ui/EmptyState";
+import { allConfiguredCountries } from "../../utils/region";
 
 type LiveStatusFilter = "RECRUITING" | "NOT_YET_RECRUITING" | "ACTIVE_NOT_RECRUITING";
 
@@ -20,11 +21,20 @@ export default function RiskAssessmentPanel() {
     analyzing,
     topRegion,
     selectedCountries,
+    regionOptions,
     analysisCache,
     prefetchingCountries,
     countryErrors,
     analyzeForCountry,
   } = usePipeline();
+  // When the trial form has no region/country pre-selected (the NCT-lookup
+  // flow deliberately leaves this empty to search every region globally),
+  // fall back to every country this app is configured to search at all,
+  // rather than leaving the picker with nothing to show.
+  const countryOptions =
+    selectedCountries.length > 0
+      ? selectedCountries
+      : allConfiguredCountries(regionOptions);
   // Default to Recruiting per request — the strongest, currently-live signal.
   // Only these three statuses are offered; Completed/Terminated/Withdrawn/
   // Suspended/unknown-status sites aren't useful candidates here.
@@ -44,7 +54,14 @@ export default function RiskAssessmentPanel() {
     if (running) return;
     if (!topRegion) return;
     if (selectedCountries.length === 0) {
-      if (pageCountry) setPageCountry("");
+      // No explicit region/country selection (global NCT-lookup run) —
+      // default to the auto-picked top region's country, which Run
+      // Analysis already fully analyzed (it's seeded into analysisCache the
+      // moment the run finishes), rather than clearing the picker to
+      // empty. Only sets it once; the broader countryOptions dropdown below
+      // still lets the user switch to any other configured country from
+      // here without this effect fighting that choice.
+      if (!pageCountry) setPageCountry(topRegion.country);
       return;
     }
     if (!selectedCountries.includes(pageCountry)) {
@@ -78,13 +95,14 @@ export default function RiskAssessmentPanel() {
     );
   }, [riskAssessment, statusFilter]);
 
-  const countryPicker = selectedCountries.length > 0 && (
+  const countryPicker = countryOptions.length > 0 && (
     <div className="predict-head-actions">
       <Select
+        className="country-select-wide"
         value={pageCountry}
         onChange={setPageCountry}
         placeholder="Select country to analyze…"
-        options={selectedCountries.map((c) => ({ value: c, label: c }))}
+        options={countryOptions.map((c) => ({ value: c, label: c }))}
       />
     </div>
   );
@@ -99,7 +117,7 @@ export default function RiskAssessmentPanel() {
       return (
         <div className="card">
           <div className="predict-head">
-            <div className="predict-head-top">
+            <div className="predict-head-top map-controls map-controls--flush">
               {countryPicker}
               <div className="predict-head-actions" style={{ marginLeft: "auto" }}>
                 <Select
@@ -131,17 +149,29 @@ export default function RiskAssessmentPanel() {
     // from Ongoing Trials (analyzeOngoingTrialSites).
     return (
       <div className="card">
-        {countryPicker && <div className="map-controls">{countryPicker}</div>}
-        <EmptyState
-          title={countryErrors[pageCountry] ? "No live sites found" : "No risk data yet"}
-          detail={
-            countryErrors[pageCountry]
-              ? countryErrors[pageCountry]
-              : selectedCountries.length > 0
-                ? "Pick a country above to fetch its live sites and run Risk Register/Ranking."
-                : "Pick a region/country in Step 1, then select a country above to populate this."
-          }
-        />
+        {countryPicker && (
+          <div className="map-controls map-controls--flush">{countryPicker}</div>
+        )}
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            flex: 1,
+            minHeight: 200,
+          }}
+        >
+          <EmptyState
+            title={countryErrors[pageCountry] ? "No live sites found" : "No risk data yet"}
+            detail={
+              countryErrors[pageCountry]
+                ? countryErrors[pageCountry]
+                : countryOptions.length > 0
+                  ? "Pick a country above to fetch its live sites and run Risk Register/Ranking."
+                  : "Pick a region/country in Step 1, then select a country above to populate this."
+            }
+          />
+        </div>
       </div>
     );
   }
@@ -149,7 +179,7 @@ export default function RiskAssessmentPanel() {
   return (
     <div className="card">
       <div className="predict-head">
-        <div className="predict-head-top">
+        <div className="predict-head-top map-controls map-controls--flush">
           {countryPicker}
           <div className="predict-head-actions" style={{ marginLeft: "auto" }}>
             <Select

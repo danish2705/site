@@ -50,6 +50,34 @@ export interface LiveTrialLandscapeResponse {
   warnings: string[];
 }
 
+/**
+ * Normalized response for GET /api/nct-lookup/:nctId — the landing page's
+ * "Search by NCT Number" auto-fill. Maps ClinicalTrials.gov's own vocabulary
+ * (raw Phase values, StdAge buckets) onto this app's own form field values
+ * (Sidebar's PHASES/AGE_GROUPS labels) so the frontend can drop these straight
+ * into TrialForm with no further translation.
+ */
+export interface NctLookupResponse {
+  nctId: string;
+  briefTitle: string | null;
+  officialTitle: string | null;
+  /** Raw disclosed condition text — dropped straight into TrialForm.indication even when it doesn't exactly match this app's static indication list (resolveSpecialty() already falls back to an LLM for indications outside that list, so no manual reconciliation is needed here). */
+  indication: string | null;
+  overallStatus: string | null;
+  /** Mapped to this app's "Phase I".."Phase IV" labels — null if the study's disclosed phase(s) don't map to exactly one of those (e.g. no phase disclosed, or an ambiguous multi-phase study), in which case the frontend leaves Phase unset for the user/pipeline default to handle. */
+  phase: string | null;
+  /** This app's Age Group label(s) (Sidebar's AGE_GROUPS) the study's disclosed eligibility age range overlaps — same bucketing ctgov.client.ts already applies when filtering live facilities by age. */
+  ageGroups: string[];
+  enrollmentCount: number | null;
+  /** "ACTUAL" (post-completion, reliable) or "ESTIMATED" (a target). */
+  enrollmentType: string | null;
+  /** start -> primary-completion, in whole months — null if either date is missing/unparseable. */
+  durationMonths: number | null;
+  /** De-duplicated disclosed site countries — informational context only; NOT applied as a region/country filter (see NctStudyLookup.countries in ctgov.client.ts for why). */
+  countries: string[];
+  siteCount: number;
+}
+
 /** One trial site plotted on the Site Map tab — see pipeline/liveMapData.ts for exactly what's live vs. synthetic vs. approximate in each field. */
 export interface MapSiteRow {
   siteId: string;

@@ -194,12 +194,12 @@ export default function SiteMapDetailsPage() {
                 );
                 return (
                   <>
-                    <span style={{ color: "#666", fontWeight: 600 }}>
+                    <span style={{ color: "var(--text-secondary)", fontWeight: 600 }}>
                       {excludeEnrolled
                         ? `Available patients: ${totalAvailable.toLocaleString()}`
                         : `Available + enrolled: ${totalAvailable.toLocaleString()}`}
                     </span>
-                    <span style={{ color: "#888" }}>
+                    <span style={{ color: "var(--text-secondary)" }}>
                       (already enrolled elsewhere: {totalEnrolled.toLocaleString()})
                     </span>
                   </>
@@ -265,8 +265,8 @@ export default function SiteMapDetailsPage() {
                         }}
                         style={{
                           border: "none",
-                          background: activeEligFilters.length > 0 ? "#2f7d4f" : "#e3e7f0",
-                          color: activeEligFilters.length > 0 ? "#fff" : "#333",
+                          background: activeEligFilters.length > 0 ? "var(--success)" : "var(--border)",
+                          color: activeEligFilters.length > 0 ? "var(--card)" : "var(--text-primary)",
                           borderRadius: 4,
                           padding: "1px 6px",
                           fontSize: 11,
@@ -295,8 +295,8 @@ export default function SiteMapDetailsPage() {
                             maxHeight: 380,
                             overflowY: "auto",
                             overflowX: "hidden",
-                            background: "#fff",
-                            border: "1px solid #d7dbe6",
+                            background: "var(--card)",
+                            border: "1px solid var(--border)",
                             borderRadius: 6,
                             boxShadow: "0 6px 20px rgba(0,0,0,0.15)",
                             padding: 8,
@@ -309,12 +309,12 @@ export default function SiteMapDetailsPage() {
                             <div style={{ fontSize: 12, padding: 4 }}>Loading…</div>
                           )}
                           {eligFiltersError && (
-                            <div style={{ fontSize: 12, padding: 4, color: "#b3261e" }}>
+                            <div style={{ fontSize: 12, padding: 4, color: "var(--danger)" }}>
                               {eligFiltersError}
                             </div>
                           )}
                           {eligFilters?.warning && (
-                            <div style={{ fontSize: 11.5, padding: 4, color: "#8a6d00" }}>
+                            <div style={{ fontSize: 11.5, padding: 4, color: "color-mix(in srgb, var(--warning) 70%, black)" }}>
                               {eligFilters.warning}
                             </div>
                           )}
@@ -335,10 +335,10 @@ export default function SiteMapDetailsPage() {
                                   position: "sticky",
                                   top: -8,
                                   zIndex: 2,
-                                  background: "#fff",
+                                  background: "var(--card)",
                                   margin: "-8px -8px 4px",
                                   padding: "8px 8px 4px",
-                                  borderBottom: "1px solid #eee",
+                                  borderBottom: "1px solid var(--border)",
                                 }}
                               >
                                 <input
@@ -385,7 +385,7 @@ export default function SiteMapDetailsPage() {
                                   </span>
                                   <span
                                     style={{
-                                      color: "#888",
+                                      color: "var(--text-secondary)",
                                       fontSize: 11,
                                       flexShrink: 0,
                                       paddingTop: 1,
@@ -406,10 +406,10 @@ export default function SiteMapDetailsPage() {
                                   position: "sticky",
                                   bottom: -8,
                                   zIndex: 2,
-                                  background: "#fff",
+                                  background: "var(--card)",
                                   margin: "8px -8px -8px",
                                   padding: "6px 8px 8px",
-                                  borderTop: "1px solid #eee",
+                                  borderTop: "1px solid var(--border)",
                                 }}
                               >
                                 <button
@@ -433,7 +433,7 @@ export default function SiteMapDetailsPage() {
                           )}
 
                           {eligFilters && eligFilters.filters.length === 0 && !eligFiltersLoading && (
-                            <div style={{ fontSize: 12, padding: 4, color: "#888" }}>
+                            <div style={{ fontSize: 12, padding: 4, color: "var(--text-secondary)" }}>
                               No filterable criteria available for this indication.
                             </div>
                           )}
@@ -524,7 +524,7 @@ export default function SiteMapDetailsPage() {
                                   style={{
                                     display: "block",
                                     fontSize: 11,
-                                    color: "#888",
+                                    color: "var(--text-secondary)",
                                     textDecoration: "line-through",
                                   }}
                                 >
@@ -546,7 +546,7 @@ export default function SiteMapDetailsPage() {
                           ) : (
                             <>
                               {expectedRecruitment(s).toLocaleString()}
-                              <span style={{ display: "block", fontSize: 11, color: "#888" }}>
+                              <span style={{ display: "block", fontSize: 11, color: "var(--text-secondary)" }}>
                                 {(Math.round(s.assumedConsentRate * 1000) / 10).toFixed(1)}% consent rate
                               </span>
                             </>

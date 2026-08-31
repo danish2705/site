@@ -1,14 +1,20 @@
 import { useEffect, useRef, useState } from "react";
 import { usePipeline } from "../../hooks/usePipeline";
 import DataTransparencyModal from "../ui/DataTransparencyModal";
-import { UserIcon } from "../ui/Icons";
+import { EditIcon, UserIcon } from "../ui/Icons";
 
 export default function TopBar({
   onOpenHistory,
+  onEditParameters,
 }: {
   onOpenHistory: () => void;
+  /** Opens EditParametersModal — the only way back into the Analysis
+      Parameters form now that it's no longer a permanent sidebar. Disabled
+      while a run is in flight since editing params mid-run has nothing to
+      apply to until the next run. */
+  onEditParameters: () => void;
 }) {
-  const { savedRuns } = usePipeline();
+  const { savedRuns, running } = usePipeline();
   const hasSavedRuns = !!savedRuns && savedRuns.length > 0;
   const [menuOpen, setMenuOpen] = useState(false);
   const [dataTransparencyOpen, setDataTransparencyOpen] = useState(false);
@@ -38,6 +44,16 @@ export default function TopBar({
       </div>
 
       <div className="top-bar-actions">
+        <button
+          type="button"
+          className="history-btn edit-parameters-btn"
+          onClick={onEditParameters}
+          disabled={running}
+          data-tooltip={running ? "Wait for the run to finish" : "Edit Analysis Parameters"}
+        >
+          <EditIcon className="btn-icon" />
+          Edit Parameters
+        </button>
         <div className="user-menu-wrap" ref={menuRef}>
           <button
             type="button"

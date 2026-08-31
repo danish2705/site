@@ -309,6 +309,28 @@ export interface LiveTrialLandscapeResponse {
   warnings: string[];
 }
 
+/**
+ * Response for GET /api/nct-lookup/:nctId — the landing page's "Search by
+ * NCT Number" auto-fill. Already normalized onto this app's own TrialForm
+ * values (Phase/Age Group labels) by the backend — see backend's
+ * controllers/nctLookup.controller.ts.
+ */
+export interface NctLookupResponse {
+  nctId: string;
+  briefTitle: string | null;
+  officialTitle: string | null;
+  indication: string | null;
+  overallStatus: string | null;
+  phase: string | null;
+  ageGroups: string[];
+  enrollmentCount: number | null;
+  enrollmentType: string | null;
+  durationMonths: number | null;
+  /** Disclosed trial site countries — informational context only, not applied as a region/country filter (this app searches every configured region globally rather than assuming the best NEW site is wherever the original trial ran). */
+  countries: string[];
+  siteCount: number;
+}
+
 /** One trial site plotted on the Site Map tab — see the backend's pipeline/liveMapData.ts for exactly what's live vs. synthetic vs. approximate in each field. */
 export interface MapSiteRow {
   siteId: string;

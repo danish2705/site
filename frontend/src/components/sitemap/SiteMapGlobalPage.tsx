@@ -6,10 +6,12 @@ import "leaflet.markercluster/dist/MarkerCluster.css";
 import "leaflet.markercluster/dist/MarkerCluster.Default.css";
 import type { MapSiteRow } from "../../types";
 import { useIndependentSiteSearch } from "../../hooks/useIndependentSiteSearch";
+import { usePipeline } from "../../hooks/usePipeline";
 import WizardNextLink from "../ui/WizardNextLink";
 import StageLoader from "../ui/StageLoader";
 import Select from "../ui/Select";
 import EmptyState from "../ui/EmptyState";
+import { allConfiguredCountries } from "../../utils/region";
 import {
   MILES_TO_METERS,
   SITE_MAP_METRIC,
@@ -128,7 +130,7 @@ function siteIcon(): L.DivIcon {
     className: "site-pin-icon",
     html:
       '<div style="width:16px;height:16px;border-radius:50%;' +
-      "background:#e5342b;border:2px solid #7a0f0f;" +
+      "background:#dc2626;border:2px solid #7f1d1d;" +
       'box-shadow:0 1px 3px rgba(0,0,0,0.45);"></div>',
     iconSize: [16, 16],
     iconAnchor: [8, 8],
@@ -147,6 +149,13 @@ export default function SiteMapGlobalPage() {
     error,
     allSites,
   } = useIndependentSiteSearch();
+  const { regionOptions } = usePipeline();
+  // When the trial form has no region/country pre-selected (the NCT-lookup
+  // flow deliberately leaves this empty to search every region globally),
+  // fall back to every country this app is configured to search at all,
+  // rather than showing a permanently-disabled "no region selected"
+  // dropdown even though a real, global map is already loaded below.
+  const fallbackCountryOptions = allConfiguredCountries(regionOptions);
   // Local to this page only — Site Map Details no longer shares state with
   // this page (each of the 3 Site Map pages now has its own independent
   // country/site data, per request), so there's nothing else to sync a
@@ -171,10 +180,10 @@ export default function SiteMapGlobalPage() {
     }
     radiusCircleRef.current = L.circle([site.lat, site.lng], {
       radius: SITE_MAP_RADIUS_MILES * MILES_TO_METERS,
-      color: "#d92b2b",
+      color: "#dc2626",
       weight: 1.5,
       dashArray: "6 6",
-      fillColor: "#d92b2b",
+      fillColor: "#dc2626",
       fillOpacity: 0.08,
     }).addTo(map);
   }
@@ -307,10 +316,18 @@ export default function SiteMapGlobalPage() {
             />
           ) : (
             <>
-              <Select value="" onChange={() => {}} disabled options={[{ value: "", label: "All countries" }]} />
+              <Select
+                value={country}
+                onChange={setCountry}
+                disabled={loading}
+                options={[
+                  { value: "", label: "All countries" },
+                  ...fallbackCountryOptions.map((c) => ({ value: c, label: c })),
+                ]}
+              />
               <span className="map-field-note">
-                No region selected yet — pick one in Step 1 (or apply an AI
-                prediction) to narrow this.
+                No region selected in Step 1 — showing sites across every
+                region. Pick a country above to narrow it.
               </span>
             </>
           )}
@@ -348,7 +365,7 @@ export default function SiteMapGlobalPage() {
               width: "100%",
               height: 480,
               borderRadius: 10,
-              border: "1px solid #d7dbe6",
+              border: "1px solid var(--border)",
             }}
           />
 
@@ -356,7 +373,7 @@ export default function SiteMapGlobalPage() {
             <span>
               <i
                 style={{
-                  background: "#e5342b",
+                  background: "var(--danger)",
                   width: 10,
                   height: 10,
                   borderRadius: "50%",
@@ -372,7 +389,7 @@ export default function SiteMapGlobalPage() {
                   width: 12,
                   height: 12,
                   borderRadius: "50%",
-                  border: "2px solid #fff",
+                  border: "2px solid var(--card)",
                   boxShadow: "0 0 0 1px #cfe6bb",
                   display: "inline-block",
                 }}
@@ -386,7 +403,7 @@ export default function SiteMapGlobalPage() {
                   width: 12,
                   height: 12,
                   borderRadius: "50%",
-                  border: "2px solid #fff",
+                  border: "2px solid var(--card)",
                   boxShadow: "0 0 0 1px #f0dca0",
                   display: "inline-block",
                 }}
@@ -400,8 +417,8 @@ export default function SiteMapGlobalPage() {
                   width: 10,
                   height: 10,
                   borderRadius: "50%",
-                  border: "1.5px dashed #d92b2b",
-                  background: "rgba(217,43,43,0.08)",
+                  border: "1.5px dashed #dc2626",
+                  background: "rgba(220, 38, 38, 0.08)",
                 }}
               />{" "}
               {SITE_MAP_RADIUS_MILES}-mile catchment — shown when you click a

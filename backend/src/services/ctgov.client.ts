@@ -99,6 +99,152 @@ function warn(label: string, err: unknown): void {
 }
 
 /* ---------------------------------------------------------------------- */
+/* 0. Single study lookup by NCT ID (landing-page "Search by NCT Number")  */
+/* ---------------------------------------------------------------------- */
+
+export interface NctStudyLookup {
+  nctId: string;
+  briefTitle: string | null;
+  officialTitle: string | null;
+  /** First disclosed condition — used as the auto-filled Indication. */
+  condition: string | null;
+  /** Every disclosed condition (a study can list more than one). */
+  conditions: string[];
+  overallStatus: string | null;
+  /** Raw ClinicalTrials.gov phase value(s), e.g. "PHASE2" — mapped to the app's "Phase II" label by the caller/controller. */
+  phases: string[];
+  enrollmentCount: number | null;
+  enrollmentType: string | null;
+  sex: string | null;
+  minimumAge: string | null;
+  maximumAge: string | null;
+  healthyVolunteers: boolean | null;
+  startDate: string | null;
+  primaryCompletionDate: string | null;
+  /** De-duplicated, disclosed location countries — shown as context only; NOT used to restrict the region/country search (this app's site-selection engine deliberately searches every configured region globally rather than assuming the best NEW site is wherever the original trial happened to run). */
+  countries: string[];
+  /** Total disclosed locations (all countries) on this study's record. */
+  siteCount: number;
+}
+
+interface RawNctStudy {
+  protocolSection?: {
+    identificationModule?: {
+      nctId?: string;
+      briefTitle?: string;
+      officialTitle?: string;
+    };
+    statusModule?: {
+      overallStatus?: string;
+      startDateStruct?: { date?: string };
+      primaryCompletionDateStruct?: { date?: string };
+    };
+    designModule?: {
+      phases?: string[];
+      enrollmentInfo?: { count?: number; type?: string };
+    };
+    conditionsModule?: { conditions?: string[] };
+    eligibilityModule?: {
+      sex?: string;
+      minimumAge?: string;
+      maximumAge?: string;
+      healthyVolunteers?: boolean;
+    };
+    contactsLocationsModule?: {
+      locations?: Array<{ country?: string }>;
+    };
+  };
+}
+
+const NCT_LOOKUP_FIELDS = [
+  "NCTId",
+  "BriefTitle",
+  "OfficialTitle",
+  "Condition",
+  "OverallStatus",
+  "Phase",
+  "EnrollmentCount",
+  "EnrollmentType",
+  "Sex",
+  "MinimumAge",
+  "MaximumAge",
+  "HealthyVolunteers",
+  "StartDate",
+  "PrimaryCompletionDate",
+  "LocationCountry",
+].join(",");
+
+/**
+ * GET /studies/{nctId}?fields=... — a single study by its NCT number, for the
+ * landing page's "Search by NCT Number" auto-fill. Returns null when the ID
+ * isn't found (ClinicalTrials.gov 404s unknown/malformed NCT numbers) or on
+ * any fetch failure — callers show a "not found, try manual entry" message
+ * rather than a raw error either way, so the two cases are collapsed here.
+ */
+export async function getStudyByNctId(
+  nctId: string,
+): Promise<NctStudyLookup | null> {
+  const id = nctId.trim().toUpperCase();
+  if (!id) return null;
+  if (!config.ctgov.enabled) return null;
+
+  const cacheKey = `nct-lookup:${id}`;
+  const cached = getCached<NctStudyLookup | null>(cacheKey);
+  if (cached !== undefined) return cached;
+
+  const url = `${BASE_URL}/studies/${encodeURIComponent(id)}?fields=${NCT_LOOKUP_FIELDS}`;
+
+  try {
+    const json = await fetchJson<RawNctStudy>(url, config.ctgov.timeoutMs);
+    const ps = json.protocolSection;
+    if (!ps?.identificationModule?.nctId) {
+      setCached(cacheKey, null, config.ctgov.cacheTtlMs);
+      return null;
+    }
+    const locations = ps.contactsLocationsModule?.locations ?? [];
+    const countries = [
+      ...new Set(
+        locations
+          .map((l) => l.country)
+          .filter((c): c is string => !!c && c.trim().length > 0),
+      ),
+    ];
+    const conditions = ps.conditionsModule?.conditions ?? [];
+    const result: NctStudyLookup = {
+      nctId: ps.identificationModule.nctId,
+      briefTitle: ps.identificationModule.briefTitle ?? null,
+      officialTitle: ps.identificationModule.officialTitle ?? null,
+      condition: conditions[0] ?? null,
+      conditions,
+      overallStatus: ps.statusModule?.overallStatus ?? null,
+      phases: ps.designModule?.phases ?? [],
+      enrollmentCount:
+        typeof ps.designModule?.enrollmentInfo?.count === "number"
+          ? ps.designModule.enrollmentInfo.count
+          : null,
+      enrollmentType: ps.designModule?.enrollmentInfo?.type ?? null,
+      sex: ps.eligibilityModule?.sex ?? null,
+      minimumAge: ps.eligibilityModule?.minimumAge ?? null,
+      maximumAge: ps.eligibilityModule?.maximumAge ?? null,
+      healthyVolunteers:
+        typeof ps.eligibilityModule?.healthyVolunteers === "boolean"
+          ? ps.eligibilityModule.healthyVolunteers
+          : null,
+      startDate: ps.statusModule?.startDateStruct?.date ?? null,
+      primaryCompletionDate:
+        ps.statusModule?.primaryCompletionDateStruct?.date ?? null,
+      countries,
+      siteCount: locations.length,
+    };
+    setCached(cacheKey, result, config.ctgov.cacheTtlMs);
+    return result;
+  } catch (err) {
+    warn(`NCT lookup failed for "${id}"`, err);
+    return null;
+  }
+}
+
+/* ---------------------------------------------------------------------- */
 /* 1. Active competing trials count                                       */
 /* ---------------------------------------------------------------------- */
 
@@ -359,7 +505,7 @@ function parseAgeYears(age: string | null | undefined): number | null {
  * than excluded, since an unknown eligibility range is not evidence the
  * study excludes anyone.
  */
-function studyAgeGroups(
+export function studyAgeGroups(
   minimumAge: string | null | undefined,
   maximumAge: string | null | undefined,
 ): Set<string> {

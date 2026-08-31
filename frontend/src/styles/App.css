@@ -1,24 +1,31 @@
+/* This app's own semantic tokens, remapped onto the shared brand palette
+   defined in styles/index.css (:root --primary/--success/--warning/--danger/
+   --info/--background/--card/--border/--text-primary/--text-secondary).
+   --card and --info are deliberately NOT redeclared here — they already
+   exist as identically-named tokens on index.css's :root, and this app
+   should have exactly one source of truth for each rather than two
+   same-named variables silently shadowing each other. Every other rule in
+   this file already consumes var(--bg)/var(--ink)/var(--accent)/etc., so
+   remapping just this one block re-themes the entire app. */
 :root {
-  --bg: #f6f7fb;
-  --card: #ffffff;
-  --ink: #171b2e;
-  --sub: #5f6579;
-  --line: #e6e8f0;
-  --accent: #4f5bff;
-  --accent-dark: #3c46e0;
-  --accent-soft: #edeeff;
-  --low: #17845a;
-  --low-bg: #e5f7ee;
-  --med: #a8710b;
-  --med-bg: #fdf1dc;
-  --high: #c23b3b;
-  --high-bg: #fbe9e9;
-  --no-data: #5f6579;
-  --no-data-bg: #e6e8f0;
-  --info: #1d5fbf;
-  --info-bg: #e6eefc;
-  --shadow-sm: 0 1px 2px rgba(23, 27, 46, 0.04);
-  --shadow: 0 1px 2px rgba(23, 27, 46, 0.04), 0 10px 28px rgba(23, 27, 46, 0.07);
+  --bg: var(--background);
+  --ink: var(--text-primary);
+  --sub: var(--text-secondary);
+  --line: var(--border);
+  --accent: var(--primary);
+  --accent-dark: var(--primary-dark);
+  --accent-soft: var(--primary-light);
+  --low: var(--success);
+  --low-bg: var(--success-light);
+  --med: var(--warning);
+  --med-bg: var(--warning-light);
+  --high: var(--danger);
+  --high-bg: var(--danger-light);
+  --no-data: var(--text-secondary);
+  --no-data-bg: var(--border);
+  --info-bg: var(--primary-light);
+  --shadow-sm: 0 1px 2px rgba(2, 24, 72, 0.04);
+  --shadow: 0 1px 2px rgba(2, 24, 72, 0.04), 0 10px 28px rgba(2, 24, 72, 0.07);
   --radius: 14px;
   --radius-sm: 8px;
   --radius-pill: 999px;
@@ -106,7 +113,7 @@ body {
   gap: 20px;
   height: var(--nav-h);
   padding: 0 clamp(18px, 3vw, 36px);
-  background: #fff;
+  background: var(--card);
   border-bottom: 1px solid var(--line);
   box-shadow: var(--shadow-sm);
 }
@@ -121,8 +128,12 @@ body {
   height: 30px;
   flex-shrink: 0;
   border-radius: 8px;
-  background: linear-gradient(135deg, var(--accent), #8b5bff);
-  color: #fff;
+  background: linear-gradient(
+    135deg,
+    var(--accent),
+    color-mix(in srgb, var(--accent) 55%, white)
+  );
+  color: var(--card);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -168,7 +179,7 @@ body {
   height: 34px;
   border-radius: 50%;
   border: 1px solid var(--line);
-  background: #fff;
+  background: var(--card);
   color: var(--sub);
   display: flex;
   align-items: center;
@@ -194,7 +205,7 @@ body {
   height: 7px;
   border-radius: 50%;
   background: var(--low);
-  border: 1.5px solid #fff;
+  border: 1.5px solid var(--card);
 }
 .history-btn {
   position: relative;
@@ -202,7 +213,7 @@ body {
   padding: 0 14px;
   border-radius: 20px;
   border: 1px solid var(--line);
-  background: #fff;
+  background: var(--card);
   color: var(--sub);
   display: flex;
   align-items: center;
@@ -217,6 +228,17 @@ body {
   background: var(--bg);
   color: var(--ink);
 }
+.edit-parameters-btn {
+  gap: 6px;
+}
+.edit-parameters-btn:hover:not(:disabled) {
+  background: var(--bg);
+  color: var(--ink);
+}
+.edit-parameters-btn:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
 .user-menu-wrap {
   position: relative;
   flex-shrink: 0;
@@ -229,7 +251,7 @@ body {
   padding: 5px 10px 5px 5px;
   border-radius: 20px;
   border: 1px solid var(--line);
-  background: #fff;
+  background: var(--card);
   font-family: inherit;
   cursor: pointer;
   flex-shrink: 0;
@@ -242,7 +264,7 @@ body {
   top: calc(100% + 8px);
   right: 0;
   min-width: 210px;
-  background: #fff;
+  background: var(--card);
   border: 1px solid var(--line);
   border-radius: 12px;
   box-shadow: 0 10px 28px rgba(15, 23, 42, 0.14);
@@ -348,7 +370,7 @@ body {
   gap: 9px;
   margin: 0 0 16px;
   padding: 10px 12px;
-  background: #fff;
+  background: var(--card);
   border: 1px solid var(--line);
   border-left: 3px solid var(--info);
   border-radius: 10px;
@@ -433,7 +455,7 @@ body {
   height: 28px;
   border-radius: var(--radius-pill);
   border: 1px solid var(--line);
-  background: #fff;
+  background: var(--card);
   color: var(--sub);
   display: flex;
   align-items: center;
@@ -542,7 +564,7 @@ body {
   margin-left: 6px;
   border-radius: 50%;
   background: var(--low);
-  color: #fff;
+  color: var(--card);
   font-size: 9px;
   font-weight: 700;
   line-height: 1;
@@ -558,12 +580,12 @@ body {
 }
 
 .sidebar-run-btn--ready {
-  box-shadow: 0 0 0 4px var(--low-bg), 0 6px 16px rgba(23, 132, 90, 0.28);
+  box-shadow: 0 0 0 4px var(--low-bg), 0 6px 16px rgba(22, 163, 74, 0.28);
   animation: sidebar-run-glow 1.8s ease-in-out infinite;
 }
 @keyframes sidebar-run-glow {
-  0%, 100% { box-shadow: 0 0 0 4px var(--low-bg), 0 6px 16px rgba(23, 132, 90, 0.28); }
-  50% { box-shadow: 0 0 0 7px var(--low-bg), 0 8px 20px rgba(23, 132, 90, 0.4); }
+  0%, 100% { box-shadow: 0 0 0 4px var(--low-bg), 0 6px 16px rgba(22, 163, 74, 0.28); }
+  50% { box-shadow: 0 0 0 7px var(--low-bg), 0 8px 20px rgba(22, 163, 74, 0.4); }
 }
 .sidebar-run-hint {
   margin-top: 8px;
@@ -588,7 +610,7 @@ body {
   letter-spacing: 0.03em;
 }
 .field-required {
-  color: #e5342b;
+  color: var(--danger);
   font-weight: 700;
 }
 .field-label-row {
@@ -621,7 +643,7 @@ body {
   padding: 8px 12px;
   border-radius: 9px;
   border: 1px solid var(--line);
-  background: #fff;
+  background: var(--card);
 }
 .field-block > select:focus,
 .field-block > input:focus {
@@ -656,7 +678,7 @@ body {
   padding: 6px 10px;
   border-radius: 20px;
   border: 1px solid var(--line);
-  background: #fff;
+  background: var(--card);
   color: var(--sub);
   font-size: 12.5px;
   font-weight: 600;
@@ -670,10 +692,279 @@ body {
 .phase-pill.active {
   background: var(--accent);
   border-color: var(--accent);
-  color: #fff;
+  color: var(--card);
 }
 .phase-pill-check {
   font-size: 10.5px;
+}
+
+/* ---- Full-page / modal Analysis Parameters form ----
+   The Analysis Parameters form used to be a permanently-open sidebar
+   (.sidebar-shell/.sidebar-panel, now removed). It's now shown two ways
+   instead, both wrapping the same ParametersFormFields component: as its
+   own full page before the first run (ParametersFormPage, "Start Analysis"
+   bottom-right) or as a modal reopened from TopBar's "Edit Parameters"
+   button (EditParametersModal, close X top-right). The field styles
+   themselves (.field-block, .phase-pills, .sidebar-progress*,
+   .sidebar-run-btn, .sidebar-run-hint) are untouched and shared as-is —
+   only this outer layout differs from the old narrow sidebar column. */
+.params-page {
+  min-height: 100vh;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  /* Matches the form card's own background instead of the app's gray
+     --bg — a full-bleed white page rather than a white card floating on a
+     visibly gray surround (the "spread across the screen" look). */
+  background: var(--card);
+  overflow-y: auto;
+}
+.params-page-inner {
+  width: 100%;
+  /* Wide enough to reach close to the edges of a normal monitor instead of
+     sitting as a narrower column with visible empty gutters on both
+     sides — this is a full page, not a centered card. */
+  max-width: 1760px;
+  /* Stretches the inner column the rest of the way down the viewport (see
+     .params-page-inner .card.params-form below) instead of the form
+     shrink-wrapping to its own content height and leaving a tall, mostly
+     empty page underneath it. */
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  padding: 48px clamp(24px, 3vw, 56px) 40px;
+}
+/* Everything on this page reads noticeably larger than the old 340px-wide
+   sidebar it replaced was ever sized for — bumping font sizes here (scoped
+   to .params-page only, so the Edit Parameters modal, which reuses the same
+   field markup at a much smaller footprint, is unaffected). */
+.params-page .sidebar-form-title {
+  font-size: 30px;
+  gap: 12px;
+  margin-bottom: 26px;
+}
+.params-page .sidebar-form-icon {
+  width: 30px;
+  height: 30px;
+}
+.params-page .sidebar-progress-count {
+  font-size: 13.5px;
+}
+.params-page .field-label {
+  font-size: 13.5px;
+}
+.params-page .field-hint,
+.params-page .sidebar-run-hint {
+  font-size: 13.5px;
+}
+.params-page .field-block {
+  margin-bottom: 30px;
+  gap: 9px;
+}
+.params-page .field-block > input,
+.params-page .field-block > select,
+.params-page .ui-select-control {
+  font-size: 16px;
+  padding: 13px 16px;
+}
+.params-page .phase-pill {
+  font-size: 14.5px;
+  padding: 10px 18px;
+}
+.params-page .params-form-submit.sidebar-run-btn {
+  font-size: 16px;
+  padding: 15px 36px;
+}
+.params-page .predict-title {
+  font-size: 19px;
+}
+.params-page .llm-badge {
+  font-size: 12px;
+}
+.params-page .predict-btn {
+  font-size: 14.5px;
+  padding: 12px 22px;
+}
+.params-predict-card .card-scroll-body {
+  /* Centers the "No prediction yet" placeholder in the middle of the panel
+     instead of it sitting at the top with a tall gap of blank space below —
+     the panel now stretches full-height to match the form, which the
+     placeholder never accounted for. Once a real result renders, this rule
+     is harmless: that content already fills (and scrolls within) the
+     space on its own. */
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+.params-predict-card .empty-state {
+  max-width: 380px;
+  margin: 0 auto;
+}
+.params-predict-card .empty-state-icon {
+  width: 42px;
+  height: 42px;
+  font-size: 18px;
+}
+.params-predict-card .empty-state-title {
+  font-size: 16px;
+}
+.params-predict-card .empty-state-detail {
+  font-size: 13.5px;
+}
+/* Left: the form. Right: "Predict Region with AI", inline instead of a
+   modal — see ParametersFormPage. Roughly 62/38; both columns stretch to
+   the same height via the default align-items: stretch. */
+.params-page-columns {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  gap: 40px;
+}
+.params-form-col {
+  flex: 0 0 62%;
+  max-width: 62%;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+.params-predict-col {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+.params-predict-card {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+/* AIRegionPrediction's own top-level wrapper — give it the height the card
+   above now provides so its internal .card-scroll-body (already
+   flex:1/overflow-y:auto elsewhere in the app, e.g. .wizard-panel) can
+   actually scroll its own results instead of just growing the page. */
+.params-predict-card .predict-card-content {
+  flex: 1;
+  min-height: 0;
+}
+.params-page .params-form {
+  padding: 0;
+  /* No border/shadow here — with the page background matching the card's
+     own background, a floating-card outline would just be a visible box
+     with nothing to contrast against. */
+  border: none;
+  box-shadow: none;
+}
+.card.params-form {
+  display: flex;
+  flex-direction: column;
+}
+.params-page-inner .card.params-form {
+  flex: 1;
+}
+.params-page-inner .params-form-grid {
+  row-gap: 8px;
+  align-content: start;
+}
+/* Pushes the divider + Start Analysis button down to the bottom of the
+   viewport rather than sitting right under the last field — this is what
+   actually makes the page read as full-height instead of a short block of
+   fields with blank space beneath it. */
+.params-page-inner .params-form-actions {
+  margin-top: auto;
+  padding-top: 32px;
+}
+.params-form .sidebar-form-title {
+  font-size: 20px;
+  margin-bottom: 22px;
+}
+.params-form .sidebar-form-icon {
+  width: 24px;
+  height: 24px;
+}
+/* Two columns on the full page / wide modal — the old sidebar stacked
+   every field in one narrow column because it had no room to do otherwise;
+   with a full page's width available, a grid reads far less like a long
+   scroll of inputs. Region/Country still spans the full width since its
+   multi-select popover and selected-chip row want more than half a
+   column. */
+.params-form-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  column-gap: 28px;
+}
+.params-form-grid .field-block:nth-child(5) {
+  grid-column: 1 / -1;
+}
+.params-form-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 16px;
+  margin-top: 14px;
+  padding-top: 20px;
+  border-top: 1px solid var(--line);
+}
+.params-form-hint {
+  margin-top: 0;
+  text-align: left;
+  flex: 1;
+}
+.params-form-submit.sidebar-run-btn {
+  width: auto;
+  min-width: 220px;
+  margin-top: 0;
+  padding: 12px 30px;
+}
+
+/* Edit Parameters modal — same form/fields, inside the app's standard
+   .run-modal chrome instead of the full-page wrapper above. The modal
+   already supplies its own padding/background/border-radius, so the inner
+   .card.params-form is stripped down to a plain block to avoid doubling
+   those up. */
+.edit-parameters-modal {
+  width: min(920px, 96vw);
+  max-height: 90vh;
+  padding-top: 44px;
+}
+.edit-parameters-modal .card.params-form {
+  padding: 0;
+  border: none;
+  box-shadow: none;
+  background: transparent;
+  margin-bottom: 0;
+}
+@media (max-width: 1080px) {
+  /* Stack the form above the Predict Region with AI panel instead of
+     squeezing a 62/38 split (each still holding a 2-col field grid) into a
+     tablet-width screen. */
+  .params-page-columns {
+    flex-direction: column;
+  }
+  .params-form-col,
+  .params-predict-col {
+    flex: none;
+    max-width: 100%;
+  }
+  .params-predict-card {
+    min-height: 360px;
+  }
+}
+@media (max-width: 720px) {
+  .params-form-grid {
+    grid-template-columns: 1fr;
+  }
+  .params-page .params-form {
+    padding: 28px 22px;
+  }
+  .params-form-actions {
+    flex-direction: column-reverse;
+    align-items: stretch;
+  }
+  .params-form-submit.sidebar-run-btn {
+    width: 100%;
+  }
 }
 
 .region-select {
@@ -703,7 +994,7 @@ body {
   height: 16px;
   border-radius: 50%;
   border: none;
-  background: rgba(79, 91, 255, 0.16);
+  background: rgba(67, 66, 209, 0.16);
   color: var(--accent-dark);
   font-size: 12px;
   line-height: 1;
@@ -719,7 +1010,7 @@ body {
   padding: 9px 11px;
   border-radius: 9px;
   border: 1px solid var(--line);
-  background: #fff;
+  background: var(--card);
   color: var(--ink);
 }
 .region-search:focus {
@@ -903,12 +1194,12 @@ body {
   padding: 9px 12px;
   border: 1px solid var(--line);
   border-radius: 9px;
-  background: #fff;
+  background: var(--card);
   cursor: pointer;
   text-align: left;
 }
 .ui-select-control:hover {
-  border-color: #c9cde0;
+  border-color: var(--border);
 }
 .ui-select-control:focus-visible {
   outline: 3px solid var(--accent-soft);
@@ -964,7 +1255,7 @@ body {
   margin: 0;
   padding: 6px;
   list-style: none;
-  background: #fff;
+  background: var(--card);
   border: 1px solid var(--line);
   border-radius: 12px;
   box-shadow: 0 10px 28px rgba(15, 23, 42, 0.14);
@@ -1096,7 +1387,7 @@ input[type="number"]::-webkit-inner-spin-button {
   margin-bottom: 10px;
 }
 .tag-on-dark {
-  color: #fff;
+  color: var(--card);
   background: rgba(255, 255, 255, 0.18);
 }
 
@@ -1118,7 +1409,7 @@ input[type="number"]::-webkit-inner-spin-button {
   justify-content: center;
   gap: 8px;
   background: var(--accent);
-  color: #fff;
+  color: var(--card);
   border: none;
   padding: 10px 20px;
   border-radius: var(--radius-sm);
@@ -1132,7 +1423,7 @@ input[type="number"]::-webkit-inner-spin-button {
 }
 .btn-primary:hover {
   background: var(--accent-dark);
-  box-shadow: 0 6px 16px rgba(79, 91, 255, 0.28);
+  box-shadow: 0 6px 16px rgba(67, 66, 209, 0.28);
   transform: translateY(-1px);
 }
 .btn-primary:disabled {
@@ -1232,7 +1523,7 @@ input[type="number"]::-webkit-inner-spin-button {
 .stepper-dot.complete {
   background: var(--accent);
   border-color: var(--accent);
-  color: #fff;
+  color: var(--card);
 }
 .stepper-label {
   font-size: 10.5px;
@@ -1352,7 +1643,7 @@ th {
    visually identical, which makes it easy to lose your place scanning
    across a wide row. */
 tbody tr:not(.pinned-row):nth-child(even) {
-  background: #fbfbfe;
+  background: var(--background);
 }
 tbody tr {
   transition: background 0.12s ease;
@@ -1440,7 +1731,7 @@ tbody tr:hover {
   grid-template-columns: minmax(140px, 1.6fr) minmax(100px, 0.9fr) minmax(120px, 0.9fr) 92px minmax(110px, 1fr) 18px;
   align-items: center;
   gap: 14px;
-  background: #fff;
+  background: var(--card);
   border: none;
   padding: 13px 16px;
   cursor: pointer;
@@ -1518,7 +1809,7 @@ tbody tr:hover {
 }
 .risk-accordion-body {
   padding: 4px 16px 16px;
-  background: #fbfbfd;
+  background: var(--background);
 }
 .compliance-disclaimer {
   margin: 10px 2px 0;
@@ -1540,7 +1831,7 @@ tbody tr:hover {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  background: #fff;
+  background: var(--card);
   color: var(--accent-dark);
   border: 1px solid var(--line);
   padding: 8px 16px;
@@ -1566,19 +1857,19 @@ tbody tr:hover {
   gap: 14px;
 }
 .final-grid .item {
-  background: #f7f8fb;
+  background: var(--background);
   border: 1px solid var(--line);
   border-radius: 12px;
   padding: 13px 15px;
 }
 /* Site Combination Planner's strategy cards now sit on a light color tint
    of their own (STRATEGY_CARD_TINT in SiteCombinationPlanner.tsx) — the
-   shared .final-grid .item's grey (#f7f8fb) read as muddy against that
+   shared .final-grid .item's grey (var(--background)) read as muddy against that
    tint, so these specific cards get white metric boxes instead. Scoped
    to .combo-strategy-card only; every other .final-grid usage (Final
    Recommendation, Site Map Details, Eligibility Criteria) keeps the grey. */
 .combo-strategy-card .final-grid .item {
-  background: #fff;
+  background: var(--card);
 }
 /* Final Recommendation's own 5 metric boxes — each gets a faint (4-6%)
    wash of a color tied to what it represents, instead of the shared flat
@@ -1588,34 +1879,34 @@ tbody tr:hover {
    fixed (Region, Population, Site, Score, Risk Level), so nth-child is
    reliable here. */
 .final-grid--reco .item:nth-child(1) {
-  background: rgba(29, 95, 191, 0.045);
+  background: rgba(37, 99, 235, 0.045);
 }
 .final-grid--reco .item:nth-child(2) {
-  background: rgba(79, 91, 255, 0.045);
+  background: rgba(67, 66, 209, 0.045);
 }
 .final-grid--reco .item:nth-child(3) {
-  background: rgba(23, 132, 90, 0.05);
+  background: rgba(22, 163, 74, 0.05);
 }
 .final-grid--reco .item:nth-child(4) {
-  background: rgba(79, 91, 255, 0.045);
+  background: rgba(67, 66, 209, 0.045);
 }
 .final-grid--reco .item:nth-child(5) {
-  background: rgba(194, 59, 59, 0.055);
+  background: rgba(220, 38, 38, 0.055);
 }
 /* "Why this site is rated X" card — light blue instead of the plain
    white it had (WhyThisRating.tsx renders this same card in Risk
    Register too, but only via the RecommendationPanel usage does
    .final-why wrap it, so this stays scoped to Final Recommendation). */
 .final-why .why-risk {
-  background: rgba(29, 95, 191, 0.05);
-  border-color: #dde6f5;
+  background: rgba(37, 99, 235, 0.05);
+  border-color: var(--info-bg);
 }
 /* AI Recommendation paragraph — a light purple wash to set the model's
    own writeup apart from the plain metric/explanation text above it.
    .final-text--reco only (SavedRunModal reuses the base .final-text
    class and should keep its plain background). */
 .final-text--reco {
-  background: rgba(79, 91, 255, 0.04);
+  background: rgba(67, 66, 209, 0.04);
   border-radius: 10px;
   padding: 14px 16px;
 }
@@ -1696,14 +1987,14 @@ tbody tr:hover {
   padding: 9px 12px;
   border: 1px solid var(--line);
   border-radius: 9px;
-  background: #fff;
+  background: var(--card);
 }
 .predict-btn {
   display: inline-flex;
   align-items: center;
   gap: 8px;
   background: var(--accent);
-  color: #fff;
+  color: var(--card);
   border: none;
   padding: 10px 18px;
   border-radius: var(--radius-sm);
@@ -1716,7 +2007,7 @@ tbody tr:hover {
 }
 .predict-btn:hover {
   background: var(--accent-dark);
-  box-shadow: 0 6px 16px rgba(79, 91, 255, 0.28);
+  box-shadow: 0 6px 16px rgba(67, 66, 209, 0.28);
   transform: translateY(-1px);
 }
 .predict-btn:disabled {
@@ -1725,7 +2016,7 @@ tbody tr:hover {
 }
 .predict-btn .spinner {
   border-color: rgba(255, 255, 255, 0.35);
-  border-top-color: #fff;
+  border-top-color: var(--card);
 }
 /* Compact circular icon-only variant of .predict-btn — used for the
    per-row "Draft email" action in the Site Ranking table, where a text
@@ -1813,7 +2104,7 @@ td.predict-placeholder {
   padding: 18px 20px;
   border-radius: 12px;
   background: var(--accent-soft);
-  border: 1px solid rgba(79, 91, 255, 0.18);
+  border: 1px solid rgba(67, 66, 209, 0.18);
 }
 .predict-hero-label {
   font-size: 11px;
@@ -1862,7 +2153,7 @@ td.predict-placeholder {
 }
 .apply-btn {
   background: var(--accent);
-  color: #fff;
+  color: var(--card);
   border: none;
   padding: 8px 16px;
   border-radius: 8px;
@@ -1937,9 +2228,9 @@ td.predict-placeholder {
   font-weight: 800;
   letter-spacing: 0.04em;
   text-transform: uppercase;
-  color: #0a7d3c;
-  background: #e6f6ec;
-  border: 1px solid #b6e6c8;
+  color: var(--success);
+  background: var(--success-light);
+  border: 1px solid color-mix(in srgb, var(--success) 30%, white);
   border-radius: 20px;
   padding: 1px 7px;
   vertical-align: middle;
@@ -2021,8 +2312,8 @@ tr.row-pick td {
   letter-spacing: 0.03em;
   text-transform: uppercase;
   color: var(--accent-dark);
-  background: #fff;
-  border: 1px solid rgba(79, 91, 255, 0.3);
+  background: var(--card);
+  border: 1px solid rgba(67, 66, 209, 0.3);
   border-radius: 20px;
   padding: 1px 7px;
 }
@@ -2057,7 +2348,7 @@ tr.row-pick td {
   padding: 14px 16px;
   border: 1px solid var(--line);
   border-radius: 10px;
-  background: #fff;
+  background: var(--card);
 }
 .why-risk-head {
   display: flex;
@@ -2180,7 +2471,7 @@ tr.row-pick td {
 .why-risk.on-dark .why-risk-rule,
 .why-risk.on-dark .driver-desc,
 .why-risk.on-dark .driver-id {
-  color: #fff;
+  color: var(--card);
 }
 .why-risk.on-dark .why-risk-mix,
 .why-risk.on-dark .driver-cat,
@@ -2192,10 +2483,10 @@ tr.row-pick td {
 .why-risk.on-dark .why-risk-stat.high strong,
 .why-risk.on-dark .why-risk-stat.medium strong,
 .why-risk.on-dark .why-risk-stat.low strong {
-  color: #fff;
+  color: var(--card);
 }
 .why-risk.on-dark .link-btn {
-  color: #fff;
+  color: var(--card);
   text-decoration: underline;
 }
 .why-risk.on-dark .driver-item {
@@ -2203,12 +2494,12 @@ tr.row-pick td {
 }
 .why-risk.on-dark .driver-status {
   background: rgba(255, 255, 255, 0.18);
-  color: #fff;
+  color: var(--card);
 }
 .why-risk.on-dark .chip {
   background: rgba(255, 255, 255, 0.16);
   border-color: rgba(255, 255, 255, 0.24);
-  color: #fff;
+  color: var(--card);
 }
 
 .conf-reason {
@@ -2235,7 +2526,7 @@ tr.row-pick td {
   font-size: 9px;
   letter-spacing: 0.04em;
   text-transform: uppercase;
-  color: #9297a8;
+  color: var(--text-secondary);
   /* Wide enough for a 4-char label PLUS the live-data dot's 8px
      padding-left below — otherwise the "live" rows (which get that extra
      padding but kept the same box width) overflowed past this box and ran
@@ -2255,7 +2546,7 @@ tr.row-pick td {
   height: 4px;
   flex: 1;
   border-radius: 2px;
-  background: #eaebf2;
+  background: var(--border);
   overflow: hidden;
 }
 .score-component-fill {
@@ -2278,7 +2569,7 @@ tr.row-pick td {
   width: 4px;
   height: 4px;
   border-radius: 50%;
-  background: #2e9e6b;
+  background: var(--success);
 }
 .score-confidence {
   font-size: 10px;
@@ -2377,7 +2668,7 @@ tr.row-pick td {
   padding: 8px 16px;
   border: 1px solid var(--line);
   border-radius: var(--radius-sm);
-  background: #fff;
+  background: var(--card);
   font: inherit;
   font-size: 13px;
   font-weight: 600;
@@ -2406,7 +2697,7 @@ tr.row-pick td {
   flex-direction: column;
   align-items: center;
   gap: 14px;
-  background: #fff;
+  background: var(--card);
   border-radius: 16px;
   padding: 36px 44px;
   box-shadow: 0 20px 48px rgba(15, 23, 42, 0.35);
@@ -2454,7 +2745,7 @@ tr.row-pick td {
   animation: modalBackdropIn 0.15s ease;
 }
 .run-modal {
-  background: #fff;
+  background: var(--card);
   border-radius: 14px;
   padding: 24px 26px;
   width: min(1000px, 100%);
@@ -2510,7 +2801,7 @@ tr.row-pick td {
 .run-modal::-webkit-scrollbar-thumb {
   background: var(--line);
   border-radius: var(--radius-pill);
-  border: 2px solid #fff;
+  border: 2px solid var(--card);
 }
 .run-modal::-webkit-scrollbar-thumb:hover {
   background: var(--sub);
@@ -2536,7 +2827,7 @@ tr.row-pick td {
 .saved-runs-scroll thead th {
   position: sticky;
   top: 0;
-  background: #fff;
+  background: var(--card);
   z-index: 1;
 }
 .run-modal-head {
@@ -2565,7 +2856,7 @@ tr.row-pick td {
   top: -24px;
   margin: -24px -26px 6px;
   padding: 24px 26px 14px;
-  background: #fff;
+  background: var(--card);
   z-index: 2;
   border-bottom: 1px solid var(--line);
 }
@@ -2623,7 +2914,7 @@ tr.row-pick td {
   padding: 14px 18px 0;
   display: flex;
   justify-content: flex-end;
-  background: #fff;
+  background: var(--card);
   z-index: 3;
   /* Matches .run-modal's own 14px border-radius on this bar's top corners
      — without this, the bar's square corners poked out past the modal's
@@ -2738,7 +3029,7 @@ tr.row-pick td {
   border: 1px solid var(--line);
   border-radius: 12px;
   padding: 10px 14px;
-  background: #fff;
+  background: var(--card);
   margin: 4px 0 6px;
   /* Never wrap to a second line — if the row is narrower than its content,
      scroll horizontally within the bar instead of stacking stats/search/
@@ -2834,6 +3125,17 @@ tr.row-pick td {
 .ui-select-menu.status-filter-select {
   min-width: 210px !important;
 }
+/* Risk Register/Ranking/Final Recommendation's country picker — the base
+   .ui-select-control's 140px min-width was fine when it only ever showed a
+   handful of form-selected countries, but now that it can list every
+   configured country (see utils/region.ts's allConfiguredCountries, used
+   when the trial form has no region/country pre-selected), a longer country
+   name like "Czech Republic" or "United Arab Emirates" got clipped. Widening
+   the trigger also widens its portaled menu to match, since Select.tsx sizes
+   the menu from the trigger's own rendered width. */
+.country-select-wide .ui-select-control {
+  min-width: 220px;
+}
 .ct-count-chip {
   font-size: 11.5px;
   font-weight: 700;
@@ -2916,7 +3218,7 @@ tr.row-pick td {
   padding: 7px 10px;
   border: 1px solid var(--line);
   border-radius: 8px;
-  background: #fff;
+  background: var(--card);
   min-width: 160px;
 }
 /* Country/status dropdowns in this toolbar now use the themed Select's
@@ -2959,7 +3261,7 @@ tr.row-pick td {
   height: auto;
   border: 1px solid var(--line);
   border-radius: 10px;
-  background: #d7e6f5;
+  background: var(--primary-light);
   cursor: grab;
   touch-action: none;
 }
@@ -2967,21 +3269,21 @@ tr.row-pick td {
   cursor: grabbing;
 }
 .map-bg {
-  fill: #d7e6f5;
+  fill: var(--primary-light);
 }
 .map-grid-line {
-  stroke: #d6dbf0;
+  stroke: var(--border);
   stroke-width: 1;
 }
 .map-graticule {
   fill: none;
-  stroke: #b7cde6;
+  stroke: var(--border);
   stroke-width: 0.5;
   pointer-events: none;
 }
 .map-land {
-  fill: #eef3e6;
-  stroke: #b9c9ab;
+  fill: var(--success-light);
+  stroke: color-mix(in srgb, var(--success) 35%, white);
   stroke-width: 0.6;
   pointer-events: none;
 }
@@ -2997,7 +3299,7 @@ tr.row-pick td {
 .map-cluster-label {
   font-size: 9px;
   font-weight: 700;
-  fill: #fff;
+  fill: var(--card);
   pointer-events: none;
   user-select: none;
 }
@@ -3021,7 +3323,7 @@ tr.row-pick td {
   height: 26px;
   border: 1px solid var(--line);
   border-radius: 6px;
-  background: #fff;
+  background: var(--card);
   color: var(--ink);
   font-size: 15px;
   font-weight: 700;
@@ -3094,7 +3396,7 @@ tr.row-pick td {
   padding: 9px 12px;
   border: 1px solid var(--line);
   border-radius: 9px;
-  background: #fff;
+  background: var(--card);
   color: var(--ink);
 }
 .map-table-count {
@@ -3111,7 +3413,7 @@ tr.row-pick td {
   padding: 7px 14px;
   border: 1px solid var(--line);
   border-radius: 8px;
-  background: #fff;
+  background: var(--card);
   color: var(--accent-dark);
   cursor: pointer;
   white-space: nowrap;
@@ -3132,7 +3434,7 @@ th.sortable:hover {
   color: var(--accent-dark);
 }
 tr.pinned-row {
-  background: rgba(103, 126, 234, 0.08);
+  background: rgba(67, 66, 209, 0.08);
 }
 .table-scroll tbody tr {
   cursor: pointer;
@@ -3174,7 +3476,7 @@ tr.pinned-row {
    not above the sidebar's input form) ---- */
 .workflow-nav {
   flex-shrink: 0;
-  background: #fff;
+  background: var(--card);
   border: 1px solid var(--line);
   border-radius: var(--radius);
   box-shadow: var(--shadow-sm);
@@ -3208,10 +3510,10 @@ tr.pinned-row {
   flex: 1 1 16px;
   min-width: 12px;
   height: 2px;
-  /* var(--line) (#e6e8f0) is too close to the card's white background to
-     read at 1-2px — this needs to be visibly darker than an ordinary
-     hairline border to actually show up as a connecting track. */
-  background: #c3c8d9;
+  /* var(--line) is too close to the card's white background to read at
+     1-2px — this needs to be visibly darker than an ordinary hairline
+     border to actually show up as a connecting track. */
+  background: color-mix(in srgb, var(--text-secondary) 30%, white);
   margin-top: 20px;
   align-self: flex-start;
 }
@@ -3255,7 +3557,7 @@ tr.pinned-row {
 }
 .workflow-nav-item.complete .workflow-nav-index {
   background: var(--low);
-  color: #fff;
+  color: var(--card);
 }
 .workflow-nav-item:disabled {
   cursor: not-allowed;
@@ -3277,14 +3579,14 @@ tr.pinned-row {
 }
 .workflow-nav-item.active .workflow-nav-index {
   background: var(--accent);
-  color: #fff;
+  color: var(--card);
 }
 .workflow-nav-label {
   line-height: 1.25;
 }
 .workflow-nav-item--predict .workflow-nav-index {
   background: var(--accent);
-  color: #fff;
+  color: var(--card);
   font-size: 14px;
 }
 .workflow-nav-item--predict:hover:not(:disabled) .workflow-nav-index {
@@ -3340,7 +3642,7 @@ tr.pinned-row {
   background: linear-gradient(
     90deg,
     var(--line) 25%,
-    #f0f1f7 37%,
+    var(--background) 37%,
     var(--line) 63%
   );
   background-size: 400% 100%;
@@ -3427,7 +3729,7 @@ tr.pinned-row {
   bottom: calc(100% + 8px);
   left: 50%;
   transform: translateX(-50%);
-  background: #fff;
+  background: var(--card);
   color: var(--ink);
   font-family: inherit;
   font-size: 12px;
@@ -3453,7 +3755,7 @@ tr.pinned-row {
   visibility: visible;
 }
 .app-tooltip {
-  background: #fff;
+  background: var(--card);
   color: var(--ink);
   font-family: inherit;
   font-size: 12px;
@@ -3609,4 +3911,172 @@ tr.pinned-row {
   gap: 14px;
   padding: 40px 20px;
   text-align: center;
+}
+
+/* ------------------------------------------------------------------ */
+/* Landing / Start Screen — NCT lookup + manual entry                  */
+/* ------------------------------------------------------------------ */
+.landing-screen {
+  min-height: 100vh;
+  display: flex;
+  background: var(--card);
+}
+.landing-card {
+  width: 100%;
+  min-height: 100vh;
+  background: var(--card);
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0;
+  overflow: hidden;
+}
+.landing-left {
+  padding: 72px 72px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 26px;
+  background: var(--card);
+  border-right: 1px solid var(--line);
+}
+.landing-illustration {
+  width: 100%;
+  max-width: 560px;
+  height: auto;
+  margin-bottom: 16px;
+}
+.landing-title {
+  font-size: 54px;
+  font-weight: 800;
+  color: var(--ink);
+  line-height: 1.15;
+}
+.landing-subtitle {
+  font-size: 19px;
+  color: var(--sub);
+  line-height: 1.6;
+  max-width: 460px;
+}
+.landing-right {
+  padding: 72px 80px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 34px;
+}
+.landing-panel {
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  padding: 36px 40px;
+}
+.landing-panel-title {
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--accent);
+  margin: 0 0 14px;
+}
+.landing-panel-hint {
+  font-size: 15px;
+  color: var(--sub);
+  margin: 0 0 16px;
+}
+.landing-field-label {
+  display: block;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--sub);
+  margin-bottom: 9px;
+}
+.landing-input {
+  width: 100%;
+  padding: 15px 16px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  font: inherit;
+  font-size: 16.5px;
+  margin-bottom: 16px;
+}
+.landing-input:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(67, 66, 209, 0.15);
+}
+.landing-search-btn,
+.landing-manual-btn,
+.landing-run-btn {
+  width: 100%;
+  padding: 16px 22px;
+  font-size: 16px;
+}
+.landing-error {
+  color: var(--high);
+  font-size: 12.5px;
+  margin-top: 10px;
+}
+.landing-divider {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  color: var(--sub);
+  font-size: 11.5px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+}
+.landing-divider::before,
+.landing-divider::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: var(--line);
+}
+
+.landing-confirm-brief-title {
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--ink);
+  margin: 0 0 12px;
+}
+.landing-confirm-grid {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  column-gap: 14px;
+  row-gap: 8px;
+  margin: 0 0 14px;
+  font-size: 12.5px;
+}
+.landing-confirm-grid dt {
+  color: var(--sub);
+  font-weight: 600;
+  white-space: nowrap;
+}
+.landing-confirm-grid dd {
+  margin: 0;
+  color: var(--ink);
+}
+.landing-confirm-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.landing-run-btn {
+  width: 100%;
+}
+
+@media (max-width: 720px) {
+  .landing-card {
+    grid-template-columns: 1fr;
+    min-height: 0;
+  }
+  .landing-left {
+    padding: 32px 28px 20px;
+    border-right: none;
+    border-bottom: 1px solid var(--line);
+  }
+  .landing-right {
+    padding: 20px 28px 32px;
+  }
+  .landing-illustration {
+    max-width: 200px;
+  }
 }
