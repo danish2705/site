@@ -23,6 +23,52 @@
   --radius-sm: 8px;
   --radius-pill: 999px;
   --nav-h: 64px;
+  --overlay-85: rgba(255, 255, 255, 0.85);
+  --overlay-92: rgba(255, 255, 255, 0.92);
+  --panel-subtle: #fbfbfe;
+  --success: #0a7d3c;
+  --success-bg: #e6f6ec;
+  --success-border: #b6e6c8;
+  --track-bg: #eaebf2;
+  --connector: #c3c8d9;
+  --border-strong: #c9cde0;
+}
+
+/* Dark theme overrides — toggled by adding the "dark" class to <html> */
+.dark {
+  --bg: #0f1117;
+  --card: #171a26;
+  --ink: #eef0f6;
+  --sub: #9aa0b4;
+  --line: #2a2e42;
+  --accent: #6672ff;
+  --accent-dark: #8b93ff;
+  --accent-soft: rgba(102, 114, 255, 0.18);
+  --low: #4ade80;
+  --low-bg: rgba(34, 197, 94, 0.16);
+  --med: #fbbf24;
+  --med-bg: rgba(251, 191, 36, 0.14);
+  --high: #f87171;
+  --high-bg: rgba(248, 113, 113, 0.14);
+  --no-data: #9aa0b4;
+  --no-data-bg: rgba(154, 160, 180, 0.14);
+  --info: #60a5fa;
+  --info-bg: rgba(96, 165, 250, 0.14);
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.35);
+  --shadow: 0 1px 2px rgba(0, 0, 0, 0.35), 0 10px 28px rgba(0, 0, 0, 0.5);
+  --overlay-85: rgba(15, 17, 26, 0.85);
+  --overlay-92: rgba(15, 17, 26, 0.92);
+  --panel-subtle: #1c1f2e;
+  --success: #4ade80;
+  --success-bg: rgba(34, 197, 94, 0.14);
+  --success-border: rgba(74, 222, 128, 0.3);
+  --track-bg: #262a3d;
+  --connector: #363b54;
+  --border-strong: #3a3f58;
+}
+
+.dark body {
+  color-scheme: dark;
 }
 
 [title]:not(button):not(a):not(input):not(select):not(textarea) {
@@ -98,7 +144,7 @@ body {
   gap: 20px;
   height: var(--nav-h);
   padding: 0 clamp(18px, 3vw, 36px);
-  background: #fff;
+  background: var(--card);
   border-bottom: 1px solid var(--line);
   box-shadow: var(--shadow-sm);
 }
@@ -160,7 +206,7 @@ body {
   height: 34px;
   border-radius: 50%;
   border: 1px solid var(--line);
-  background: #fff;
+  background: var(--card);
   color: var(--sub);
   display: flex;
   align-items: center;
@@ -194,7 +240,7 @@ body {
   padding: 0 14px;
   border-radius: 20px;
   border: 1px solid var(--line);
-  background: #fff;
+  background: var(--card);
   color: var(--sub);
   display: flex;
   align-items: center;
@@ -221,7 +267,7 @@ body {
   padding: 5px 10px 5px 5px;
   border-radius: 20px;
   border: 1px solid var(--line);
-  background: #fff;
+  background: var(--card);
   font-family: inherit;
   cursor: pointer;
   flex-shrink: 0;
@@ -234,7 +280,7 @@ body {
   top: calc(100% + 8px);
   right: 0;
   min-width: 210px;
-  background: #fff;
+  background: var(--card);
   border: 1px solid var(--line);
   border-radius: 12px;
   box-shadow: 0 10px 28px rgba(15, 23, 42, 0.14);
@@ -291,6 +337,60 @@ body {
   color: var(--sub);
   flex-shrink: 0;
 }
+.user-menu-divider {
+  height: 1px;
+  background: var(--line);
+  margin: 6px 2px;
+}
+.theme-toggle-item {
+  justify-content: space-between;
+}
+.theme-toggle-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.theme-toggle-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+  color: var(--accent-dark);
+}
+.theme-toggle-icon svg {
+  width: 16px;
+  height: 16px;
+}
+.theme-switch {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  width: 34px;
+  height: 19px;
+  border-radius: 999px;
+  background: var(--connector);
+  flex-shrink: 0;
+  transition: background 0.2s ease;
+}
+.theme-switch.on {
+  background: var(--accent);
+}
+.theme-switch-knob {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 15px;
+  height: 15px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.25);
+  transition: transform 0.2s ease;
+}
+.theme-switch.on .theme-switch-knob {
+  transform: translateX(15px);
+}
 
 @keyframes pulse-dot {
   0%, 100% {
@@ -338,7 +438,7 @@ body {
   gap: 9px;
   margin: 0 0 16px;
   padding: 10px 12px;
-  background: #fff;
+  background: var(--card);
   border: 1px solid var(--line);
   border-left: 3px solid var(--info);
   border-radius: 10px;
@@ -419,7 +519,7 @@ body {
   height: 28px;
   border-radius: var(--radius-pill);
   border: 1px solid var(--line);
-  background: #fff;
+  background: var(--card);
   color: var(--sub);
   display: flex;
   align-items: center;
@@ -607,7 +707,7 @@ body {
   padding: 8px 12px;
   border-radius: 9px;
   border: 1px solid var(--line);
-  background: #fff;
+  background: var(--card);
 }
 .field-block > select:focus,
 .field-block > input:focus {
@@ -642,7 +742,7 @@ body {
   padding: 6px 10px;
   border-radius: 20px;
   border: 1px solid var(--line);
-  background: #fff;
+  background: var(--card);
   color: var(--sub);
   font-size: 12.5px;
   font-weight: 600;
@@ -705,7 +805,7 @@ body {
   padding: 9px 11px;
   border-radius: 9px;
   border: 1px solid var(--line);
-  background: #fff;
+  background: var(--card);
   color: var(--ink);
 }
 .region-search:focus {
@@ -871,12 +971,12 @@ body {
   padding: 9px 12px;
   border: 1px solid var(--line);
   border-radius: 9px;
-  background: #fff;
+  background: var(--card);
   cursor: pointer;
   text-align: left;
 }
 .ui-select-control:hover {
-  border-color: #c9cde0;
+  border-color: var(--border-strong);
 }
 .ui-select-control:focus-visible {
   outline: 3px solid var(--accent-soft);
@@ -920,7 +1020,7 @@ body {
   margin: 0;
   padding: 6px;
   list-style: none;
-  background: #fff;
+  background: var(--card);
   border: 1px solid var(--line);
   border-radius: 12px;
   box-shadow: 0 10px 28px rgba(15, 23, 42, 0.14);
@@ -1287,7 +1387,7 @@ th {
 }
 
 tbody tr:not(.pinned-row):nth-child(even) {
-  background: #fbfbfe;
+  background: var(--panel-subtle);
 }
 tbody tr {
   transition: background 0.12s ease;
@@ -1368,7 +1468,7 @@ tbody tr:hover {
   grid-template-columns: minmax(140px, 1.6fr) minmax(100px, 0.9fr) minmax(120px, 0.9fr) 92px minmax(110px, 1fr) 18px;
   align-items: center;
   gap: 14px;
-  background: #fff;
+  background: var(--card);
   border: none;
   padding: 13px 16px;
   cursor: pointer;
@@ -1446,7 +1546,7 @@ tbody tr:hover {
 }
 .risk-accordion-body {
   padding: 4px 16px 16px;
-  background: #fbfbfd;
+  background: var(--panel-subtle);
 }
 .compliance-disclaimer {
   margin: 10px 2px 0;
@@ -1468,7 +1568,7 @@ tbody tr:hover {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  background: #fff;
+  background: var(--card);
   color: var(--accent-dark);
   border: 1px solid var(--line);
   padding: 8px 16px;
@@ -1494,14 +1594,14 @@ tbody tr:hover {
   gap: 14px;
 }
 .final-grid .item {
-  background: #f7f8fb;
+  background: var(--panel-subtle);
   border: 1px solid var(--line);
   border-radius: 12px;
   padding: 13px 15px;
 }
 
 .combo-strategy-card .final-grid .item {
-  background: #fff;
+  background: var(--card);
 }
 
 .final-grid--reco .item:nth-child(1) {
@@ -1603,7 +1703,7 @@ tbody tr:hover {
   padding: 9px 12px;
   border: 1px solid var(--line);
   border-radius: 9px;
-  background: #fff;
+  background: var(--card);
 }
 .predict-btn {
   display: inline-flex;
@@ -1836,9 +1936,9 @@ td.predict-placeholder {
   font-weight: 800;
   letter-spacing: 0.04em;
   text-transform: uppercase;
-  color: #0a7d3c;
-  background: #e6f6ec;
-  border: 1px solid #b6e6c8;
+  color: var(--success);
+  background: var(--success-bg);
+  border: 1px solid var(--success-border);
   border-radius: 20px;
   padding: 1px 7px;
   vertical-align: middle;
@@ -1920,7 +2020,7 @@ tr.row-pick td {
   letter-spacing: 0.03em;
   text-transform: uppercase;
   color: var(--accent-dark);
-  background: #fff;
+  background: var(--card);
   border: 1px solid rgba(79, 91, 255, 0.3);
   border-radius: 20px;
   padding: 1px 7px;
@@ -1956,7 +2056,7 @@ tr.row-pick td {
   padding: 14px 16px;
   border: 1px solid var(--line);
   border-radius: 10px;
-  background: #fff;
+  background: var(--card);
 }
 .why-risk-head {
   display: flex;
@@ -2146,7 +2246,7 @@ tr.row-pick td {
   height: 4px;
   flex: 1;
   border-radius: 2px;
-  background: #eaebf2;
+  background: var(--track-bg);
   overflow: hidden;
 }
 .score-component-fill {
@@ -2265,7 +2365,7 @@ tr.row-pick td {
   padding: 8px 16px;
   border: 1px solid var(--line);
   border-radius: var(--radius-sm);
-  background: #fff;
+  background: var(--card);
   font: inherit;
   font-size: 13px;
   font-weight: 600;
@@ -2291,7 +2391,7 @@ tr.row-pick td {
   flex-direction: column;
   align-items: center;
   gap: 14px;
-  background: #fff;
+  background: var(--card);
   border-radius: 16px;
   padding: 36px 44px;
   box-shadow: 0 20px 48px rgba(15, 23, 42, 0.35);
@@ -2334,7 +2434,7 @@ tr.row-pick td {
   animation: modalBackdropIn 0.15s ease;
 }
 .run-modal {
-  background: #fff;
+  background: var(--card);
   border-radius: 14px;
   padding: 24px 26px;
   width: min(1000px, 100%);
@@ -2406,7 +2506,7 @@ tr.row-pick td {
 .saved-runs-scroll thead th {
   position: sticky;
   top: 0;
-  background: #fff;
+  background: var(--card);
   z-index: 1;
 }
 .run-modal-head {
@@ -2417,7 +2517,7 @@ tr.row-pick td {
   margin-bottom: 6px;
 }
 .run-modal-head h2 {
-  color: black;
+  color: var(--ink);
   margin: 0 0 4px;
 }
 .run-modal-head p {
@@ -2430,7 +2530,7 @@ tr.row-pick td {
   top: -24px;
   margin: -24px -26px 6px;
   padding: 24px 26px 14px;
-  background: #fff;
+  background: var(--card);
   z-index: 2;
   border-bottom: 1px solid var(--line);
 }
@@ -2463,7 +2563,7 @@ tr.row-pick td {
   padding: 14px 18px 0;
   display: flex;
   justify-content: flex-end;
-  background: #fff;
+  background: var(--card);
   z-index: 3;
   border-top-left-radius: 14px;
   border-top-right-radius: 14px;
@@ -2565,7 +2665,7 @@ tr.row-pick td {
   border: 1px solid var(--line);
   border-radius: 12px;
   padding: 10px 14px;
-  background: #fff;
+  background: var(--card);
   margin: 4px 0 6px;
   flex-wrap: nowrap;
   overflow-x: auto;
@@ -2706,7 +2806,7 @@ tr.row-pick td {
   padding: 7px 10px;
   border: 1px solid var(--line);
   border-radius: 8px;
-  background: #fff;
+  background: var(--card);
   min-width: 160px;
 }
 
@@ -2796,7 +2896,7 @@ tr.row-pick td {
   flex-direction: column;
   align-items: stretch;
   gap: 4px;
-  background: rgba(255, 255, 255, 0.92);
+  background: var(--overlay-92);
   border: 1px solid var(--line);
   border-radius: 8px;
   padding: 4px;
@@ -2808,7 +2908,7 @@ tr.row-pick td {
   height: 26px;
   border: 1px solid var(--line);
   border-radius: 6px;
-  background: #fff;
+  background: var(--card);
   color: var(--ink);
   font-size: 15px;
   font-weight: 700;
@@ -2881,7 +2981,7 @@ tr.row-pick td {
   padding: 9px 12px;
   border: 1px solid var(--line);
   border-radius: 9px;
-  background: #fff;
+  background: var(--card);
   color: var(--ink);
 }
 .map-table-count {
@@ -2898,7 +2998,7 @@ tr.row-pick td {
   padding: 7px 14px;
   border: 1px solid var(--line);
   border-radius: 8px;
-  background: #fff;
+  background: var(--card);
   color: var(--accent-dark);
   cursor: pointer;
   white-space: nowrap;
@@ -2959,7 +3059,7 @@ tr.pinned-row {
 
 .workflow-nav {
   flex-shrink: 0;
-  background: #fff;
+  background: var(--card);
   border: 1px solid var(--line);
   border-radius: var(--radius);
   box-shadow: var(--shadow-sm);
@@ -2986,7 +3086,7 @@ tr.pinned-row {
   flex: 1 1 16px;
   min-width: 12px;
   height: 2px;
-  background: #c3c8d9;
+  background: var(--connector);
   margin-top: 20px;
   align-self: flex-start;
 }
@@ -3049,8 +3149,6 @@ tr.pinned-row {
 }
 .workflow-nav-label {
   line-height: 1.25;
-}
-.workflow-nav-item--predict {
 }
 .workflow-nav-item--predict .workflow-nav-index {
   background: var(--accent);
@@ -3131,7 +3229,7 @@ tr.pinned-row {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(255, 255, 255, 0.85);
+  background: var(--overlay-85);
   border-radius: 10px;
   z-index: 1500;
 }
@@ -3144,7 +3242,7 @@ tr.pinned-row {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(255, 255, 255, 0.85);
+  background: var(--overlay-85);
   z-index: 50;
 }
 .stage-loader-spinner {
@@ -3168,7 +3266,7 @@ tr.pinned-row {
   bottom: calc(100% + 8px);
   left: 50%;
   transform: translateX(-50%);
-  background: #fff;
+  background: var(--card);
   color: var(--ink);
   font-family: inherit;
   font-size: 12px;
@@ -3194,7 +3292,7 @@ tr.pinned-row {
   visibility: visible;
 }
 .app-tooltip {
-  background: #fff;
+  background: var(--card);
   color: var(--ink);
   font-family: inherit;
   font-size: 12px;

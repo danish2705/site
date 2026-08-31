@@ -3,6 +3,7 @@ import "./styles/App.css";
 import { PipelineProvider } from "./context/PipelineContext";
 import { RouteProvider, useRoute } from "./context/RouteContext";
 import { SiteMapProvider } from "./context/SiteMapContext";
+import { ThemeProvider } from "./context/ThemeContext";
 import { usePipeline } from "./hooks/usePipeline";
 import TopBar from "./components/layout/TopBar";
 import Sidebar from "./components/layout/Sidebar";
@@ -56,14 +57,16 @@ function Dashboard() {
           </button>
           <div className="sidebar-shell-clip">
             <div className="sidebar-shell-inner">
-              <Sidebar onOpenPredictModal={() => setPredictModalOpen(true)} />
+              <Sidebar />
             </div>
           </div>
         </div>
  
         <main className="main-panel">
           {}
-          <WorkflowNav />
+          <WorkflowNav
+            onOpenPredictModal={() => setPredictModalOpen(true)}
+          />
  
           {error && (
             <div className="shell-error">
@@ -140,13 +143,15 @@ export default function App() {
       )}
     >
       {}
-      <RouteProvider>
-        <PipelineProvider>
-          <SiteMapProvider>
-            <Dashboard />
-          </SiteMapProvider>
-        </PipelineProvider>
-      </RouteProvider>
+      <ThemeProvider>
+        <RouteProvider>
+          <PipelineProvider>
+            <SiteMapProvider>
+              <Dashboard />
+            </SiteMapProvider>
+          </PipelineProvider>
+        </RouteProvider>
+      </ThemeProvider>
     </ErrorBoundary>
   );
 }

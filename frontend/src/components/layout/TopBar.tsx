@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { usePipeline } from "../../hooks/usePipeline";
 import DataTransparencyModal from "../ui/DataTransparencyModal";
-import { UserIcon } from "../ui/Icons";
+import { UserIcon, SunIcon, MoonIcon } from "../ui/Icons";
+import { useTheme } from "../../context/ThemeContext";
 
 export default function TopBar({
   onOpenHistory,
@@ -9,6 +10,7 @@ export default function TopBar({
   onOpenHistory: () => void;
 }) {
   const { savedRuns } = usePipeline();
+  const { theme, toggleTheme } = useTheme();
   const hasSavedRuns = !!savedRuns && savedRuns.length > 0;
   const [menuOpen, setMenuOpen] = useState(false);
   const [dataTransparencyOpen, setDataTransparencyOpen] = useState(false);
@@ -85,6 +87,33 @@ export default function TopBar({
                 }}
               >
                 Data Transparency
+              </button>
+              <div className="user-menu-divider" />
+              <button
+                type="button"
+                className="user-menu-item theme-toggle-item"
+                data-tooltip="Toggle dark mode"
+                onClick={(e) => {
+                  e.preventDefault();
+                  toggleTheme();
+                }}
+              >
+                <span className="theme-toggle-label">
+                  <span className="theme-toggle-icon">
+                    {theme === "dark" ? (
+                      <MoonIcon className="btn-icon" />
+                    ) : (
+                      <SunIcon className="btn-icon" />
+                    )}
+                  </span>
+                  {theme === "dark" ? "Dark Mode" : "Light Mode"}
+                </span>
+                <span
+                  className={`theme-switch ${theme === "dark" ? "on" : ""}`}
+                  aria-hidden="true"
+                >
+                  <span className="theme-switch-knob" />
+                </span>
               </button>
             </div>
           )}
