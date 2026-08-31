@@ -1,6 +1,6 @@
 {
   "meta": {
-    "description": "Synthetic, claims-data-style patient records reshaped from the same lat/lng geography used by backend/src/data/syntheticPopulation.ts. Every field except country/city/lat/lng anchor points is FABRICATED (deterministic seeded-random) \u2014 never real patient or claims data. Race is a detailed North-American mix for United States/Canada only (per Srikanth's requirement); every other country gets a single regional descriptor, not a real census breakdown.",
+    "description": "Synthetic, claims-data-style patient records reshaped from the same lat/lng geography used by backend/src/data/syntheticPopulation.ts. Every field except country/city/lat/lng anchor points is FABRICATED (deterministic seeded-random) \u2014 never real patient or claims data. Race is a detailed North-American mix for United States/Canada only; every other country gets a single regional descriptor, not a real census breakdown.",
     "totalRecords": 22516,
     "countries": 35,
     "recordsByCountry": {

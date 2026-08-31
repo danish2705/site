@@ -334,6 +334,7 @@ export async function runPipelineStages1to3(
         accreditationRequired: requirement["Accreditation Required"],
       },
       requirementSource: requirement.requirementSource ?? "live",
+      
       eligibility: {
         criteriaText: requirement.eligibilityCriteriaText ?? null,
         sex: requirement.eligibilitySex ?? null,

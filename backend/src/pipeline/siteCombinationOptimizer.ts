@@ -111,6 +111,7 @@ function runStrategy(
   for (const site of ordered) {
     if (totalPatients >= targetEnrollment) break;
     if (site.recruitablePatients <= 0) continue;
+
     const remainingNeed = targetEnrollment - totalPatients;
     const patientsTaken = Math.min(site.recruitablePatients, remainingNeed);
     selected.push({
