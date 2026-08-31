@@ -33,21 +33,21 @@ import type {
   TrialRequirementRow,
   RequirementCheck,
 } from "../types.js";
-
+ 
 const sleep = (ms: number): Promise<void> =>
   new Promise((resolve) => setTimeout(resolve, ms));
-
+ 
 function toPositiveNumberOrUndefined(value: unknown): number | undefined {
   const n = typeof value === "number" ? value : Number(value);
   return Number.isFinite(n) && n > 0 ? n : undefined;
 }
-
+ 
 const RISK_MATRIX: RiskMatrix = {
   Low: { Low: "Low", Medium: "Low", High: "Medium" },
   Medium: { Low: "Low", Medium: "Medium", High: "High" },
   High: { Low: "Medium", Medium: "High", High: "High" },
 };
-
+ 
 function formatRiskDate(value: string | Date | number): string {
   if (value instanceof Date) return value.toISOString().slice(0, 10);
   if (typeof value === "number") {
@@ -57,7 +57,7 @@ function formatRiskDate(value: string | Date | number): string {
   }
   return String(value);
 }
-
+ 
 function toRiskRecord(r: RiskRow): RiskRecord {
   return {
     riskId: r["Risk ID"],
@@ -76,27 +76,27 @@ function toRiskRecord(r: RiskRow): RiskRecord {
     standardReference: r["Standard Reference"] ?? null,
   };
 }
-
+ 
 const ACTIVE_STATUSES = new Set(["Open", "Monitoring"]);
-
+ 
 function explainRisk(risks: RiskRow[], matrix: RiskMatrix): RiskExplanation {
   const at = (level: RiskLevel) =>
     risks.filter((r) => r["Overall Risk Rating"] === level);
-
+ 
   const highs = at("High");
   const mediums = at("Medium");
   const lows = at("Low");
   const total = risks.length;
-
+ 
   const level: RiskLevel =
     highs.length > 0 ? "High" : mediums.length > 0 ? "Medium" : "Low";
-
+ 
   const deciding =
     level === "High" ? highs : level === "Medium" ? mediums : lows;
   const activeAtLevel = deciding.filter((r) =>
     ACTIVE_STATUSES.has(r.Status),
   ).length;
-
+ 
   const isActive = (r: RiskRow) => ACTIVE_STATUSES.has(r.Status);
   const drivers: RiskDriver[] = [...deciding]
     .sort((a, b) => {
@@ -125,7 +125,7 @@ function explainRisk(risks: RiskRow[], matrix: RiskMatrix): RiskExplanation {
             : ""),
       };
     });
-
+ 
   const categoryCounts = [...new Set(risks.map((r) => r["Risk Category"]))]
     .map((category) => {
       const inCat = risks.filter((r) => r["Risk Category"] === category);
@@ -138,7 +138,7 @@ function explainRisk(risks: RiskRow[], matrix: RiskMatrix): RiskExplanation {
       };
     })
     .sort((a, b) => b.high - a.high || b.medium - a.medium);
-
+ 
   let rule: string;
   if (total === 0) {
     rule = "Rated Low by default — no risk records are on file for this site.";
@@ -153,7 +153,7 @@ function explainRisk(risks: RiskRow[], matrix: RiskMatrix): RiskExplanation {
   } else {
     rule = `Rated Low because all ${total} risk record(s) are individually rated Low.`;
   }
-
+ 
   const topCategory = categoryCounts[0];
   const concentration =
     level !== "Low" &&
@@ -161,14 +161,14 @@ function explainRisk(risks: RiskRow[], matrix: RiskMatrix): RiskExplanation {
     topCategory[level === "High" ? "high" : "medium"] > 0
       ? ` Most concentrated in ${topCategory.category}.`
       : "";
-
+ 
   const summary =
     total === 0
       ? "No risk records on file."
       : `${deciding.length} ${level} record(s) of ${total} total — ` +
         `${activeAtLevel} still open or being monitored, ` +
         `${deciding.length - activeAtLevel} already mitigated or closed.${concentration}`;
-
+ 
   return {
     level,
     rule,
@@ -183,16 +183,16 @@ function explainRisk(risks: RiskRow[], matrix: RiskMatrix): RiskExplanation {
     categoryCounts,
   };
 }
-
+ 
 function checkRequirements(
   site: SiteRow,
   evalRow: ExtendedEvaluationRow,
   requirement: TrialRequirementRow | undefined,
 ): RequirementCheck[] {
   if (!requirement) return [];
-
+ 
   const checks: RequirementCheck[] = [];
-
+ 
   const numeric = (
     criterion: string,
     actual: number | null | undefined,
@@ -213,7 +213,7 @@ function checkRequirements(
       pass: cmp === "min" ? actual >= limit : actual <= limit,
     });
   };
-
+ 
   numeric(
     "Enrollment rate",
     evalRow["Historical Enrollment Rate (pts/month)"],
@@ -242,7 +242,7 @@ function checkRequirements(
     "max",
     "%",
   );
-
+ 
   if (requirement["Accreditation Required"] === "Yes") {
     const actual =
       site.Accreditation === "Yes"
@@ -257,12 +257,12 @@ function checkRequirements(
       pass: site.Accreditation === "Yes",
     });
   }
-
+ 
   return checks;
 }
-
+ 
 const STEP_DELAY_MS = 450;
-
+ 
 export const STAGE_NAMES: Record<number, string> = {
   1: "Clinical Trial Requirements",
   2: "Region / Country Selection",
@@ -273,7 +273,7 @@ export const STAGE_NAMES: Record<number, string> = {
   7: "Site Ranking",
   8: "Final Recommendation",
 };
-
+ 
 export interface Stage1to3Result {
   indication: string;
   specialty: string;
@@ -283,19 +283,29 @@ export interface Stage1to3Result {
   ageGroups?: string[];
 }
 
+/**
+ * Stages 1-3: parse the trial's requirements, pick the best region/country,
+ * and estimate the eligible patient population there. Split out from the
+ * original single runPipeline() so a caller can review/replace what happens
+ * next (Stage 4's candidate-site list) before continuing — see
+ * runSiteAnalysis() below, which picks up exactly where this leaves off.
+ */
 export async function runPipelineStages1to3(
   input: PipelineInput,
   send: SendFn,
 ): Promise<Stage1to3Result> {
   const { indication, phase, ageGroups } = input;
+  // Sanitize once at the entry — see toPositiveNumberOrUndefined above —
+  // so a blank form field ("") never reaches the requirement builder or the
+  // saved-run values as a literal empty string.
   const sampleSize = toPositiveNumberOrUndefined(input.sampleSize);
   const durationMonths = toPositiveNumberOrUndefined(input.durationMonths);
-
+ 
   if (!indication) {
     throw new Error(`Missing indication. Pick an indication before running the analysis.`);
   }
   const specialty = await resolveSpecialty(indication);
-
+ 
   const requirement = await buildLiveTrialRequirement({
     indication,
     specialty,
@@ -334,6 +344,7 @@ export async function runPipelineStages1to3(
         accreditationRequired: requirement["Accreditation Required"],
       },
       requirementSource: requirement.requirementSource ?? "live",
+      
       eligibility: {
         criteriaText: requirement.eligibilityCriteriaText ?? null,
         sex: requirement.eligibilitySex ?? null,
@@ -345,9 +356,9 @@ export async function runPipelineStages1to3(
     },
   });
   await sleep(STEP_DELAY_MS);
-
+ 
   send("stage", { stage: 2, name: STAGE_NAMES[2], status: "in-progress" });
-
+ 
   const userSelectedRegions = (input.regions || []).filter(
     (r) => r && r.region && r.country,
   );
@@ -355,7 +366,7 @@ export async function runPipelineStages1to3(
     userSelectedRegions.length > 0
       ? userSelectedRegions.map((r) => ({ region: r.region, country: r.country }))
       : REGION_DEFINITIONS;
-
+ 
   // Every defined region/country is now considered for every indication —
   // there is no more per-indication Region_Data to filter against. Live
   // data (competing trials) and LLM estimates (prevalence/regulatory/cost)
@@ -383,11 +394,11 @@ export async function runPipelineStages1to3(
       `No region/country options are configured (see backend/src/data/regionMap.ts), so there is nothing to select from for indication "${indication}".`,
     );
   }
-
+ 
   const regionMetricsWarnings = regionRows
     .filter((r) => r.metricsWarning)
     .map((r) => r.metricsWarning as string);
-
+ 
   const rankedRegions = [...regionRows].sort((a, b) => {
     const scoreOf = (r: typeof a) =>
       r["Prevalence (per 100k)"] -
@@ -396,6 +407,11 @@ export async function runPipelineStages1to3(
     return scoreOf(b) - scoreOf(a);
   });
 
+  // Live candidate sites are discovered AFTER a region is picked (Stage 4,
+  // below) — there is no more Excel Candidate_Sites list to pre-filter
+  // eligible regions against, so the top-scoring region by the formula
+  // above is simply selected. If Stage 4 then finds zero live candidates
+  // there, the existing empty-candidate check below throws a clear error.
   const topRegion = rankedRegions[0];
   await sleep(STEP_DELAY_MS);
   send("stage", {
@@ -408,9 +424,7 @@ export async function runPipelineStages1to3(
         : `Selected ${topRegion.Region}, ${topRegion.Country} (top-scoring of ${rankedRegions.length} regions considered — no region/country input given)`) +
       (topRegion.regionMetricsSource === "llm-estimated"
         ? " · Prevalence/Regulatory/Cost figures (AI-estimated)"
-        : topRegion.regionMetricsSource === "claims-synthetic"
-          ? " · Prevalence/Regulatory/Cost figures (from a pre-built synthetic reference table)"
-          : "") +
+        : "") +
       (regionMetricsWarnings.length > 0
         ? ` — ${regionMetricsWarnings.length} region(s) missing Prevalence/Regulatory/Cost data (see warnings)`
         : ""),
@@ -425,9 +439,9 @@ export async function runPipelineStages1to3(
     })),
     warnings: regionMetricsWarnings,
   });
-
+ 
   send("stage", { stage: 3, name: STAGE_NAMES[3], status: "in-progress" });
-
+ 
   const ASSUMED_CATCHMENT = 5_000_000;
   const estimatedPatients = Math.round(
     (topRegion["Prevalence (per 100k)"] / 100000) * ASSUMED_CATCHMENT,
@@ -441,14 +455,12 @@ export async function runPipelineStages1to3(
       `~${estimatedPatients.toLocaleString()} estimated eligible patients (illustrative)` +
       (topRegion.regionMetricsSource === "llm-estimated"
         ? " — based on an (AI-estimated) prevalence figure"
-        : topRegion.regionMetricsSource === "claims-synthetic"
-          ? " — based on a pre-built synthetic reference prevalence figure"
-          : ""),
+        : ""),
   });
-
+ 
   return { indication, specialty, requirement, topRegion, estimatedPatients, ageGroups };
 }
-
+ 
 export interface RunSiteAnalysisParams {
   input: PipelineInput;
   indication: string;
@@ -457,9 +469,22 @@ export interface RunSiteAnalysisParams {
   topRegion: RegionRow;
   estimatedPatients: number;
   ageGroups?: string[];
+  /**
+   * Real ClinicalTrials.gov facility rows to analyze — when provided (e.g.
+   * exactly what the user reviewed on the Ongoing Trials tab), Stage 4 uses
+   * this list instead of re-querying ClinicalTrials.gov itself. See
+   * buildLiveCandidateSites's `facilities` param.
+   */
   facilities?: LiveFacility[];
 }
 
+/**
+ * Stages 4-8: build/score candidate sites, assess risk, rank, and recommend.
+ * Picks up from runPipelineStages1to3()'s result. Kept as a separate
+ * function (rather than inlined in runPipeline()) so /api/site-analysis can
+ * call it directly with a caller-supplied `facilities` list — see
+ * controllers/siteAnalysis.controller.ts.
+ */
 export async function runSiteAnalysis(
   params: RunSiteAnalysisParams,
   send: SendFn,
@@ -474,8 +499,10 @@ export async function runSiteAnalysis(
     ageGroups,
     facilities,
   } = params;
-
+ 
   send("stage", { stage: 4, name: STAGE_NAMES[4], status: "in-progress" });
+  // Candidate sites are sourced live from ClinicalTrials.gov only — the
+  // Excel Candidate_Sites sheet is intentionally not used here.
   let liveCandidates: LiveCandidateSite[] = [];
   try {
     liveCandidates = await buildLiveCandidateSites({
@@ -487,6 +514,13 @@ export async function runSiteAnalysis(
       regionCompetingTrials: topRegion["Active Competing Trials"],
       avgCostPerPatient: topRegion["Avg Cost per Patient (USD)"],
       facilities,
+      // Real fix: this used to only affect Stage 1's text label (see the
+      // requirement["Age Group"] detail string above) — the actual
+      // candidate sites feeding Stages 4-7 (Ongoing Trials, Risk Register,
+      // Ranking, Final Recommendation) never filtered on it at all. Now
+      // the same live StdAge filter used by the Site Map tab applies here
+      // too, so every stage after this one is working from the same
+      // age-eligible site list, not two different unrelated lists.
       ageGroups,
     });
   } catch (err) {
@@ -494,7 +528,7 @@ export async function runSiteAnalysis(
       `[live-sites] Could not fetch live facilities for "${indication}" in ${topRegion.Country}: ${(err as Error).message}`,
     );
   }
-
+ 
   const liveSiteWarnings = liveCandidates
     .filter((c) => c.warning)
     .map((c) => c.warning as string);
@@ -507,7 +541,7 @@ export async function runSiteAnalysis(
     liveCandidates.map((c) => [c.site["Site ID"], c]),
   );
   const candidateSites: SiteRow[] = liveCandidates.map((c) => c.site);
-
+ 
   await sleep(STEP_DELAY_MS);
   send("stage", {
     stage: 4,
@@ -525,18 +559,21 @@ export async function runSiteAnalysis(
     })),
     warnings: liveSiteWarnings,
   });
-
+ 
   if (candidateSites.length === 0) {
     throw new Error(
       `No live candidate sites found for ${specialty} in ${topRegion.Region} on ClinicalTrials.gov. Try a different indication or region/country selection.`,
     );
   }
-
+ 
   send("stage", { stage: 5, name: STAGE_NAMES[5], status: "in-progress" });
 
+  // Candidate sites are 100% live-sourced at this point (buildLiveCandidateSites
+  // above), so every eval row is looked up from liveEvalById only — there is
+  // no Excel-backed fallback map to fall through to anymore.
   const getEvalRow = (siteId: string): ExtendedEvaluationRow | undefined =>
     liveEvalById.get(siteId);
-
+ 
   const evalRows = candidateSites
     .map((s) => getEvalRow(s["Site ID"]))
     .filter((e): e is NonNullable<typeof e> => !!e);
@@ -544,7 +581,7 @@ export async function runSiteAnalysis(
   const scoredById = new Map(
     scoredRaw.map((s, i) => [s.siteId, capConfidenceForEstimate(s, evalRows[i])]),
   );
-
+ 
   const evaluated = candidateSites
     .map((site) => {
       const evalRow = getEvalRow(site["Site ID"]);
@@ -561,12 +598,12 @@ export async function runSiteAnalysis(
       };
     })
     .filter((s): s is NonNullable<typeof s> => s !== null);
-
+ 
   const meetingRequirements = evaluated.filter((s) =>
     s.requirementChecks.every((c) => c.pass),
   );
   const lowConfidence = evaluated.filter((s) => s.scored.confidence === "Low");
-
+ 
   await sleep(STEP_DELAY_MS);
   send("stage", {
     stage: 5,
@@ -595,11 +632,19 @@ export async function runSiteAnalysis(
     })),
   });
 
+  // Risk Register and Ranking show sites of every real recruiting status
+  // (Recruiting, Not Yet Recruiting, Completed, Terminated, etc.) — no
+  // status is excluded server-side. Each site carries its real status
+  // (site.recruitingStatus, surfaced below as `status`) so the UI can offer
+  // its own status filter instead.
   send("stage", { stage: 6, name: STAGE_NAMES[6], status: "in-progress" });
   const riskWarnings: string[] = [];
   const withRisk: RankedSite[] = await Promise.all(
     evaluated.map(async (site) => {
       const siteId = site["Site ID"];
+      // candidateSites is 100% live-sourced (buildLiveCandidateSites, Stage 4
+      // above), so every siteId is present in liveCandidateBySiteId — there
+      // is no Excel-backed risk list to fall through to anymore.
       const live = liveCandidateBySiteId.get(siteId);
       if (!live) {
         throw new Error(
@@ -630,6 +675,11 @@ export async function runSiteAnalysis(
       ).length;
       const overallRisk: RiskLevel =
         highCount > 0 ? "High" : medCount > 0 ? "Medium" : "Low";
+      // True only when the ENTIRE risk list for this site is the single
+      // "no data available" placeholder (see liveRiskAssessment.ts) — not
+      // when a site genuinely has one real Low-rated record. Used so the UI
+      // can show "No Data" instead of a "Low Risk" badge that would look
+      // identical to a site that was actually assessed and found clean.
       const riskDataUnavailable =
         risks.length === 1 && risks[0]["Risk Category"] === "Data Availability";
       return {
@@ -663,12 +713,20 @@ export async function runSiteAnalysis(
       riskDataUnavailable: s.riskDataUnavailable,
       riskRecords: s.risks.map(toRiskRecord),
       dataSource: s.evalRow.dataSource ?? "llm-estimated",
+      // Real, raw ClinicalTrials.gov status (e.g. "RECRUITING",
+      // "NOT_YET_RECRUITING", "COMPLETED"...) — the UI derives its own
+      // display label/color and offers its own status filter from this.
       status: s.recruitingStatus ?? null,
     })),
     warnings: riskWarnings,
   });
-
+ 
   send("stage", { stage: 7, name: STAGE_NAMES[7], status: "in-progress" });
+  // Every scored candidate is ranked and returned — no top-N cap. The
+  // Ranking page shows "X of Y site(s)" against the full candidate pool
+  // (see runPipeline Stage 6's data), so silently dropping everyone past
+  // rank 10 would make that count misleading and hide real candidates the
+  // user asked to see.
   const ranked = [...withRisk].sort((a, b) => {
     const aOk = a.requirementChecks.every((c) => c.pass);
     const bOk = b.requirementChecks.every((c) => c.pass);
@@ -706,13 +764,13 @@ export async function runSiteAnalysis(
       status: s.recruitingStatus ?? null,
     })),
   });
-
+ 
   if (ranked.length === 0) {
     throw new Error(
       "No candidate sites could be scored — every candidate is missing an evaluation record.",
     );
   }
-
+ 
   const status = llmStatus();
   send("stage", {
     stage: 8,
@@ -728,6 +786,11 @@ export async function runSiteAnalysis(
     top,
     riskExplanation: top.riskExplanation,
   });
+  // Cache the full scored pool so the Final Recommendation page's status
+  // dropdown (best of Recruiting / Not Yet Recruiting / Active, Not
+  // Recruiting — see RecommendationPanel.tsx) can ask for a different
+  // status's top site later without re-running Stages 4-6. See
+  // analysisCache.ts / siteRecommendation.controller.ts.
   const analysisId = storeAnalysis({ input, topRegion, estimatedPatients, ranked });
   send("stage", {
     stage: 8,
@@ -744,6 +807,15 @@ export async function runSiteAnalysis(
   });
 }
 
+/**
+ * One-shot entry point used by POST /api/run: runs Stages 1-3 then
+ * immediately continues into Stages 4-8 with a self-fetched candidate-site
+ * list (no `facilities` override) — this is the original, unchanged
+ * end-to-end behavior. A caller that wants Stage 4 to analyze a specific,
+ * already-reviewed set of live sites (e.g. from the Ongoing Trials tab)
+ * should call runPipelineStages1to3() and runSiteAnalysis() directly instead
+ * — see controllers/siteAnalysis.controller.ts.
+ */
 export async function runPipeline(
   input: PipelineInput,
   send: SendFn,

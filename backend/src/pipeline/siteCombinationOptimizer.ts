@@ -5,6 +5,7 @@ import type {
   SiteCombinationStrategyResult,
 } from "../types.js";
 
+/** Real per-site cost if both figures are present; falls back to the single region-wide avgCostPerPatientUsd (applied as a per-patient-only cost, no base) when a site has no per-site cost data. */
 function estimatedCostFor(
   site: SiteCombinationRequestSite,
   patientsTaken: number,
@@ -33,6 +34,9 @@ function totalRiskWeightedScore(sites: SiteCombinationSelectedSite[]): {
   const sum = scored.reduce((total, s) => total + s.riskScore, 0);
   const averageRiskScore = Math.round((sum / scored.length) * 10) / 10;
 
+  // Only meaningful (non-null) when EVERY selected site has a risk score —
+  // a partial sum would understate the portfolio's real risk by silently
+  // treating unscored sites as risk-free.
   const portfolioRiskScore =
     scored.length === sites.length
       ? Math.round(
@@ -57,7 +61,22 @@ function runStrategy(
     | "highest-capacity-first",
   label: string,
 ): SiteCombinationStrategyResult {
-
+  // Rank candidates for THIS strategy. "lowest-cost-first" now uses real
+  // per-site cost (baseCostUsd/perPatientCostUsd) when available, ranking by
+  // the cost of taking this site's FULL recruitable population as a proxy
+  // for "cheapest way to add capacity" — falls back to greatest-patients-
+  // first (fewest sites) when no per-site cost data exists for a site.
+  // "balanced" combines three normalized dimensions — risk, cost-per-patient,
+  // AND recruitment capacity (how many patients a site can actually supply)
+  // — into one ranking so no single dimension dominates. A site that's
+  // cheap and low-risk but can only supply 3 patients isn't obviously
+  // "better" than a moderately-priced site that can supply 200, so capacity
+  // is scored alongside risk/cost rather than only being a tie-breaker.
+  // "highest-capacity-first" ignores risk/cost entirely and just sorts by
+  // each site's own recruitablePatients descending — the "fewest sites,
+  // biggest single bites" strategy: minimizes how many sites/facilities
+  // need to be brought on board to hit the target, independent of what
+  // that costs or how risky those sites are.
   const maxCostPerPatient = Math.max(
     1,
     ...sites.map((s) =>
@@ -88,6 +107,10 @@ function runStrategy(
       if (ac !== null && bc !== null && ac !== bc) return ac - bc;
       return b.recruitablePatients - a.recruitablePatients;
     }
+    // balanced: normalize risk, cost, and capacity to 0-1 each and weight
+    // evenly (capacity is inverted — more recruitable patients means a
+    // LOWER penalty — so "lowest combined score" still means "best site"
+    // across all three dimensions).
     const aCost = a.perPatientCostUsd ?? avgCostPerPatientUsd ?? 0;
     const bCost = b.perPatientCostUsd ?? avgCostPerPatientUsd ?? 0;
     const aCapacityPenalty =
@@ -111,6 +134,7 @@ function runStrategy(
   for (const site of ordered) {
     if (totalPatients >= targetEnrollment) break;
     if (site.recruitablePatients <= 0) continue;
+
     const remainingNeed = targetEnrollment - totalPatients;
     const patientsTaken = Math.min(site.recruitablePatients, remainingNeed);
     selected.push({
@@ -190,6 +214,23 @@ export function optimizeSiteCombination(
     0,
   );
 
+  // Prefer whichever strategy meets the target with fewer sites (less
+  // operational overhead — each additional site means another set of
+  // inspections/monitoring visits, per the call's own cost-of-sites point);
+  // tie-break on lower total cost, then lower portfolio risk.
+  //
+  // NOTE: an earlier version of this function also factored in an
+  // "Age-Cohort Balance" score from a small trained model here. That model
+  // was removed — it scored a fabricated country-level age proxy that never
+  // reflected the trial's actual selected Age Group input, so it could show
+  // a confident-looking number with no real connection to what the user
+  // asked for. The RIGHT fix for age was upstream: pipeline/liveMapData.ts's
+  // grossEligiblePatients (and therefore every site's recruitablePatients
+  // that this function accumulates) is now itself scaled by the real
+  // selected Age Group(s) — see data/ageDemographics.ts's
+  // getAgeEligibleFraction. So age is already accounted for in the numbers
+  // this optimizer works with, without needing a second, separate model
+  // bolted on here.
   let recommended: SiteCombinationStrategyResult | null = null;
   for (const s of meeting) {
     if (!recommended) {

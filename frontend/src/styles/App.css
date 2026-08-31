@@ -25,6 +25,8 @@
   --nav-h: 64px;
 }
 
+/* Any element carrying a tooltip (title attribute) should show a pointer on
+   hover */
 [title]:not(button):not(a):not(input):not(select):not(textarea) {
   cursor: pointer;
 }
@@ -3049,8 +3051,6 @@ tr.pinned-row {
 }
 .workflow-nav-label {
   line-height: 1.25;
-}
-.workflow-nav-item--predict {
 }
 .workflow-nav-item--predict .workflow-nav-index {
   background: var(--accent);
