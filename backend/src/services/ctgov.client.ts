@@ -1471,3 +1471,74 @@ export async function getFieldTopValues(
 
   return out;
 }
+
+interface ConditionSearchResponse {
+  studies?: Array<{
+    protocolSection?: {
+      conditionsModule?: { conditions?: string[] };
+    };
+  }>;
+}
+
+const CONDITION_SEARCH_PAGE_SIZE = 50;
+const CONDITION_SEARCH_RESULT_LIMIT = 20;
+
+/**
+ * Live, real search for condition/indication names matching partial user
+ * input — the ONLY way to reach ClinicalTrials.gov's full condition
+ * vocabulary from this app. getFieldTopValues (above) is capped at the top
+ * 250 most common values by ClinicalTrials.gov's own /stats/field/values
+ * endpoint, no matter what; it can never surface a less-common real
+ * indication. This instead searches actual studies
+ * (GET /studies?query.cond={query}, the same documented, already-used-
+ * elsewhere search this app relies on for candidate sites) and extracts the
+ * real, disclosed Condition values from whatever matches — essie's own
+ * text/synonym matching means the query doesn't need to be an exact
+ * substring of the returned condition, but results are then filtered down to
+ * ones that do contain the query text, so this behaves as a clean
+ * autocomplete rather than a loose relevance list. Real data throughout, no
+ * LLM involved — this is a search, not an inference.
+ */
+export async function searchConditions(query: string): Promise<string[]> {
+  if (!config.ctgov.enabled) return [];
+  const trimmed = query.trim();
+  if (trimmed.length < 2) return [];
+
+  const cacheKey = `condition-search:${trimmed.toLowerCase()}`;
+  const cached = getCached<string[]>(cacheKey);
+  if (cached !== undefined) return cached;
+
+  const fields = ["NCTId", "Condition"].join(",");
+  const url =
+    `${BASE_URL}/studies?query.cond=${encodeURIComponent(trimmed)}` +
+    `&fields=${fields}&pageSize=${CONDITION_SEARCH_PAGE_SIZE}`;
+
+  try {
+    const json = await fetchJson<ConditionSearchResponse>(url, config.ctgov.timeoutMs);
+    const lowerQuery = trimmed.toLowerCase();
+    // lowercased -> first-seen original casing, so results stay real,
+    // sponsor-disclosed text rather than a normalized/re-cased version.
+    const seen = new Map<string, string>();
+    for (const study of json.studies ?? []) {
+      const conditions = study.protocolSection?.conditionsModule?.conditions ?? [];
+      for (const c of conditions) {
+        if (!c) continue;
+        const key = c.toLowerCase();
+        if (!key.includes(lowerQuery)) continue;
+        if (!seen.has(key)) seen.set(key, c);
+      }
+    }
+    const values = [...seen.values()]
+      // Shorter, closer matches first (e.g. "Depression" before "Major
+      // Depressive Disorder with Psychotic Features") — a reasonable
+      // relevance proxy without a real ranking signal to sort by.
+      .sort((a, b) => a.length - b.length || a.localeCompare(b))
+      .slice(0, CONDITION_SEARCH_RESULT_LIMIT);
+
+    setCached(cacheKey, values, config.ctgov.cacheTtlMs);
+    return values;
+  } catch (err) {
+    warn(`condition search failed for "${trimmed}"`, err);
+    return [];
+  }
+}
