@@ -8,7 +8,6 @@ import TopBar from "./components/layout/TopBar";
 import ParametersFormPage from "./components/layout/ParametersFormPage";
 import EditParametersModal from "./components/layout/EditParametersModal";
 import WorkflowNav from "./components/layout/WorkflowNav";
-import PredictRegionModal from "./components/ui/PredictRegionModal";
 import CompetingTrialsPanel from "./components/prediction/CompetingTrialsPanel";
 import RiskAssessmentPanel from "./components/risk/RiskAssessmentPanel";
 import SiteRankingPanel from "./components/ranking/SiteRankingPanel";
@@ -24,19 +23,15 @@ import { countriesFromRegionKeys } from "./utils/region";
  
 function Dashboard() {
   const [historyOpen, setHistoryOpen] = useState(false);
-  const [predictModalOpen, setPredictModalOpen] = useState(false);
   // Opens EditParametersModal — the Analysis Parameters form no longer lives
   // as a permanent sidebar; this is the only way back into it once a run has
   // started (see TopBar's "Edit Parameters" button).
   const [editParametersOpen, setEditParametersOpen] = useState(false);
   const {
     form,
-    meta,
-    running,
     error,
     notice,
     dismissNotice,
-    setForm,
     workflowStepAvailable,
   } = usePipeline();
   const { route } = useRoute();
@@ -60,11 +55,25 @@ function Dashboard() {
 
       <div className="dashboard-body">
         <main className="main-panel">
-          <WorkflowNav onOpenPredictModal={() => setPredictModalOpen(true)} />
+          <WorkflowNav />
 
           {error && (
             <div className="shell-error">
               <p className="error-text">{error}</p>
+            </div>
+          )}
+
+          {notice && (
+            <div className="shell-notice">
+              <p className="notice-text">{notice}</p>
+              <button
+                type="button"
+                className="notice-dismiss"
+                onClick={dismissNotice}
+                aria-label="Dismiss notice"
+              >
+                ×
+              </button>
             </div>
           )}
  
@@ -101,20 +110,6 @@ function Dashboard() {
 
       {editParametersOpen && (
         <EditParametersModal onClose={() => setEditParametersOpen(false)} />
-      )}
-
-      {predictModalOpen && (
-        <PredictRegionModal
-          form={form}
-          disabled={!meta || running}
-          onApply={(region, country) =>
-            setForm((f) => ({
-              ...f,
-              regions: [`${region}||${country}`],
-            }))
-          }
-          onClose={() => setPredictModalOpen(false)}
-        />
       )}
     </div>
   );

@@ -6,6 +6,7 @@ import { EditIcon, UserIcon } from "../ui/Icons";
 export default function TopBar({
   onOpenHistory,
   onEditParameters,
+  showEditParameters = true,
 }: {
   onOpenHistory: () => void;
   /** Opens EditParametersModal — the only way back into the Analysis
@@ -13,6 +14,10 @@ export default function TopBar({
       while a run is in flight since editing params mid-run has nothing to
       apply to until the next run. */
   onEditParameters: () => void;
+  /** Hide the "Edit Parameters" button — used on ParametersFormPage itself,
+      where the user is already editing parameters and there's nothing yet
+      to jump back to. */
+  showEditParameters?: boolean;
 }) {
   const { savedRuns, running } = usePipeline();
   const hasSavedRuns = !!savedRuns && savedRuns.length > 0;
@@ -44,16 +49,18 @@ export default function TopBar({
       </div>
 
       <div className="top-bar-actions">
-        <button
-          type="button"
-          className="history-btn edit-parameters-btn"
-          onClick={onEditParameters}
-          disabled={running}
-          data-tooltip={running ? "Wait for the run to finish" : "Edit Analysis Parameters"}
-        >
-          <EditIcon className="btn-icon" />
-          Edit Parameters
-        </button>
+        {showEditParameters && (
+          <button
+            type="button"
+            className="history-btn edit-parameters-btn"
+            onClick={onEditParameters}
+            disabled={running}
+            data-tooltip={running ? "Wait for the run to finish" : "Edit Analysis Parameters"}
+          >
+            <EditIcon className="btn-icon" />
+            Edit Parameters
+          </button>
+        )}
         <div className="user-menu-wrap" ref={menuRef}>
           <button
             type="button"

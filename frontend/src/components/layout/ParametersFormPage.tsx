@@ -1,7 +1,9 @@
-import type { FormEvent } from "react";
+import { useState, type FormEvent } from "react";
 import { usePipeline } from "../../hooks/usePipeline";
 import ParametersFormFields from "./ParametersFormFields";
 import AIRegionPrediction from "../prediction/AIRegionPrediction";
+import TopBar from "./TopBar";
+import HistoryModal from "../runs/HistoryModal";
 
 /**
  * Full-page Analysis Parameters form — replaces the old always-open sidebar
@@ -29,6 +31,7 @@ export default function ParametersFormPage({
   onEnterDashboard: () => void;
 }) {
   const { form, meta, setForm, runAnalysis } = usePipeline();
+  const [historyOpen, setHistoryOpen] = useState(false);
 
   function handleStart(e: FormEvent) {
     e.preventDefault();
@@ -38,6 +41,11 @@ export default function ParametersFormPage({
 
   return (
     <div className="params-page">
+      <TopBar
+        onOpenHistory={() => setHistoryOpen(true)}
+        onEditParameters={() => {}}
+        showEditParameters={false}
+      />
       <div className="params-page-inner">
         <div className="params-page-columns">
           <div className="params-form-col">
@@ -48,7 +56,6 @@ export default function ParametersFormPage({
               <AIRegionPrediction
                 form={form}
                 disabled={!meta}
-                autoPredict
                 onApply={(region, country) =>
                   setForm((f) => ({
                     ...f,
@@ -60,6 +67,8 @@ export default function ParametersFormPage({
           </div>
         </div>
       </div>
+
+      {historyOpen && <HistoryModal onClose={() => setHistoryOpen(false)} />}
     </div>
   );
 }
