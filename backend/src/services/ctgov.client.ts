@@ -86,7 +86,169 @@ function warn(label: string, err: unknown): void {
   }
 }
 
+/* ---------------------------------------------------------------------- */
+/* 0. Single study lookup by NCT ID (landing-page "Search by NCT Number")  */
+/* ---------------------------------------------------------------------- */
 
+export interface NctStudyLookup {
+  nctId: string;
+  briefTitle: string | null;
+  officialTitle: string | null;
+  /** First disclosed condition — used as the auto-filled Indication. */
+  condition: string | null;
+  /** Every disclosed condition (a study can list more than one). */
+  conditions: string[];
+  overallStatus: string | null;
+  /** Raw ClinicalTrials.gov phase value(s), e.g. "PHASE2" — mapped to the app's "Phase II" label by the caller/controller. */
+  phases: string[];
+  enrollmentCount: number | null;
+  enrollmentType: string | null;
+  sex: string | null;
+  minimumAge: string | null;
+  maximumAge: string | null;
+  healthyVolunteers: boolean | null;
+  startDate: string | null;
+  primaryCompletionDate: string | null;
+  /** De-duplicated, disclosed location countries — shown as context only; NOT used to restrict the region/country search (this app's site-selection engine deliberately searches every configured region globally rather than assuming the best NEW site is wherever the original trial happened to run). */
+  countries: string[];
+  /** Total disclosed locations (all countries) on this study's record. */
+  siteCount: number;
+}
+
+interface RawNctStudy {
+  protocolSection?: {
+    identificationModule?: {
+      nctId?: string;
+      briefTitle?: string;
+      officialTitle?: string;
+    };
+    statusModule?: {
+      overallStatus?: string;
+      startDateStruct?: { date?: string };
+      primaryCompletionDateStruct?: { date?: string };
+    };
+    designModule?: {
+      phases?: string[];
+      enrollmentInfo?: { count?: number; type?: string };
+    };
+    conditionsModule?: { conditions?: string[] };
+    eligibilityModule?: {
+      sex?: string;
+      minimumAge?: string;
+      maximumAge?: string;
+      healthyVolunteers?: boolean;
+    };
+    contactsLocationsModule?: {
+      locations?: Array<{ country?: string }>;
+    };
+  };
+}
+
+const NCT_LOOKUP_FIELDS = [
+  "NCTId",
+  "BriefTitle",
+  "OfficialTitle",
+  "Condition",
+  "OverallStatus",
+  "Phase",
+  "EnrollmentCount",
+  "EnrollmentType",
+  "Sex",
+  "MinimumAge",
+  "MaximumAge",
+  "HealthyVolunteers",
+  "StartDate",
+  "PrimaryCompletionDate",
+  "LocationCountry",
+].join(",");
+
+/**
+ * GET /studies/{nctId}?fields=... — a single study by its NCT number, for the
+ * landing page's "Search by NCT Number" auto-fill. Returns null when the ID
+ * isn't found (ClinicalTrials.gov 404s unknown/malformed NCT numbers) or on
+ * any fetch failure — callers show a "not found, try manual entry" message
+ * rather than a raw error either way, so the two cases are collapsed here.
+ */
+export async function getStudyByNctId(
+  nctId: string,
+): Promise<NctStudyLookup | null> {
+  const id = nctId.trim().toUpperCase();
+  if (!id) return null;
+  if (!config.ctgov.enabled) return null;
+
+  const cacheKey = `nct-lookup:${id}`;
+  const cached = getCached<NctStudyLookup | null>(cacheKey);
+  if (cached !== undefined) return cached;
+
+  const url = `${BASE_URL}/studies/${encodeURIComponent(id)}?fields=${NCT_LOOKUP_FIELDS}`;
+
+  try {
+    const json = await fetchJson<RawNctStudy>(url, config.ctgov.timeoutMs);
+    const ps = json.protocolSection;
+    if (!ps?.identificationModule?.nctId) {
+      setCached(cacheKey, null, config.ctgov.cacheTtlMs);
+      return null;
+    }
+    const locations = ps.contactsLocationsModule?.locations ?? [];
+    const countries = [
+      ...new Set(
+        locations
+          .map((l) => l.country)
+          .filter((c): c is string => !!c && c.trim().length > 0),
+      ),
+    ];
+    const conditions = ps.conditionsModule?.conditions ?? [];
+    const result: NctStudyLookup = {
+      nctId: ps.identificationModule.nctId,
+      briefTitle: ps.identificationModule.briefTitle ?? null,
+      officialTitle: ps.identificationModule.officialTitle ?? null,
+      condition: conditions[0] ?? null,
+      conditions,
+      overallStatus: ps.statusModule?.overallStatus ?? null,
+      phases: ps.designModule?.phases ?? [],
+      enrollmentCount:
+        typeof ps.designModule?.enrollmentInfo?.count === "number"
+          ? ps.designModule.enrollmentInfo.count
+          : null,
+      enrollmentType: ps.designModule?.enrollmentInfo?.type ?? null,
+      sex: ps.eligibilityModule?.sex ?? null,
+      minimumAge: ps.eligibilityModule?.minimumAge ?? null,
+      maximumAge: ps.eligibilityModule?.maximumAge ?? null,
+      healthyVolunteers:
+        typeof ps.eligibilityModule?.healthyVolunteers === "boolean"
+          ? ps.eligibilityModule.healthyVolunteers
+          : null,
+      startDate: ps.statusModule?.startDateStruct?.date ?? null,
+      primaryCompletionDate:
+        ps.statusModule?.primaryCompletionDateStruct?.date ?? null,
+      countries,
+      siteCount: locations.length,
+    };
+    setCached(cacheKey, result, config.ctgov.cacheTtlMs);
+    return result;
+  } catch (err) {
+    warn(`NCT lookup failed for "${id}"`, err);
+    return null;
+  }
+}
+
+/* ---------------------------------------------------------------------- */
+/* 1. Active competing trials count                                       */
+/* ---------------------------------------------------------------------- */
+
+/**
+ * Live replacement for RegionRow["Active Competing Trials"].
+ * GET /studies?query.cond={condition}&query.locn={country}
+ *     &filter.overallStatus={config.competingTrials.statuses.join(",")}&countTotal=true&pageSize=1
+ *
+ * Which statuses count as "ongoing/competing" is a business definition, not
+ * a ClinicalTrials.gov constant — see config.ts's competingTrials.statuses
+ * doc comment. Defaults to RECRUITING, NOT_YET_RECRUITING,
+ * ACTIVE_NOT_RECRUITING, and ENROLLING_BY_INVITATION (i.e. anything still
+ * actively running), excluding terminal statuses like COMPLETED/TERMINATED/
+ * WITHDRAWN/SUSPENDED — adjustable via the COMPETING_TRIAL_STATUSES env var
+ * without touching this query-building code.
+ */
 export async function getActiveCompetingTrialsCount(
   condition: string,
   country: string,
@@ -216,6 +378,19 @@ export interface LiveFacility {
   country: string | null;
   status: string | null;
   lastUpdatePostDate: string | null;
+  /**
+   * Real, disclosed protocolSection.eligibilityModule.minimumAge/maximumAge
+   * for the STUDY this facility location belongs to. NOT a per-location
+   * field ClinicalTrials.gov itself tracks — age eligibility is set once for
+   * the whole protocol, so every location within the SAME study shares this
+   * same value. It still varies genuinely across the facility list as a
+   * whole, though, because different facilities here usually come from
+   * different studies with different eligibility windows — used to build a
+   * real per-site "Patient age" requirement check (see
+   * pipeline/runPipeline.ts's checkRequirements).
+   */
+  minimumAge: string | null;
+  maximumAge: string | null;
 }
 
 interface StudiesResponse {
@@ -244,7 +419,26 @@ interface StudiesResponse {
   totalCount?: number;
 }
 
-function selectedStdAgeValues(ageGroups: string[] | undefined): Set<string> {
+/**
+ * Live cross-check for SiteRow — real facilities ClinicalTrials.gov has
+ * on record as running (or having run) trials for this condition.
+ * GET /studies?query.cond={condition}[&query.locn={country}]
+ *     &fields=NCTId,BriefTitle,OverallStatus,LastUpdatePostDate,LocationFacility,LocationCity,LocationState,LocationCountry,LocationStatus
+ *
+ * Per-location recruitment status (LocationStatus) is only disclosed by
+ * ClinicalTrials.gov for a subset of trials (mainly ones that actively
+ * report site-level recruitment) — many trials, especially older/completed
+ * ones, leave it blank even though the study itself always has an overall
+ * status. Rather than show every such row as "Unknown," this falls back to
+ * the study's own OverallStatus when the location-specific one is missing,
+ * so a row still shows a real, disclosed status rather than nothing.
+ */
+/**
+ * Turns the trial form's selected Age Group label(s) into the standardized
+ * CHILD / ADULT / OLDER_ADULT values ClinicalTrials.gov itself classifies
+ * studies into (the same buckets its own site's age filter uses).
+ */
+export function selectedStdAgeValues(ageGroups: string[] | undefined): Set<string> {
   const values = new Set<string>();
   for (const g of ageGroups ?? []) {
     if (/older\s*adult/i.test(g)) values.add("OLDER_ADULT");
@@ -274,7 +468,21 @@ function parseAgeYears(age: string | null | undefined): number | null {
   }
 }
 
-function studyAgeGroups(
+/**
+ * Derives which StdAge bucket(s) a study's real, disclosed MinimumAge/
+ * MaximumAge eligibility range overlaps — computed locally from the same
+ * two fields ClinicalTrials.gov's own StdAge classification is itself
+ * derived from, rather than trusting an Essie `query.term=AREA[StdAge]...`
+ * filter sent to the live API (whose exact syntax/behavior this sandbox has
+ * no live network access to verify — see the old version of this comment,
+ * kept for history in git). Computing the bucket ourselves from two already-
+ * fetched, already-used-elsewhere-in-this-file fields is fully testable and
+ * doesn't depend on unverifiable server-side query behavior. A study with no
+ * age fields disclosed is treated as "all ages" (matches every group) rather
+ * than excluded, since an unknown eligibility range is not evidence the
+ * study excludes anyone.
+ */
+export function studyAgeGroups(
   minimumAge: string | null | undefined,
   maximumAge: string | null | undefined,
 ): Set<string> {
@@ -363,6 +571,8 @@ export async function getFacilitiesForCondition(
           country: loc.country ?? null,
           status: loc.status ?? overallStatus ?? null,
           lastUpdatePostDate,
+          minimumAge: study.protocolSection?.eligibilityModule?.minimumAge ?? null,
+          maximumAge: study.protocolSection?.eligibilityModule?.maximumAge ?? null,
         });
       }
     }

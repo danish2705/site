@@ -5,6 +5,7 @@ import { errorHandler } from "./middleware/errorHandler.js";
 import { notFound } from "./middleware/notFound.js";
 import { healthRoutes } from "./routes/health.routes.js";
 import { liveTrialsRoutes } from "./routes/liveTrials.routes.js";
+import { nctLookupRoutes } from "./routes/nctLookup.routes.js";
 import { liveMapRoutes } from "./routes/liveMap.routes.js";
 import { metaRoutes } from "./routes/meta.routes.js";
 import { regionRoutes } from "./routes/region.routes.js";
@@ -33,6 +34,7 @@ export function createApp() {
   app.use("/api", runRoutes);
   app.use("/api", runsRoutes);
   app.use("/api", liveTrialsRoutes);
+  app.use("/api", nctLookupRoutes);
   app.use("/api", liveMapRoutes);
   app.use("/api", siteCombinationRoutes);
   app.use("/api", siteAnalysisRoutes);

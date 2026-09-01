@@ -99,6 +99,12 @@ export interface PipelineState {
   workflowStepAvailable: (step: WorkflowStep) => boolean;
 
   handleSubmit: (e: FormEvent<HTMLFormElement>) => Promise<void>;
+  /** Runs Stages 1-8 for an explicit form (no submit event needed) — used by the landing page's NCT-lookup auto-fill flow and by the full-page/modal Analysis Parameters forms (ParametersFormPage, EditParametersModal) to run the analysis with no native form submit needed. Call setForm with the same values first so the UI (parameters form, saved-run metadata) reflects what's actually running. */
+  runAnalysis: (formToUse: TrialForm) => Promise<void>;
+  /** Aborts the in-flight Run Analysis stream — see RunAnalysisOverlay's Cancel button. No-op if nothing is running. */
+  cancelRun: () => void;
+  /** Increments every time cancelRun() actually cancels an in-flight run — App.tsx watches this to re-expand the Analysis Parameters sidebar, which auto-collapses once a run starts (the sidebar has no other reason to reopen on its own after a cancel, unlike a normal completed/failed run where the user can just use the collapse toggle). */
+  cancelSignal: number;
 
   saveLabel: string;
   setSaveLabel: (label: string) => void;
@@ -256,9 +262,17 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
   const pipelineDone = completedCount === STAGE_LIST.length;
   const regionOptions = useMemo(() => meta?.regionOptions ?? [], [meta]);
 
-  async function handleSubmit(e: FormEvent<HTMLFormElement>) {
-    e.preventDefault();
-    if (!form.indication) {
+  /**
+   * The actual "Run Analysis" logic (Stages 1-8), split out of handleSubmit
+   * so it can be triggered without a real form submit event — the landing
+   * page's NCT-lookup flow auto-fills TrialForm fields and calls this
+   * directly, with zero manual form interaction. Takes the form to run
+   * explicitly (rather than reading the `form` state) since a caller that
+   * just called setForm(...) can't rely on that state update having landed
+   * yet by the time this runs.
+   */
+  async function runAnalysis(formToUse: TrialForm) {
+    if (!formToUse.indication) {
       setError("Please select an indication before running the analysis.");
       return;
     }
@@ -273,7 +287,7 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
     setRoute("site-map-details");
 
     try {
-      const res = await streamRun(form);
+      const res = await streamRun(formToUse, abortController.signal);
       await consumeStageStream(
         res,
         (payload) => {
@@ -306,9 +320,37 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
       setError((err as Error).message);
     } finally {
       setRunning(false);
+      runAbortRef.current = null;
+      // On success, land the user on Ongoing Trials once the whole pipeline
+      // (Stages 1-8) has actually finished — replaces the old
+      // navigate-immediately-to-Site-Map-(Global) behavior now that a
+      // full-screen loading overlay covers the run instead. On failure (or
+      // cancellation), stay put so the error banner (if any) is visible
+      // against whatever page the user was already on.
+      if (!streamFailed) setRoute("competing");
     }
   }
 
+  /** Kept only for any leftover native <form onSubmit> usage — thin wrapper around runAnalysis(). ParametersFormPage/EditParametersModal call runAnalysis directly instead so they can control the transition (dashboard handoff / modal close) around it. */
+  async function handleSubmit(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    await runAnalysis(form);
+  }
+
+  function cancelRun(): void {
+    if (!runAbortRef.current) return;
+    runAbortRef.current.abort();
+    setCancelSignal((n) => n + 1);
+  }
+
+  /**
+   * Sends whatever's currently loaded on the Ongoing Trials tab
+   * (ongoingTrialSites) to the backend to run Stages 4-8 against — see
+   * services/pipeline.service.ts's streamSiteAnalysis. Overwrites
+   * riskAssessment/ranking/finalResult with the result, same as Stage
+   * 6/7/8 of the initial run do, so Risk Register/Ranking always reflect
+   * whichever site set was analyzed most recently.
+   */
   async function analyzeOngoingTrialSites(): Promise<void> {
     if (!ongoingTrialSites || ongoingTrialSites.length === 0) {
       setError("Search Ongoing Trials first — there are no live sites to analyze yet.");
@@ -389,6 +431,9 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
     pipelineDone,
     workflowStepAvailable,
     handleSubmit,
+    runAnalysis,
+    cancelRun,
+    cancelSignal,
     saveLabel,
     setSaveLabel,
     saving,

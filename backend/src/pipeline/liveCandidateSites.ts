@@ -46,9 +46,16 @@ function monthsBetween(start: string, end: string): number | null {
   return months > 0 ? months : null;
 }
 
-function computeRealEnrollmentRate(
-  trials: FacilityTrialRecord[],
-): number | null {
+/**
+ * Real, facility-specific enrollment-rate data points: one
+ * (ACTUAL EnrollmentCount ÷ StartDate→PrimaryCompletionDate months) per
+ * completed on-file trial at this facility with usable real data. Empty if
+ * no trial has enough real data to compute even one rate. Kept as the raw
+ * array (not just its median) so the Enrollment Forecast feature can bootstrap
+ * a real, site-specific probability estimate from this facility's own actual
+ * track record — see pipeline/enrollmentForecast.ts.
+ */
+function computeRealEnrollmentRates(trials: FacilityTrialRecord[]): number[] {
   const rates: number[] = [];
   for (const t of trials) {
     if (t.enrollmentType !== "ACTUAL" || typeof t.enrollmentCount !== "number") {
@@ -59,7 +66,7 @@ function computeRealEnrollmentRate(
     if (months === null) continue;
     rates.push(t.enrollmentCount / months);
   }
-  return median(rates);
+  return rates;
 }
 
 function pickResultsNctId(
@@ -134,6 +141,17 @@ export interface LiveCandidateSite {
   benchmarkMedianSampleSize: number | null;
   resultsSignal: FacilityResultsSignal | null;
   siteCost: SyntheticSiteCost;
+  /**
+   * Real, per-trial enrollment rates (ACTUAL EnrollmentCount ÷ duration)
+   * from this facility's own completed on-file trials — see
+   * computeRealEnrollmentRates. Empty when the LLM wasn't configured (KPIs,
+   * and therefore this forecast, aren't built for this site at all) or when
+   * no completed trial had usable real data. Used by
+   * pipeline/enrollmentForecast.ts to bootstrap a real, site-specific
+   * probability estimate; a site with fewer than 2 entries here gets no
+   * probability shown, rather than one borrowed from indication-wide data.
+   */
+  ownHistoricalEnrollmentRates: number[];
 }
 
 export const RECRUITING_LOCATION_STATUSES = new Set([
@@ -311,6 +329,8 @@ export async function buildLiveCandidateSites(
         Accreditation: "Unknown",
         dataSource: "live",
         recruitingStatus: f.status ?? null,
+        eligibilityMinimumAge: f.minimumAge ?? null,
+        eligibilityMaximumAge: f.maximumAge ?? null,
       };
 
       if (!llmConfigured) {
@@ -324,12 +344,14 @@ export async function buildLiveCandidateSites(
           benchmarkMedianSampleSize,
           resultsSignal: null,
           siteCost,
+          ownHistoricalEnrollmentRates: [],
         };
       }
 
       const enrollmentPool =
         facilityWideHistory?.trials ?? history?.trials ?? [];
-      const realEnrollmentRate = computeRealEnrollmentRate(enrollmentPool);
+      const ownHistoricalEnrollmentRates = computeRealEnrollmentRates(enrollmentPool);
+      const realEnrollmentRate = median(ownHistoricalEnrollmentRates);
       const resultsNctId = pickResultsNctId(history, facilityWideHistory);
       const resultsSignal = resultsNctId
         ? await getFacilityResultsSignal(resultsNctId).catch(() => null)
@@ -358,6 +380,7 @@ export async function buildLiveCandidateSites(
           benchmarkMedianSampleSize,
           resultsSignal,
           siteCost,
+          ownHistoricalEnrollmentRates,
         };
       }
 
@@ -399,6 +422,7 @@ export async function buildLiveCandidateSites(
           benchmarkMedianSampleSize,
           resultsSignal,
           siteCost,
+          ownHistoricalEnrollmentRates,
         };
       } catch (err) {
         return {
@@ -411,6 +435,7 @@ export async function buildLiveCandidateSites(
           benchmarkMedianSampleSize,
           resultsSignal,
           siteCost,
+          ownHistoricalEnrollmentRates,
         };
       }
     },
@@ -431,6 +456,8 @@ export async function buildLiveCandidateSites(
             Accreditation: "Unknown",
             dataSource: "live" as const,
             recruitingStatus: facilities[i].status ?? null,
+            eligibilityMinimumAge: facilities[i].minimumAge ?? null,
+            eligibilityMaximumAge: facilities[i].maximumAge ?? null,
           },
           evalRow: null,
           warning: `${facilities[i].facility ?? "A live site"}: unexpected error building this candidate — shown but not scored.`,
@@ -445,6 +472,7 @@ export async function buildLiveCandidateSites(
             siteIdFor(facilities[i].facility ?? "unknown", null, null),
             params.country,
           ),
+          ownHistoricalEnrollmentRates: [],
         },
   );
 }

@@ -17,3 +17,21 @@ export function countriesFromRegionKeys(keys: string[]): string[] {
     ),
   ];
 }
+
+/**
+ * Every country this app is configured to search (backend's
+ * data/regionMap.ts, surfaced via meta.regionOptions), de-duplicated and
+ * sorted — the fallback country list for pages' country pickers when the
+ * trial form has no region/country pre-selected (e.g. the landing page's
+ * NCT-lookup flow, which deliberately searches every region globally rather
+ * than pre-selecting one). Without this fallback, those pages had nothing to
+ * populate their dropdown with and showed a permanently-disabled "no region
+ * selected" placeholder even once a real, global analysis had already run.
+ */
+export function allConfiguredCountries(
+  regionOptions: { country: string }[],
+): string[] {
+  return [...new Set(regionOptions.map((r) => r.country).filter(Boolean))].sort(
+    (a, b) => a.localeCompare(b),
+  );
+}

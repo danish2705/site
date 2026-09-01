@@ -167,6 +167,22 @@ export interface RequirementCheck {
   pass: boolean;
 }
 
+export interface EnrollmentForecast {
+  targetSampleSize: number;
+  durationMonths: number;
+  /** pts/month used for this projection. */
+  rate: number;
+  /** Whether `rate` is real (this facility's own ClinicalTrials.gov enrollment history) or an LLM estimate. */
+  rateSource: "real" | "llm-estimated";
+  /** Projected cumulative enrollment at this site over the full trial duration, at `rate`. */
+  expectedEnrollment: number;
+  /** How many months this site alone would need, at `rate`, to reach targetSampleSize. */
+  estimatedMonthsToTarget: number;
+  /** 0-100, or null when this site doesn't have enough of its own real completed-trial history to bootstrap a genuine estimate — see probabilityBasis. Never borrowed from indication-wide data. */
+  probability: number | null;
+  probabilityBasis: "site-history" | "insufficient-data";
+}
+
 export interface RankingRow {
   rank: number;
   siteId: string;
@@ -178,6 +194,10 @@ export interface RankingRow {
   caveats: string[];
   meetsRequirements: boolean;
   failedCriteria: string[];
+  /** Full per-criterion requirement checklist for this site (required specialty, patient age, required procedure, minimum recruitment, competing trials nearby) — see backend's runPipeline.ts checkRequirements(). */
+  requirementChecks: RequirementCheck[];
+  /** Real-arithmetic enrollment projection + (when supported by this site's own real historical data) a bootstrap probability of hitting the trial's target — see backend's pipeline/enrollmentForecast.ts. null when no rate/target/duration was available to project from at all. */
+  enrollmentForecast: EnrollmentForecast | null;
   suitabilityScore: number | null;
   riskLevel: "Low" | "Medium" | "High";
   highRiskCount: number;
@@ -307,6 +327,28 @@ export interface LiveTrialLandscapeResponse {
   benchmark: LiveTrialBenchmark;
   fetchedAt: string;
   warnings: string[];
+}
+
+/**
+ * Response for GET /api/nct-lookup/:nctId — the landing page's "Search by
+ * NCT Number" auto-fill. Already normalized onto this app's own TrialForm
+ * values (Phase/Age Group labels) by the backend — see backend's
+ * controllers/nctLookup.controller.ts.
+ */
+export interface NctLookupResponse {
+  nctId: string;
+  briefTitle: string | null;
+  officialTitle: string | null;
+  indication: string | null;
+  overallStatus: string | null;
+  phase: string | null;
+  ageGroups: string[];
+  enrollmentCount: number | null;
+  enrollmentType: string | null;
+  durationMonths: number | null;
+  /** Disclosed trial site countries — informational context only, not applied as a region/country filter (this app searches every configured region globally rather than assuming the best NEW site is wherever the original trial ran). */
+  countries: string[];
+  siteCount: number;
 }
 
 /** One trial site plotted on the Site Map tab — see the backend's pipeline/liveMapData.ts for exactly what's live vs. synthetic vs. approximate in each field. */

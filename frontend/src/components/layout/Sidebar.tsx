@@ -3,7 +3,7 @@ import Select from "../ui/Select";
 import RegionMultiSelect from "../prediction/RegionMultiSelect";
 
 const PHASES = ["Phase I", "Phase II", "Phase III", "Phase IV"];
-const BUDGETS = ["Low", "Mid", "High"];
+const BUDGETS = ["Low", "Mid", "High", "All"];
 const AGE_GROUPS = ["Child (0–17)", "Adult (18–64)", "Older Adult (65+)"];
 
 // Illustrative typical-duration ranges shown as a live hint once a phase is
@@ -220,7 +220,10 @@ export default function Sidebar() {
               value={form.budgetTier}
               onChange={(v) => setForm({ ...form, budgetTier: v })}
               placeholder="Select budget tier…"
-              options={BUDGETS.map((b) => ({ value: b, label: b }))}
+              options={BUDGETS.map((b) => ({
+                value: b,
+                label: b === "All" ? "All (no budget constraint)" : b,
+              }))}
             />
           </label>
         </div>

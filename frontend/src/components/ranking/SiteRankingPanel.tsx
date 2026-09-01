@@ -6,9 +6,10 @@ import StageLoader from "../ui/StageLoader";
 import Select from "../ui/Select";
 import { fetchOutreachDraft } from "../../services/siteCombination.service";
 import OutreachDraftModal from "../ui/OutreachDraftModal";
-import { MailIcon } from "../ui/Icons";
+import { MailIcon, CheckIcon, XIcon, ChevronDownIcon } from "../ui/Icons";
 import type { OutreachDraft, RankingRow } from "../../types";
 import EmptyState from "../ui/EmptyState";
+import { allConfiguredCountries } from "../../utils/region";
 
 type LiveStatusFilter = "RECRUITING" | "NOT_YET_RECRUITING" | "ACTIVE_NOT_RECRUITING";
 
@@ -54,11 +55,22 @@ export default function SiteRankingPanel() {
     analyzing,
     topRegion,
     selectedCountries,
+    regionOptions,
     analysisCache,
     prefetchingCountries,
     countryErrors,
     analyzeForCountry,
   } = usePipeline();
+  // When the trial form has no region/country pre-selected (the NCT-lookup
+  // flow deliberately leaves this empty to search every region globally),
+  // fall back to every country this app is configured to search at all,
+  // rather than leaving the picker with nothing to show.
+  const countryOptions =
+    selectedCountries.length > 0
+      ? selectedCountries
+      : allConfiguredCountries(regionOptions);
+  // Default to Recruiting per request — the strongest, currently-live
+  // signal. Only these three statuses are offered.
   const [statusFilter, setStatusFilter] = useState<LiveStatusFilter>("RECRUITING");
   const [pageCountry, setPageCountry] = useState("");
 
@@ -66,7 +78,12 @@ export default function SiteRankingPanel() {
     if (running) return;
     if (!topRegion) return;
     if (selectedCountries.length === 0) {
-      if (pageCountry) setPageCountry("");
+      // No explicit region/country selection (global NCT-lookup run) —
+      // default to the auto-picked top region's country, which Run
+      // Analysis already fully analyzed, rather than clearing the picker to
+      // empty. The broader countryOptions dropdown below still lets the
+      // user switch to any other configured country from here.
+      if (!pageCountry) setPageCountry(topRegion.country);
       return;
     }
     if (!selectedCountries.includes(pageCountry)) {
@@ -96,6 +113,17 @@ export default function SiteRankingPanel() {
       .filter((r) => (r.status ?? "").toUpperCase() === statusFilter)
       .map((r, i) => ({ ...r, rank: i + 1 }));
   }, [ranking, statusFilter]);
+
+  // Per-site outreach draft state — see backend pipeline/outreachDraft.ts.
+  // IMPORTANT: this only ever generates draft text; it never sends an email.
+  // ClinicalTrials.gov does not reliably disclose a real per-facility
+  // contact, so there is no live email address to send to — the contact
+  // shown is a clearly-labeled SYNTHETIC placeholder, not a real inbox.
+  // Which site's Protocol fit checklist is currently expanded — one at a
+  // time, toggled by clicking its badge (see the "Protocol fit" cell below).
+  const [expandedChecklistSiteId, setExpandedChecklistSiteId] = useState<
+    string | null
+  >(null);
 
   const [openDraftSiteId, setOpenDraftSiteId] = useState<string | null>(null);
   const [draftLoadingSiteId, setDraftLoadingSiteId] = useState<string | null>(
@@ -134,13 +162,14 @@ export default function SiteRankingPanel() {
     }
   }
 
-  const countryPicker = selectedCountries.length > 0 && (
+  const countryPicker = countryOptions.length > 0 && (
     <div className="predict-head-actions">
       <Select
+        className="country-select-wide"
         value={pageCountry}
         onChange={setPageCountry}
         placeholder="Select country to analyze…"
-        options={selectedCountries.map((c) => ({ value: c, label: c }))}
+        options={countryOptions.map((c) => ({ value: c, label: c }))}
       />
     </div>
   );
@@ -150,7 +179,7 @@ export default function SiteRankingPanel() {
       return (
         <div className="card">
           <div className="predict-head">
-            <div className="predict-head-top">
+            <div className="predict-head-top map-controls map-controls--flush">
               {countryPicker}
               <div className="predict-head-actions" style={{ marginLeft: "auto" }}>
                 <Select
@@ -178,17 +207,29 @@ export default function SiteRankingPanel() {
     }
     return (
       <div className="card">
-        {countryPicker && <div className="map-controls">{countryPicker}</div>}
-        <EmptyState
-          title={countryErrors[pageCountry] ? "No live sites found" : "No ranking yet"}
-          detail={
-            countryErrors[pageCountry]
-              ? countryErrors[pageCountry]
-              : selectedCountries.length > 0
-                ? "Pick a country above to fetch its live sites and run Risk Register/Ranking."
-                : "Pick a region/country in Step 1, then select a country above to populate this."
-          }
-        />
+        {countryPicker && (
+          <div className="map-controls map-controls--flush">{countryPicker}</div>
+        )}
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            flex: 1,
+            minHeight: 200,
+          }}
+        >
+          <EmptyState
+            title={countryErrors[pageCountry] ? "No live sites found" : "No ranking yet"}
+            detail={
+              countryErrors[pageCountry]
+                ? countryErrors[pageCountry]
+                : countryOptions.length > 0
+                  ? "Pick a country above to fetch its live sites and run Risk Register/Ranking."
+                  : "Pick a region/country in Step 1, then select a country above to populate this."
+            }
+          />
+        </div>
       </div>
     );
   }
@@ -196,7 +237,7 @@ export default function SiteRankingPanel() {
   return (
     <div className="card">
       <div className="predict-head">
-        <div className="predict-head-top">
+        <div className="predict-head-top map-controls map-controls--flush">
           {countryPicker}
           <div className="predict-head-actions" style={{ marginLeft: "auto" }}>
             <Select
@@ -222,14 +263,15 @@ export default function SiteRankingPanel() {
           <table className="ranking-table">
             <colgroup>
               <col style={{ width: "4%" }} />
-              <col style={{ width: "24%" }} />
-              <col style={{ width: "9%" }} />
-              <col style={{ width: "10%" }} />
-              <col style={{ width: "16%" }} />
-              <col style={{ width: "10%" }} />
+              <col style={{ width: "20%" }} />
               <col style={{ width: "8%" }} />
-              <col style={{ width: "10%" }} />
+              <col style={{ width: "8%" }} />
+              <col style={{ width: "13%" }} />
+              <col style={{ width: "16%" }} />
               <col style={{ width: "9%" }} />
+              <col style={{ width: "7%" }} />
+              <col style={{ width: "8%" }} />
+              <col style={{ width: "7%" }} />
             </colgroup>
             <thead>
               <tr>
@@ -238,6 +280,11 @@ export default function SiteRankingPanel() {
                 <th>Region</th>
                 <th>Score</th>
                 <th>Breakdown</th>
+                <th
+                  data-tooltip="Real-arithmetic projection from this site's enrollment rate — probability shown only when this site has 2+ of its own real completed trials to bootstrap from."
+                >
+                  Enrollment forecast
+                </th>
                 <th>Protocol fit</th>
                 <th>Risk</th>
                 <th data-tooltip="Live ClinicalTrials.gov status for this site.">
@@ -254,7 +301,7 @@ export default function SiteRankingPanel() {
             <tbody>
               {filteredRanking.length === 0 && (
                 <tr>
-                  <td colSpan={9} className="predict-placeholder">
+                  <td colSpan={10} className="predict-placeholder">
                     No sites match the selected status filter.
                   </td>
                 </tr>
@@ -288,16 +335,62 @@ export default function SiteRankingPanel() {
                     />
                   </td>
                   <td>
-                    {r.meetsRequirements ? (
-                      <span className="badge low">Meets all</span>
+                    {r.enrollmentForecast ? (
+                      <div className="enrollment-forecast-cell">
+                        <div>
+                          Expected {r.enrollmentForecast.expectedEnrollment}{" "}
+                          <span className="ef-muted">
+                            / {r.enrollmentForecast.targetSampleSize} target
+                          </span>
+                        </div>
+                        <div className="ef-muted">
+                          ~{r.enrollmentForecast.estimatedMonthsToTarget} mo to
+                          reach target
+                        </div>
+                        <div
+                          className={`ef-rate-flag ef-rate-${r.enrollmentForecast.rateSource}`}
+                        >
+                          {r.enrollmentForecast.rateSource === "real"
+                            ? "Based on this site's real enrollment history"
+                            : "AI-estimated rate — no enrollment history on file"}
+                        </div>
+                        {r.enrollmentForecast.probability !== null ? (
+                          <span
+                            className={`badge ef-probability ${
+                              r.enrollmentForecast.probability >= 70
+                                ? "low"
+                                : r.enrollmentForecast.probability >= 40
+                                  ? "medium"
+                                  : "high"
+                            }`}
+                          >
+                            {r.enrollmentForecast.probability}% probability
+                          </span>
+                        ) : (
+                          <span className="badge no-data ef-probability">
+                            Not enough data
+                          </span>
+                        )}
+                      </div>
                     ) : (
-                      <span
-                        className="badge medium"
-                        data-tooltip={`Fails: ${r.failedCriteria.join(", ")}`}
-                      >
-                        {r.failedCriteria.length} unmet
-                      </span>
+                      <span className="ef-muted">Not available</span>
                     )}
+                  </td>
+                  <td>
+                    <button
+                      type="button"
+                      className={`protocol-fit-toggle badge ${r.meetsRequirements ? "low" : "medium"}`}
+                      aria-expanded={expandedChecklistSiteId === r.siteId}
+                      onClick={() =>
+                        setExpandedChecklistSiteId((prev) =>
+                          prev === r.siteId ? null : r.siteId,
+                        )
+                      }
+                    >
+                      {r.requirementChecks.filter((c) => c.pass).length}/
+                      {r.requirementChecks.length} met
+                      <ChevronDownIcon />
+                    </button>
                   </td>
                   <td>
                     <span className={`badge ${r.riskLevel.toLowerCase()}`}>
@@ -333,6 +426,37 @@ export default function SiteRankingPanel() {
                     </button>
                   </td>
                 </tr>
+                {expandedChecklistSiteId === r.siteId && (
+                  <tr className="requirement-checklist-row">
+                    <td colSpan={10}>
+                      <table className="requirement-checklist">
+                        <thead>
+                          <tr>
+                            <th></th>
+                            <th>Required</th>
+                            <th>This site</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {r.requirementChecks.map((c) => (
+                            <tr key={c.criterion}>
+                              <td>
+                                <span
+                                  className={`req-criterion ${c.pass ? "req-pass" : "req-fail"}`}
+                                >
+                                  {c.pass ? <CheckIcon /> : <XIcon />}
+                                  {c.criterion}
+                                </span>
+                              </td>
+                              <td>{c.required}</td>
+                              <td>{c.actual}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </td>
+                  </tr>
+                )}
                 </Fragment>
               ))}
             </tbody>

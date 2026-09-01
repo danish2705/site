@@ -11,6 +11,7 @@ import { fetchOutreachDraft } from "../../services/siteCombination.service";
 import { fetchRecommendationForStatus } from "../../services/pipeline.service";
 import OutreachDraftModal from "../ui/OutreachDraftModal";
 import type { FinalResult, OutreachDraft } from "../../types";
+import { allConfiguredCountries } from "../../utils/region";
 
 type LiveStatusFilter = "RECRUITING" | "NOT_YET_RECRUITING" | "ACTIVE_NOT_RECRUITING";
 
@@ -46,11 +47,20 @@ export default function RecommendationPanel() {
     analyzing,
     topRegion,
     selectedCountries,
+    regionOptions,
     analysisCache,
     prefetchingCountries,
     analyzeForCountry,
   } = usePipeline();
   const [saveDialogOpen, setSaveDialogOpen] = useState(false);
+  // When the trial form has no region/country pre-selected (the NCT-lookup
+  // flow deliberately leaves this empty to search every region globally),
+  // fall back to every country this app is configured to search at all,
+  // rather than leaving the picker with nothing to show.
+  const countryOptions =
+    selectedCountries.length > 0
+      ? selectedCountries
+      : allConfiguredCountries(regionOptions);
 
   const [pageCountry, setPageCountry] = useState("");
 
@@ -58,7 +68,12 @@ export default function RecommendationPanel() {
     if (running) return;
     if (!topRegion) return;
     if (selectedCountries.length === 0) {
-      if (pageCountry) setPageCountry("");
+      // No explicit region/country selection (global NCT-lookup run) —
+      // default to the auto-picked top region's country, which Run
+      // Analysis already fully analyzed, rather than clearing the picker to
+      // empty. The broader countryOptions dropdown below still lets the
+      // user switch to any other configured country from here.
+      if (!pageCountry) setPageCountry(topRegion.country);
       return;
     }
     if (!selectedCountries.includes(pageCountry)) {
@@ -141,13 +156,14 @@ export default function RecommendationPanel() {
       ? recoByStatus[`${cached?.analysisId ?? pageCountry}::${statusFilter}`] ?? null
       : null;
 
-  const countryPicker = selectedCountries.length > 0 && (
+  const countryPicker = countryOptions.length > 0 && (
     <div className="predict-head-actions">
       <Select
+        className="country-select-wide"
         value={pageCountry}
         onChange={setPageCountry}
         placeholder="Select country to analyze…"
-        options={selectedCountries.map((c) => ({ value: c, label: c }))}
+        options={countryOptions.map((c) => ({ value: c, label: c }))}
       />
     </div>
   );
@@ -177,7 +193,7 @@ export default function RecommendationPanel() {
     if (pageLoading || statusLoading) {
       return (
         <div className="card">
-          <div className="pipeline-card-head">
+          <div className="pipeline-card-head map-controls map-controls--flush">
             {countryPicker}
             {statusPicker}
           </div>
@@ -204,7 +220,7 @@ export default function RecommendationPanel() {
     if (statusError) {
       return (
         <div className="card">
-          <div className="pipeline-card-head">
+          <div className="pipeline-card-head map-controls map-controls--flush">
             {countryPicker}
             {statusPicker}
           </div>
@@ -222,7 +238,36 @@ export default function RecommendationPanel() {
         </div>
       );
     }
-    return null;
+    // No result and nothing loading/erroring — either no country is picked
+    // yet, or (defensively) neither pickers below have anything to offer.
+    // Previously this returned null, leaving a blank white card with no
+    // explanation at all.
+    return (
+      <div className="card">
+        <div className="pipeline-card-head map-controls map-controls--flush">
+          {countryPicker}
+          {statusPicker}
+        </div>
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            flex: 1,
+            minHeight: 200,
+          }}
+        >
+          <EmptyState
+            title="No recommendation yet"
+            detail={
+              countryOptions.length > 0
+                ? "Pick a country above to see the recommended site."
+                : "Pick a region/country in Step 1 to populate this."
+            }
+          />
+        </div>
+      </div>
+    );
   }
   const site = finalResult;
 
@@ -264,7 +309,7 @@ export default function RecommendationPanel() {
 
   return (
     <div className="card">
-      <div className="pipeline-card-head">
+      <div className="pipeline-card-head map-controls map-controls--flush">
         {countryPicker}
         {statusPicker}
         <div style={{ display: "flex", gap: 8, marginLeft: "auto" }}>

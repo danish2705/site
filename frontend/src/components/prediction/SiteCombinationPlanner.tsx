@@ -204,8 +204,8 @@ export default function SiteCombinationPlanner({
                 style={{
                   padding: 12,
                   minHeight: 220,
-                  border: "1px solid #d7dbe6",
-                  background: STRATEGY_CARD_TINT[s.strategy] ?? "#fff",
+                  border: "1px solid var(--border)",
+                  background: STRATEGY_CARD_TINT[s.strategy] ?? "var(--card)",
                 }}
               >
                 <div style={{ fontWeight: 600 }}>
@@ -274,7 +274,7 @@ export default function SiteCombinationPlanner({
                       key={site.siteId}
                       style={{
                         padding: "6px 8px",
-                        background: "#f7f8fb",
+                        background: "var(--background)",
                         borderRadius: 6,
                       }}
                     >
@@ -298,7 +298,7 @@ export default function SiteCombinationPlanner({
                           gap: 10,
                           marginTop: 3,
                           fontSize: 11.5,
-                          color: "#666",
+                          color: "var(--text-secondary)",
                         }}
                       >
                         <span>

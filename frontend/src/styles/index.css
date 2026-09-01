@@ -1,3 +1,31 @@
+/* Shared color palette/design tokens — see the design spec for the
+   Purpose/Hex/Example mapping. Every color used anywhere in this app should
+   reference one of these variables rather than a hardcoded hex value, so the
+   palette can be changed in exactly one place. */
+:root {
+  --primary: #4342d1;
+  --primary-dark: #021848;
+  --primary-light: #eef2ff;
+
+  --success: #16a34a;
+  --success-light: #ecfdf5;
+
+  --warning: #f59e0b;
+  --warning-light: #fffbeb;
+
+  --danger: #dc2626;
+  --danger-light: #fef2f2;
+
+  --info: #2563eb;
+
+  --background: #f8fafc;
+  --card: #ffffff;
+  --border: #e5e7eb;
+
+  --text-primary: #111827;
+  --text-secondary: #64748b;
+}
+
 * {
   box-sizing: border-box;
 }

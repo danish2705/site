@@ -31,6 +31,13 @@ function costWeightForTier(budgetTier?: string): number {
       return 1;
     case "high":
       return 0.15;
+    // "All" = no budget constraint (e.g. the NCT-lookup auto-run flow, which
+    // has no live source for a budget tier) — cost has zero influence on the
+    // region recommendation, so every region is judged purely on
+    // prevalence/regulatory/competing-trials/risk/suitability, wherever in
+    // the world that turns out to be.
+    case "all":
+      return 0;
     default:
       return 0.6;
   }
