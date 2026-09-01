@@ -106,10 +106,18 @@ body {
   align-items: center;
   gap: 20px;
   height: var(--nav-h);
+  width: 100%;
   padding: 0 clamp(18px, 3vw, 36px);
   background: var(--card);
   border-bottom: 1px solid var(--line);
   box-shadow: var(--shadow-sm);
+  /* Explicit width:100% (rather than relying on a stretching flex parent)
+     since .params-page — one of TopBar's parents — uses
+     align-items: center, which otherwise shrinks this flex child to its
+     content width and renders it as a floating centered pill instead of
+     the full-width bar every other page gets. */
+  box-sizing: border-box;
+  flex-shrink: 0;
 }
 .top-bar-brand {
   display: flex;
