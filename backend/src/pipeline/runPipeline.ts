@@ -8,6 +8,7 @@ import {
   type LiveCandidateSite,
 } from "./liveCandidateSites.js";
 import { buildLiveRiskRecords } from "./liveRiskAssessment.js";
+import { buildEnrollmentForecast } from "./enrollmentForecast.js";
 import {
   buildLiveTrialRequirement,
   type LiveTrialRequirementRow,
@@ -18,6 +19,7 @@ import { REGION_DEFINITIONS } from "../data/regionMap.js";
 import { mapWithConcurrency } from "../utils/concurrency.js";
 import { config } from "../config.js";
 import type { LiveFacility } from "../services/ctgov.client.js";
+import { studyAgeGroups, selectedStdAgeValues } from "../services/ctgov.client.js";
 import type {
   PipelineInput,
   SendFn,
@@ -184,10 +186,20 @@ function explainRisk(risks: RiskRow[], matrix: RiskMatrix): RiskExplanation {
   };
 }
 
+interface CheckRequirementsExtra {
+  /** Trial form's selected Age Group label(s) — the "required" side of the Patient age check. Empty/undefined = all ages, no age check shown. */
+  ageGroups?: string[];
+  /** Real, per-site count of other actively-recruiting/not-yet-recruiting trial locations nearby (see liveCandidateSites.ts's countNearbyCompetingTrials). */
+  nearbyCompetingTrials: number;
+  /** This run's own average nearbyCompetingTrials across every candidate site found — used as the "max acceptable" cutoff instead of an arbitrary constant, since no externally published threshold exists for this. */
+  maxAcceptableCompetingTrials: number;
+}
+
 function checkRequirements(
   site: SiteRow,
   evalRow: ExtendedEvaluationRow,
   requirement: TrialRequirementRow | undefined,
+  extra: CheckRequirementsExtra,
 ): RequirementCheck[] {
   if (!requirement) return [];
 
@@ -215,7 +227,7 @@ function checkRequirements(
   };
 
   numeric(
-    "Enrollment rate",
+    "Minimum recruitment",
     evalRow["Historical Enrollment Rate (pts/month)"],
     requirement["Min Enrollment Rate (pts/month)"],
     "min",
@@ -257,6 +269,86 @@ function checkRequirements(
       pass: site.Accreditation === "Yes",
     });
   }
+
+  // Required specialty — real, disclosed fact (site["Therapeutic Area"] vs
+  // the trial's required specialty), but NOT a differentiating check today:
+  // every candidate site is discovered via a live search already scoped to
+  // this exact indication (buildLiveCandidateSites -> getFacilitiesForCondition),
+  // so this passes for effectively every site by construction. Kept as a
+  // genuine equality comparison (not a hardcoded pass) so it stays honest
+  // about what it's actually comparing, even though it isn't yet a source
+  // of real per-site variation — see runPipeline.ts conversation history /
+  // product notes for why (no live source discloses a hospital's general
+  // specialties independent of which trial surfaced it).
+  const requiredSpecialty = requirement["Required Specialty"]?.trim();
+  if (requiredSpecialty) {
+    const actualSpecialty = site["Therapeutic Area"]?.trim() || "Unknown";
+    checks.push({
+      criterion: "Required specialty",
+      required: requiredSpecialty,
+      actual: actualSpecialty,
+      pass: actualSpecialty.toLowerCase() === requiredSpecialty.toLowerCase(),
+    });
+  }
+
+  // Patient age — required side is the trial form's selected Age Group(s);
+  // actual side is THIS site's own source trial's real, disclosed
+  // MinimumAge/MaximumAge (see ctgov.client.ts's getFacilitiesForCondition).
+  // Age eligibility is set once per protocol, not per physical location, but
+  // different candidate sites here usually come from different trials, so
+  // this genuinely varies site to site. Missing age data on the source trial
+  // is treated as "all ages" (matches studyAgeGroups' own convention) rather
+  // than excluded, since an undisclosed range isn't evidence of exclusion.
+  if (extra.ageGroups && extra.ageGroups.length > 0) {
+    const requiredGroups = selectedStdAgeValues(extra.ageGroups);
+    const siteGroups = studyAgeGroups(
+      site.eligibilityMinimumAge,
+      site.eligibilityMaximumAge,
+    );
+    const overlaps = [...requiredGroups].some((g) => siteGroups.has(g));
+    const hasSiteAgeData = !!(site.eligibilityMinimumAge || site.eligibilityMaximumAge);
+    checks.push({
+      criterion: "Patient age",
+      required: extra.ageGroups.join(", "),
+      actual: hasSiteAgeData
+        ? `${site.eligibilityMinimumAge ?? "no min"} – ${site.eligibilityMaximumAge ?? "no max"} (this site's own trial)`
+        : "Not disclosed by this site's source trial (treated as all ages)",
+      pass: overlaps,
+    });
+  }
+
+  // Required procedure — ClinicalTrials.gov has no field disclosing what
+  // specific procedure/equipment/infrastructure a site has, and this app has
+  // no real "required procedure" value for the hypothetical new trial either
+  // (there's no registered protocol to read one from). This instead uses the
+  // site's real, disclosed recruiting status as a proxy for trial-activation
+  // readiness (site visits/contracts/equipment setup generally complete by
+  // the time a site is Recruiting or Active, Not Recruiting) — NOT a
+  // confirmed check of the specific procedure this protocol needs. "Not Yet
+  // Recruiting" is treated as not-yet-passed, matching that this status is
+  // itself a grey area (activation may still be in progress).
+  {
+    const status = (site.recruitingStatus ?? "").toUpperCase();
+    checks.push({
+      criterion: "Required procedure",
+      required: "Site activation complete (inferred from recruiting status)",
+      actual: site.recruitingStatus ?? "Unknown",
+      pass: status === "RECRUITING" || status === "ACTIVE_NOT_RECRUITING",
+    });
+  }
+
+  // Competing trials nearby — real per-site count (same city, other
+  // actively-recruiting/not-yet-recruiting trial locations). No externally
+  // published "max acceptable" threshold exists for this, so rather than
+  // invent an arbitrary constant, the cutoff is this run's own average
+  // nearby-competing-trials count across every candidate site found — a site
+  // is flagged only when it's more crowded than its peers in this same run.
+  checks.push({
+    criterion: "Competing trials nearby",
+    required: `≤ ${extra.maxAcceptableCompetingTrials} (this run's average across ${site.Region})`,
+    actual: `${extra.nearbyCompetingTrials}`,
+    pass: extra.nearbyCompetingTrials <= extra.maxAcceptableCompetingTrials,
+  });
 
   return checks;
 }
@@ -582,6 +674,19 @@ export async function runSiteAnalysis(
     scoredRaw.map((s, i) => [s.siteId, capConfidenceForEstimate(s, evalRows[i])]),
   );
 
+  // Real, data-derived cutoff for the Competing trials nearby check — see
+  // checkRequirements' doc comment on why this is an average across this
+  // run's own candidate pool rather than an arbitrary constant.
+  const competingCounts = candidateSites.map(
+    (s) => liveCandidateBySiteId.get(s["Site ID"])?.nearbyCompetingTrials ?? 0,
+  );
+  const avgNearbyCompetingTrials =
+    competingCounts.length > 0
+      ? Math.round(
+          (competingCounts.reduce((a, b) => a + b, 0) / competingCounts.length) * 10,
+        ) / 10
+      : 0;
+
   const evaluated = candidateSites
     .map((site) => {
       const evalRow = getEvalRow(site["Site ID"]);
@@ -594,7 +699,23 @@ export async function runSiteAnalysis(
         suitabilityScore: evalRow["Suitability Score (0-100)"] ?? null,
         scored,
         evalRow,
-        requirementChecks: checkRequirements(site, evalRow, requirement),
+        requirementChecks: checkRequirements(site, evalRow, requirement, {
+          ageGroups,
+          nearbyCompetingTrials:
+            liveCandidateBySiteId.get(site["Site ID"])?.nearbyCompetingTrials ?? 0,
+          maxAcceptableCompetingTrials: avgNearbyCompetingTrials,
+        }),
+        enrollmentForecast: buildEnrollmentForecast({
+          rate: evalRow["Historical Enrollment Rate (pts/month)"] ?? null,
+          rateIsReal: !!evalRow.liveKpiFields?.includes(
+            "Historical Enrollment Rate (pts/month)",
+          ),
+          targetSampleSize: requirement?.["Target Sample Size"] ?? null,
+          durationMonths: requirement?.["Duration (months)"] ?? null,
+          ownHistoricalRates:
+            liveCandidateBySiteId.get(site["Site ID"])?.ownHistoricalEnrollmentRates ??
+            [],
+        }),
       };
     })
     .filter((s): s is NonNullable<typeof s> => s !== null);
@@ -754,6 +875,8 @@ export async function runSiteAnalysis(
       failedCriteria: s.requirementChecks
         .filter((c) => !c.pass)
         .map((c) => c.criterion),
+      requirementChecks: s.requirementChecks,
+      enrollmentForecast: s.enrollmentForecast,
       suitabilityScore: s.suitabilityScore,
       riskLevel: s.overallRisk,
       highRiskCount: s.highRiskCount,

@@ -28,6 +28,9 @@ export interface LiveFacilityRow {
   status: string | null;
   /** When the sponsor last updated this trial's record on ClinicalTrials.gov (protocolSection.statusModule.lastUpdatePostDateStruct.date). */
   lastUpdatePostDate: string | null;
+  /** Real, disclosed eligibility age bounds of the study this facility belongs to — see services/ctgov.client.ts's LiveFacility. */
+  minimumAge?: string | null;
+  maximumAge?: string | null;
 }
 
 export interface LiveTrialBenchmark {
@@ -334,6 +337,29 @@ export interface RequirementCheck {
   pass: boolean;
 }
 
+export interface EnrollmentForecast {
+  targetSampleSize: number;
+  durationMonths: number;
+  /** pts/month used for this projection. */
+  rate: number;
+  /** Whether `rate` came from this facility's own real ClinicalTrials.gov enrollment history, or an LLM estimate. */
+  rateSource: "real" | "llm-estimated";
+  /** Projected cumulative enrollment at this site over the full trial duration, at `rate` — real arithmetic (rate * durationMonths), no more/less certain than `rate` itself. */
+  expectedEnrollment: number;
+  /** How many months this site alone would need, at `rate`, to reach targetSampleSize. */
+  estimatedMonthsToTarget: number;
+  /**
+   * 0-100 probability of this site reaching targetSampleSize within
+   * durationMonths, from bootstrap-resampling this site's OWN real
+   * historical per-trial enrollment rates (see
+   * pipeline/enrollmentForecast.ts) — never borrowed from a broader,
+   * less-specific distribution. null when probabilityBasis is
+   * "insufficient-data".
+   */
+  probability: number | null;
+  probabilityBasis: "site-history" | "insufficient-data";
+}
+
 export interface SiteRow {
   "Site ID": string;
   "Site Name": string;
@@ -347,6 +373,17 @@ export interface SiteRow {
   dataSource?: "excel" | "live";
   /** Real, live OverallStatus for this facility's trial from ClinicalTrials.gov (e.g. "RECRUITING", "NOT_YET_RECRUITING", "COMPLETED"...). null/absent for a non-live site or if the source facility had no status. Used to restrict Risk Register/Ranking to only actively-or-soon recruiting sites and to label the Status column shown on those pages. */
   recruitingStatus?: string | null;
+  /**
+   * Real, disclosed eligibilityModule.minimumAge/maximumAge of the SPECIFIC
+   * trial this candidate site was sourced from (see
+   * services/ctgov.client.ts's LiveFacility) — used to build a genuine
+   * per-site "Patient age" requirement check. Age eligibility is a
+   * protocol-wide setting, not something ClinicalTrials.gov tracks per
+   * physical location, but different candidate sites here usually come from
+   * different trials, so this genuinely varies site to site in practice.
+   */
+  eligibilityMinimumAge?: string | null;
+  eligibilityMaximumAge?: string | null;
 }
 
 export interface EvaluationRow {
@@ -552,6 +589,7 @@ export interface RankedSite extends SiteRow {
   suitabilityScore: number | null;
   scored: ScoredSite;
   requirementChecks: RequirementCheck[];
+  enrollmentForecast: EnrollmentForecast | null;
   evalRow: ExtendedEvaluationRow;
   risks: RiskRow[];
   highRiskCount: number;

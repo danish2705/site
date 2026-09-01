@@ -405,6 +405,19 @@ export interface LiveFacility {
   status: string | null;
   /** protocolSection.statusModule.lastUpdatePostDateStruct.date — when the sponsor last updated this trial's record on ClinicalTrials.gov. */
   lastUpdatePostDate: string | null;
+  /**
+   * Real, disclosed protocolSection.eligibilityModule.minimumAge/maximumAge
+   * for the STUDY this facility location belongs to. NOT a per-location
+   * field ClinicalTrials.gov itself tracks — age eligibility is set once for
+   * the whole protocol, so every location within the SAME study shares this
+   * same value. It still varies genuinely across the facility list as a
+   * whole, though, because different facilities here usually come from
+   * different studies with different eligibility windows — used to build a
+   * real per-site "Patient age" requirement check (see
+   * pipeline/runPipeline.ts's checkRequirements).
+   */
+  minimumAge: string | null;
+  maximumAge: string | null;
 }
 
 interface StudiesResponse {
@@ -452,7 +465,7 @@ interface StudiesResponse {
  * CHILD / ADULT / OLDER_ADULT values ClinicalTrials.gov itself classifies
  * studies into (the same buckets its own site's age filter uses).
  */
-function selectedStdAgeValues(ageGroups: string[] | undefined): Set<string> {
+export function selectedStdAgeValues(ageGroups: string[] | undefined): Set<string> {
   const values = new Set<string>();
   for (const g of ageGroups ?? []) {
     if (/older\s*adult/i.test(g)) values.add("OLDER_ADULT");
@@ -613,6 +626,8 @@ export async function getFacilitiesForCondition(
           country: loc.country ?? null,
           status: loc.status ?? overallStatus ?? null,
           lastUpdatePostDate,
+          minimumAge: study.protocolSection?.eligibilityModule?.minimumAge ?? null,
+          maximumAge: study.protocolSection?.eligibilityModule?.maximumAge ?? null,
         });
       }
     }

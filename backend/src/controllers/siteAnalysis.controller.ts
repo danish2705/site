@@ -44,6 +44,10 @@ function parseFacilities(raw: unknown): LiveFacility[] {
           typeof facility.lastUpdatePostDate === "string"
             ? facility.lastUpdatePostDate
             : null,
+        minimumAge:
+          typeof facility.minimumAge === "string" ? facility.minimumAge : null,
+        maximumAge:
+          typeof facility.maximumAge === "string" ? facility.maximumAge : null,
       };
     })
     .filter((f): f is LiveFacility => f !== null);

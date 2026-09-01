@@ -1715,6 +1715,89 @@ tbody tr:hover {
   background: var(--no-data-bg);
   font-style: italic;
 }
+.protocol-fit-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border: none;
+  cursor: pointer;
+  font: inherit;
+}
+.protocol-fit-toggle svg {
+  width: 12px;
+  height: 12px;
+  transition: transform 0.15s ease;
+}
+.protocol-fit-toggle[aria-expanded="true"] svg {
+  transform: rotate(180deg);
+}
+.requirement-checklist-row td {
+  padding: 12px 16px !important;
+  background: var(--surface-1, rgba(0, 0, 0, 0.02));
+}
+.requirement-checklist {
+  width: 100%;
+  border-collapse: collapse;
+}
+.requirement-checklist th {
+  text-align: left;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-secondary, #6b7280);
+  padding: 3px 10px 3px 0 !important;
+}
+.requirement-checklist td {
+  padding: 4px 10px 4px 0 !important;
+  font-size: 12.5px;
+  white-space: nowrap;
+}
+.requirement-checklist .req-criterion {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  white-space: normal;
+}
+.requirement-checklist .req-criterion svg {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+}
+.requirement-checklist .req-pass svg {
+  color: var(--low);
+}
+.requirement-checklist .req-fail svg {
+  color: var(--high);
+}
+.requirement-checklist-summary {
+  font-size: 12px;
+  color: var(--text-secondary, #6b7280);
+  margin-bottom: 8px;
+}
+.enrollment-forecast-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 12.5px;
+  line-height: 1.4;
+}
+.ef-muted {
+  color: var(--text-secondary, #6b7280);
+  font-size: 12px;
+}
+.ef-rate-flag {
+  font-size: 11px;
+  font-style: italic;
+}
+.ef-rate-real {
+  color: var(--low);
+}
+.ef-rate-llm-estimated {
+  color: var(--med);
+}
+.ef-probability {
+  margin-top: 2px;
+  width: fit-content;
+}
 .risk-accordion {
   display: flex;
   flex-direction: column;
@@ -3863,36 +3946,45 @@ tr.pinned-row {
    SiteRankingPanel.tsx sets them as inline styles) to fill the freed
    space instead of leaving a gap. */
 @media (max-width: 1280px) and (min-width: 901px) {
+  /* 10-column layout: 1 Rank, 2 Site, 3 Region, 4 Score, 5 Breakdown,
+     6 Enrollment forecast, 7 Protocol fit, 8 Risk, 9 Status, 10 Outreach.
+     Region, Enrollment forecast (dense multi-line content) and Protocol fit
+     drop out at this width — the remaining columns' <colgroup> widths are
+     re-percentaged (with !important, since SiteRankingPanel.tsx sets them
+     as inline styles) to fill the freed space instead of leaving a gap. */
   .ranking-table th:nth-child(3),
   .ranking-table td:nth-child(3),
   .ranking-table th:nth-child(6),
-  .ranking-table td:nth-child(6) {
+  .ranking-table td:nth-child(6),
+  .ranking-table th:nth-child(7),
+  .ranking-table td:nth-child(7) {
     display: none;
   }
   .ranking-table col:nth-child(3),
-  .ranking-table col:nth-child(6) {
+  .ranking-table col:nth-child(6),
+  .ranking-table col:nth-child(7) {
     display: none;
   }
   .ranking-table col:nth-child(1) {
     width: 5% !important;
   }
   .ranking-table col:nth-child(2) {
-    width: 32% !important;
+    width: 33% !important;
   }
   .ranking-table col:nth-child(4) {
-    width: 13% !important;
-  }
-  .ranking-table col:nth-child(5) {
-    width: 22% !important;
-  }
-  .ranking-table col:nth-child(7) {
-    width: 11% !important;
-  }
-  .ranking-table col:nth-child(8) {
     width: 12% !important;
   }
+  .ranking-table col:nth-child(5) {
+    width: 27% !important;
+  }
+  .ranking-table col:nth-child(8) {
+    width: 10% !important;
+  }
   .ranking-table col:nth-child(9) {
-    width: 5% !important;
+    width: 10% !important;
+  }
+  .ranking-table col:nth-child(10) {
+    width: 3% !important;
   }
 }
 
