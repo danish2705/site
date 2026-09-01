@@ -1,7 +1,14 @@
 import type { FormEvent } from "react";
 import { usePipeline } from "../../hooks/usePipeline";
 import Select from "../ui/Select";
+import SearchableSelect from "../ui/SearchableSelect";
 import RegionMultiSelect from "../prediction/RegionMultiSelect";
+import { searchIndications } from "../../services/indicationSearch.service";
+
+async function searchIndicationValues(query: string): Promise<string[]> {
+  const res = await searchIndications(query);
+  return res.results;
+}
 
 const PHASES = ["Phase I", "Phase II", "Phase III", "Phase IV"];
 const BUDGETS = ["Low", "Mid", "High", "All"];
@@ -100,16 +107,17 @@ export default function ParametersFormFields({
             Indication <span className="field-required">*</span>
             {fieldStatus[0].done && <span className="field-check-badge">✓</span>}
           </span>
-          <Select
+          <SearchableSelect
             fullWidth
             value={form.indication}
             onChange={(v) => setForm({ ...form, indication: v, regions: [] })}
             disabled={!meta}
-            placeholder="Select indication…"
+            placeholder="Select or search indication…"
             options={(meta?.indications ?? []).map((ind) => ({
               value: ind,
               label: ind,
             }))}
+            onSearch={searchIndicationValues}
           />
         </label>
 
