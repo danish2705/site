@@ -1,32 +1,3 @@
-/**
- * Static, pre-authored reference table for Prevalence / Regulatory Approval
- * Time / Cost per Patient, covering the app's 24 known indications (see
- * repository/excelStore.ts's FALLBACK_INDICATION_TO_SPECIALTY) across all 35
- * countries in data/regionMap.ts.
- *
- * WHY THIS EXISTS: pipeline/liveRegionMetrics.ts normally asks an LLM for
- * these three numbers, one call per candidate region -- up to ~35 concurrent
- * calls when no region/country is pre-selected. For these 24 indications,
- * that wait is now skippable entirely: this table is checked FIRST, and the
- * LLM is only called as a fallback for any indication or country this table
- * doesn't cover.
- *
- * WHAT THIS IS, HONESTLY: still 100% fabricated, deterministic, illustrative
- * data -- not real epidemiological, regulatory, or cost figures. A few
- * indications (Type 2 Diabetes, Chronic Kidney Disease, Heart Failure/
- * Atrial Fibrillation, Chronic Hepatitis C) are partly grounded in the
- * existing FABRICATED claims_data_global_capped.json patient-flag records
- * (blended with an authored baseline). Every other indication's prevalence,
- * and every regulatory-time and cost figure, is authored from scratch using
- * plausible per-specialty/per-country ranges (with a handful of real-world-
- * informed skews, e.g. Egypt's historically high Hepatitis C burden,
- * Sub-Saharan Africa's HIV/TB/Sickle Cell burden) -- NOT derived from any
- * real claims, EHR, or epidemiological source. Regenerate via
- * generateClaimsIndicationMetrics.ts if these numbers ever need to change;
- * don't hand-edit individual values without updating the generator too, or
- * the two will drift apart.
- */
-
 export interface ClaimsIndicationMetrics {
   prevalencePer100k: number;
   regulatoryApprovalWeeks: number;

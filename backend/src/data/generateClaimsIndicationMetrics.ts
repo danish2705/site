@@ -2,13 +2,6 @@ import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
 
-// Deliberately a self-contained COPY of
-// repository/excelStore.ts's FALLBACK_INDICATION_TO_SPECIALTY, not an
-// import from it — importing that module pulls in the `xlsx` package and
-// its file-system probing (findExcelFile/findDataDir), neither of which
-// this standalone generator script needs just to get 24 label->specialty
-// pairs. If the app's known-indication list ever changes, update both
-// places.
 const INDICATION_TO_SPECIALTY: Record<string, string> = {
   "Type 2 Diabetes": "Endocrinology",
   "Obesity (BMI>30)": "Endocrinology",
@@ -36,27 +29,6 @@ const INDICATION_TO_SPECIALTY: Record<string, string> = {
   "Sickle Cell Disease": "Hematology",
 };
 
-/**
- * One-time authoring script for data/claimsIndicationMetrics.ts — NOT run by
- * the app itself. Run manually (`node --experimental-strip-types
- * data/generateClaimsIndicationMetrics.ts` from backend/src, or via ts-node)
- * whenever the numbers in claimsIndicationMetrics.ts need to be regenerated
- * or tuned, instead of hand-editing ~2,500 individual values.
- *
- * Produces Prevalence (per 100k) / Regulatory Approval Time (weeks) / Avg
- * Cost per Patient (USD) for every indication in INDICATION_TO_SPECIALTY
- * across every country in COUNTRIES below. A handful of indications
- * (Type 2 Diabetes, Chronic Kidney Disease, Heart Failure/Atrial
- * Fibrillation, Chronic Hepatitis C) partly ground their prevalence figure
- * in the existing FABRICATED claims_data_global_capped.json patient-flag
- * records; everything else is authored from plausible per-specialty/
- * per-country ranges, with a handful of real-world-informed skews (e.g.
- * Egypt's historically high Hepatitis C burden, Sub-Saharan Africa's HIV/
- * TB/Sickle Cell burden). See claimsIndicationMetrics.ts's own doc comment
- * for the same disclosure — none of this is real epidemiological,
- * regulatory, or cost data.
- */
-
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 const COUNTRIES = [
@@ -68,10 +40,6 @@ const COUNTRIES = [
   "United Arab Emirates", "United Kingdom", "United States", "Vietnam",
 ] as const;
 
-// Same mulberry32-style deterministic string -> PRNG already used elsewhere
-// in this codebase (see data/syntheticPatients.ts / syntheticPopulation.ts)
-// — kept identical so this generator follows the app's own convention
-// rather than inventing a new one.
 function seededRandom(seed: string): () => number {
   let h = 1779033703 ^ seed.length;
   for (let i = 0; i < seed.length; i++) {
@@ -90,7 +58,6 @@ function randIn(seed: string, lo: number, hi: number): number {
   return lo + seededRandom(seed)() * (hi - lo);
 }
 
-// ---- Step 1: aggregate real flag rates per country from the existing claims file ----
 interface ClaimsRecord {
   location: { country: string };
   diabetes?: boolean;
@@ -132,7 +99,6 @@ for (const [country, entry] of flagCounts) {
   flagRatePer100k.set(country, rates);
 }
 
-// ---- Step 2: regulatory approval time (weeks) per country — fixed tiers ----
 const REG_TIER_FAST = new Set([
   "United States", "United Kingdom", "Germany", "France", "Netherlands",
   "Sweden", "Canada", "Australia", "Japan", "South Korea", "Israel",
@@ -141,7 +107,6 @@ const REG_TIER_MED = new Set([
   "Spain", "Italy", "Poland", "Czech Republic", "China", "Taiwan",
   "United Arab Emirates", "Saudi Arabia", "Chile", "Argentina",
 ]);
-// everything else falls into the slow tier
 
 function regulatoryWeeksFor(country: string): number {
   const seed = `regulatory|${country}`;
