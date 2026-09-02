@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import * as L from "leaflet";
+import L from "../../lib/leafletGlobal";
 import "leaflet.markercluster";
 import "leaflet/dist/leaflet.css";
 import "leaflet.markercluster/dist/MarkerCluster.css";
