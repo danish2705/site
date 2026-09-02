@@ -65,16 +65,11 @@ export default function SiteRankingPanel() {
     setAnalysisCountry: setPageCountry,
     ranking,
   } = usePipeline();
-  // When the trial form has no region/country pre-selected (the NCT-lookup
-  // flow deliberately leaves this empty to search every region globally),
-  // fall back to every country this app is configured to search at all,
-  // rather than leaving the picker with nothing to show.
+
   const countryOptions =
     selectedCountries.length > 0
       ? selectedCountries
       : allConfiguredCountries(regionOptions);
-  // Default to Recruiting per request — the strongest, currently-live
-  // signal. Only these three statuses are offered.
   const [statusFilter, setStatusFilter] =
     useState<LiveStatusFilter>("RECRUITING");
 
