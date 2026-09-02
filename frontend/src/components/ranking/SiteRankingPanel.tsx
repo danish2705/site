@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useMemo, useState } from "react";
+import { Fragment, useMemo, useState } from "react";
 import { usePipeline } from "../../hooks/usePipeline";
 import ScoreBreakdown from "./ScoreBreakdown";
 import WizardNextLink from "../ui/WizardNextLink";
@@ -11,7 +11,10 @@ import type { OutreachDraft, RankingRow } from "../../types";
 import EmptyState from "../ui/EmptyState";
 import { allConfiguredCountries } from "../../utils/region";
 
-type LiveStatusFilter = "RECRUITING" | "NOT_YET_RECRUITING" | "ACTIVE_NOT_RECRUITING";
+type LiveStatusFilter =
+  | "RECRUITING"
+  | "NOT_YET_RECRUITING"
+  | "ACTIVE_NOT_RECRUITING";
 
 const STATUS_OPTIONS: { value: LiveStatusFilter; label: string }[] = [
   { value: "RECRUITING", label: "Recruiting" },
@@ -37,7 +40,8 @@ function statusBand(
   const s = (status ?? "").toUpperCase();
   if (s === "COMPLETED") return "info";
   if (s === "RECRUITING") return "low";
-  if (s === "TERMINATED" || s === "WITHDRAWN" || s === "SUSPENDED") return "high";
+  if (s === "TERMINATED" || s === "WITHDRAWN" || s === "SUSPENDED")
+    return "high";
   if (
     s === "ACTIVE_NOT_RECRUITING" ||
     s === "NOT_YET_RECRUITING" ||
@@ -53,13 +57,20 @@ export default function SiteRankingPanel() {
     form,
     running,
     analyzing,
-    topRegion,
     selectedCountries,
     regionOptions,
-    analysisCache,
     prefetchingCountries,
     countryErrors,
-    analyzeForCountry,
+    // Shared across Risk Register/Ranking/Final Recommendation — picking a
+    // country here keeps the other two pages in sync, and (crucially) this
+    // state lives in the provider, not in this component, so navigating away
+    // from this tab and back does NOT reset it. This panel previously kept
+    // its own local `pageCountry` state, which reset to "" on every remount
+    // and briefly rendered the empty/loading state again even for a country
+    // that was already fully analyzed — that remount-reset was the flicker.
+    analysisCountry: pageCountry,
+    setAnalysisCountry: setPageCountry,
+    ranking,
   } = usePipeline();
   // When the trial form has no region/country pre-selected (the NCT-lookup
   // flow deliberately leaves this empty to search every region globally),
@@ -71,41 +82,13 @@ export default function SiteRankingPanel() {
       : allConfiguredCountries(regionOptions);
   // Default to Recruiting per request — the strongest, currently-live
   // signal. Only these three statuses are offered.
-  const [statusFilter, setStatusFilter] = useState<LiveStatusFilter>("RECRUITING");
-  const [pageCountry, setPageCountry] = useState("");
+  const [statusFilter, setStatusFilter] =
+    useState<LiveStatusFilter>("RECRUITING");
 
-  useEffect(() => {
-    if (running) return;
-    if (!topRegion) return;
-    if (selectedCountries.length === 0) {
-      // No explicit region/country selection (global NCT-lookup run) —
-      // default to the auto-picked top region's country, which Run
-      // Analysis already fully analyzed, rather than clearing the picker to
-      // empty. The broader countryOptions dropdown below still lets the
-      // user switch to any other configured country from here.
-      if (!pageCountry) setPageCountry(topRegion.country);
-      return;
-    }
-    if (!selectedCountries.includes(pageCountry)) {
-      setPageCountry(
-        selectedCountries.includes(topRegion.country)
-          ? topRegion.country
-          : selectedCountries[0],
-      );
-    }
-  }, [selectedCountries.join("|"), topRegion, running]);
-
-  useEffect(() => {
-    if (!pageCountry) return;
-    if (analysisCache[pageCountry]) return;
-    if (prefetchingCountries.has(pageCountry)) return;
-    analyzeForCountry(pageCountry, { background: true });
-  }, [pageCountry, analysisCache, prefetchingCountries]);
-
-  const cached = pageCountry ? analysisCache[pageCountry] : undefined;
-  const ranking = cached?.ranking ?? null;
   const pageLoading =
-    !!pageCountry && !cached && (running || analyzing || prefetchingCountries.has(pageCountry));
+    !!pageCountry &&
+    !ranking &&
+    (running || analyzing || prefetchingCountries.has(pageCountry));
 
   const filteredRanking = useMemo(() => {
     if (!ranking) return [];
@@ -121,9 +104,7 @@ export default function SiteRankingPanel() {
   // shown is a clearly-labeled SYNTHETIC placeholder, not a real inbox.
   // Which site's Protocol fit checklist is currently expanded — one at a
   // time, toggled by clicking its badge (see the "Protocol fit" cell below).
-  const [expandedChecklistSiteId, setExpandedChecklistSiteId] = useState<
-    string | null
-  >(null);
+  const [expandedChecklistSiteId, setExpandedChecklistSiteId] = useState<string | null>(null);
 
   const [openDraftSiteId, setOpenDraftSiteId] = useState<string | null>(null);
   const [draftLoadingSiteId, setDraftLoadingSiteId] = useState<string | null>(
@@ -181,7 +162,10 @@ export default function SiteRankingPanel() {
           <div className="predict-head">
             <div className="predict-head-top map-controls map-controls--flush">
               {countryPicker}
-              <div className="predict-head-actions" style={{ marginLeft: "auto" }}>
+              <div
+                className="predict-head-actions"
+                style={{ marginLeft: "auto" }}
+              >
                 <Select
                   className="status-filter-select"
                   value={statusFilter}
@@ -197,7 +181,11 @@ export default function SiteRankingPanel() {
           </div>
           <div
             className="card-scroll-body ranking-scroll-body"
-            style={{ display: "flex", alignItems: "center", justifyContent: "center" }}
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+            }}
           >
             <StageLoader label="Loading site ranking…" />
           </div>
@@ -208,7 +196,9 @@ export default function SiteRankingPanel() {
     return (
       <div className="card">
         {countryPicker && (
-          <div className="map-controls map-controls--flush">{countryPicker}</div>
+          <div className="map-controls map-controls--flush">
+            {countryPicker}
+          </div>
         )}
         <div
           style={{
@@ -220,7 +210,11 @@ export default function SiteRankingPanel() {
           }}
         >
           <EmptyState
-            title={countryErrors[pageCountry] ? "No live sites found" : "No ranking yet"}
+            title={
+              countryErrors[pageCountry]
+                ? "No live sites found"
+                : "No ranking yet"
+            }
             detail={
               countryErrors[pageCountry]
                 ? countryErrors[pageCountry]
@@ -280,9 +274,7 @@ export default function SiteRankingPanel() {
                 <th>Region</th>
                 <th>Score</th>
                 <th>Breakdown</th>
-                <th
-                  data-tooltip="Real-arithmetic projection from this site's enrollment rate — probability shown only when this site has 2+ of its own real completed trials to bootstrap from."
-                >
+                <th data-tooltip="Real-arithmetic projection from this site's enrollment rate — probability shown only when this site has 2+ of its own real completed trials to bootstrap from.">
                   Enrollment forecast
                 </th>
                 <th>Protocol fit</th>
@@ -308,155 +300,155 @@ export default function SiteRankingPanel() {
               )}
               {filteredRanking.map((r) => (
                 <Fragment key={r.siteId}>
-                <tr>
-                  <td>{r.rank}</td>
-                  <td className="ranking-site-col">
-                    {r.siteName}
-                    <div className="site-id">{r.siteId}</div>
-                  </td>
-                  <td>{r.region}</td>
-                  <td>
-                    {r.score}/100
-                    {r.confidence !== "High" && (
-                      <div
-                        className="score-confidence"
-                        data-tooltip={r.caveats.join(" ")}
-                      >
-                        {r.confidence.toLowerCase()} confidence
-                      </div>
-                    )}
-                  </td>
-                  <td>
-                    <ScoreBreakdown
-                      components={r.components}
-                      liveKpiFields={r.liveKpiFields}
-                      liveKpiSourceNctId={r.liveKpiSourceNctId}
-                      raceBreakdown={r.raceBreakdown}
-                    />
-                  </td>
-                  <td>
-                    {r.enrollmentForecast ? (
-                      <div className="enrollment-forecast-cell">
-                        <div>
-                          Expected {r.enrollmentForecast.expectedEnrollment}{" "}
-                          <span className="ef-muted">
-                            / {r.enrollmentForecast.targetSampleSize} target
-                          </span>
-                        </div>
-                        <div className="ef-muted">
-                          ~{r.enrollmentForecast.estimatedMonthsToTarget} mo to
-                          reach target
-                        </div>
+                  <tr>
+                    <td>{r.rank}</td>
+                    <td className="ranking-site-col">
+                      {r.siteName}
+                      <div className="site-id">{r.siteId}</div>
+                    </td>
+                    <td>{r.region}</td>
+                    <td>
+                      {r.score}/100
+                      {r.confidence !== "High" && (
                         <div
-                          className={`ef-rate-flag ef-rate-${r.enrollmentForecast.rateSource}`}
+                          className="score-confidence"
+                          data-tooltip={r.caveats.join(" ")}
                         >
-                          {r.enrollmentForecast.rateSource === "real"
-                            ? "Based on this site's real enrollment history"
-                            : "AI-estimated rate — no enrollment history on file"}
+                          {r.confidence.toLowerCase()} confidence
                         </div>
-                        {r.enrollmentForecast.probability !== null ? (
-                          <span
-                            className={`badge ef-probability ${
-                              r.enrollmentForecast.probability >= 70
-                                ? "low"
-                                : r.enrollmentForecast.probability >= 40
-                                  ? "medium"
-                                  : "high"
-                            }`}
-                          >
-                            {r.enrollmentForecast.probability}% probability
-                          </span>
-                        ) : (
-                          <span className="badge no-data ef-probability">
-                            Not enough data
-                          </span>
-                        )}
-                      </div>
-                    ) : (
-                      <span className="ef-muted">Not available</span>
-                    )}
-                  </td>
-                  <td>
-                    <button
-                      type="button"
-                      className={`protocol-fit-toggle badge ${r.meetsRequirements ? "low" : "medium"}`}
-                      aria-expanded={expandedChecklistSiteId === r.siteId}
-                      onClick={() =>
-                        setExpandedChecklistSiteId((prev) =>
-                          prev === r.siteId ? null : r.siteId,
-                        )
-                      }
-                    >
-                      {r.requirementChecks.filter((c) => c.pass).length}/
-                      {r.requirementChecks.length} met
-                      <ChevronDownIcon />
-                    </button>
-                  </td>
-                  <td>
-                    <span className={`badge ${r.riskLevel.toLowerCase()}`}>
-                      {r.riskLevel}
-                    </span>
-                  </td>
-                  <td>
-                    <span className={`badge ${statusBand(r.status)}`}>
-                      {statusLabel(r.status)}
-                    </span>
-                  </td>
-                  <td style={{ textAlign: "center" }}>
-                    <button
-                      type="button"
-                      className="predict-btn predict-btn-icon"
-                      onClick={() => draftOutreachFor(r)}
-                      disabled={draftLoadingSiteId === r.siteId}
-                      data-tooltip={
-                        draftLoadingSiteId === r.siteId
-                          ? "Drafting…"
-                          : openDraftSiteId === r.siteId
-                            ? "Hide draft"
-                            : drafts[r.siteId]
-                              ? "View draft"
-                              : "Draft email"
-                      }
-                    >
-                      {draftLoadingSiteId === r.siteId ? (
-                        <span className="spinner" />
-                      ) : (
-                        <MailIcon className="btn-icon" />
                       )}
-                    </button>
-                  </td>
-                </tr>
-                {expandedChecklistSiteId === r.siteId && (
-                  <tr className="requirement-checklist-row">
-                    <td colSpan={10}>
-                      <table className="requirement-checklist">
-                        <thead>
-                          <tr>
-                            <th></th>
-                            <th>Required</th>
-                            <th>This site</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {r.requirementChecks.map((c) => (
-                            <tr key={c.criterion}>
-                              <td>
-                                <span
-                                  className={`req-criterion ${c.pass ? "req-pass" : "req-fail"}`}
-                                >
-                                  {c.pass ? <CheckIcon /> : <XIcon />}
-                                  {c.criterion}
-                                </span>
-                              </td>
-                              <td>{c.required}</td>
-                              <td>{c.actual}</td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
+                    </td>
+                    <td>
+                      <ScoreBreakdown
+                        components={r.components}
+                        liveKpiFields={r.liveKpiFields}
+                        liveKpiSourceNctId={r.liveKpiSourceNctId}
+                        raceBreakdown={r.raceBreakdown}
+                      />
+                    </td>
+                    <td>
+                      {r.enrollmentForecast ? (
+                        <div className="enrollment-forecast-cell">
+                          <div>
+                            Expected {r.enrollmentForecast.expectedEnrollment}{" "}
+                            <span className="ef-muted">
+                              / {r.enrollmentForecast.targetSampleSize} target
+                            </span>
+                          </div>
+                          <div className="ef-muted">
+                            ~{r.enrollmentForecast.estimatedMonthsToTarget} mo
+                            to reach target
+                          </div>
+                          <div
+                            className={`ef-rate-flag ef-rate-${r.enrollmentForecast.rateSource}`}
+                          >
+                            {r.enrollmentForecast.rateSource === "real"
+                              ? "Based on this site's real enrollment history"
+                              : "AI-estimated rate — no enrollment history on file"}
+                          </div>
+                          {r.enrollmentForecast.probability !== null ? (
+                            <span
+                              className={`badge ef-probability ${
+                                r.enrollmentForecast.probability >= 70
+                                  ? "low"
+                                  : r.enrollmentForecast.probability >= 40
+                                    ? "medium"
+                                    : "high"
+                              }`}
+                            >
+                              {r.enrollmentForecast.probability}% probability
+                            </span>
+                          ) : (
+                            <span className="badge no-data ef-probability">
+                              Not enough data
+                            </span>
+                          )}
+                        </div>
+                      ) : (
+                        <span className="ef-muted">Not available</span>
+                      )}
+                    </td>
+                    <td>
+                      <button
+                        type="button"
+                        className={`protocol-fit-toggle badge ${r.meetsRequirements ? "low" : "medium"}`}
+                        aria-expanded={expandedChecklistSiteId === r.siteId}
+                        onClick={() =>
+                          setExpandedChecklistSiteId((prev) =>
+                            prev === r.siteId ? null : r.siteId,
+                          )
+                        }
+                      >
+                        {r.requirementChecks.filter((c) => c.pass).length}/
+                        {r.requirementChecks.length} met
+                        <ChevronDownIcon />
+                      </button>
+                    </td>
+                    <td>
+                      <span className={`badge ${r.riskLevel.toLowerCase()}`}>
+                        {r.riskLevel}
+                      </span>
+                    </td>
+                    <td>
+                      <span className={`badge ${statusBand(r.status)}`}>
+                        {statusLabel(r.status)}
+                      </span>
+                    </td>
+                    <td style={{ textAlign: "center" }}>
+                      <button
+                        type="button"
+                        className="predict-btn predict-btn-icon"
+                        onClick={() => draftOutreachFor(r)}
+                        disabled={draftLoadingSiteId === r.siteId}
+                        data-tooltip={
+                          draftLoadingSiteId === r.siteId
+                            ? "Drafting…"
+                            : openDraftSiteId === r.siteId
+                              ? "Hide draft"
+                              : drafts[r.siteId]
+                                ? "View draft"
+                                : "Draft email"
+                        }
+                      >
+                        {draftLoadingSiteId === r.siteId ? (
+                          <span className="spinner" />
+                        ) : (
+                          <MailIcon className="btn-icon" />
+                        )}
+                      </button>
                     </td>
                   </tr>
-                )}
+                  {expandedChecklistSiteId === r.siteId && (
+                    <tr className="requirement-checklist-row">
+                      <td colSpan={10}>
+                        <table className="requirement-checklist">
+                          <thead>
+                            <tr>
+                              <th></th>
+                              <th>Required</th>
+                              <th>This site</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {r.requirementChecks.map((c) => (
+                              <tr key={c.criterion}>
+                                <td>
+                                  <span
+                                    className={`req-criterion ${c.pass ? "req-pass" : "req-fail"}`}
+                                  >
+                                    {c.pass ? <CheckIcon /> : <XIcon />}
+                                    {c.criterion}
+                                  </span>
+                                </td>
+                                <td>{c.required}</td>
+                                <td>{c.actual}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </td>
+                    </tr>
+                  )}
                 </Fragment>
               ))}
             </tbody>

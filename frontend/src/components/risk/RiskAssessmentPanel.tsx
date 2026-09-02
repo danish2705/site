@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { usePipeline } from "../../hooks/usePipeline";
 import RiskAssessmentAccordion from "./RiskAssessmentAccordion";
 import WizardNextLink from "../ui/WizardNextLink";
@@ -19,13 +19,21 @@ export default function RiskAssessmentPanel() {
   const {
     running,
     analyzing,
-    topRegion,
     selectedCountries,
     regionOptions,
-    analysisCache,
     prefetchingCountries,
     countryErrors,
-    analyzeForCountry,
+    // Shared across Risk Register/Ranking/Final Recommendation — picking a
+    // country here keeps the other two pages in sync, and (crucially) this
+    // state lives in the provider, not in this component, so navigating away
+    // from this tab and back does NOT reset it. Each panel previously kept
+    // its own local `pageCountry` state, which reset to "" on every remount
+    // and briefly rendered the empty/loading state again even for a country
+    // that was already fully analyzed — that remount-reset was the flicker.
+    analysisCountry: pageCountry,
+    setAnalysisCountry: setPageCountry,
+    riskAssessment,
+    finalResult,
   } = usePipeline();
   // When the trial form has no region/country pre-selected (the NCT-lookup
   // flow deliberately leaves this empty to search every region globally),
@@ -39,43 +47,12 @@ export default function RiskAssessmentPanel() {
   // Only these three statuses are offered; Completed/Terminated/Withdrawn/
   // Suspended/unknown-status sites aren't useful candidates here.
   const [statusFilter, setStatusFilter] = useState<LiveStatusFilter>("RECRUITING");
-  const [pageCountry, setPageCountry] = useState("");
 
-  useEffect(() => {
-    if (running) return;
-    if (!topRegion) return;
-    if (selectedCountries.length === 0) {
-      // No explicit region/country selection (global NCT-lookup run) —
-      // default to the auto-picked top region's country, which Run
-      // Analysis already fully analyzed (it's seeded into analysisCache the
-      // moment the run finishes), rather than clearing the picker to
-      // empty. Only sets it once; the broader countryOptions dropdown below
-      // still lets the user switch to any other configured country from
-      // here without this effect fighting that choice.
-      if (!pageCountry) setPageCountry(topRegion.country);
-      return;
-    }
-    if (!selectedCountries.includes(pageCountry)) {
-      setPageCountry(
-        selectedCountries.includes(topRegion.country)
-          ? topRegion.country
-          : selectedCountries[0],
-      );
-    }
-  }, [selectedCountries.join("|"), topRegion, running]);
-
-  useEffect(() => {
-    if (!pageCountry) return;
-    if (analysisCache[pageCountry]) return;
-    if (prefetchingCountries.has(pageCountry)) return;
-    analyzeForCountry(pageCountry, { background: true });
-  }, [pageCountry, analysisCache, prefetchingCountries]);
-
-  const cached = pageCountry ? analysisCache[pageCountry] : undefined;
-  const riskAssessment = cached?.riskAssessment ?? null;
-  const recommendedSiteId = cached?.finalResult?.siteId;
+  const recommendedSiteId = finalResult?.siteId;
   const pageLoading =
-    !!pageCountry && !cached && (running || analyzing || prefetchingCountries.has(pageCountry));
+    !!pageCountry &&
+    !riskAssessment &&
+    (running || analyzing || prefetchingCountries.has(pageCountry));
 
   const filteredRows = useMemo(() => {
     if (!riskAssessment) return [];

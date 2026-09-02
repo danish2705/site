@@ -45,12 +45,19 @@ export default function RecommendationPanel() {
     form,
     running,
     analyzing,
-    topRegion,
     selectedCountries,
     regionOptions,
-    analysisCache,
     prefetchingCountries,
-    analyzeForCountry,
+    // Shared across Risk Register/Ranking/Final Recommendation — picking a
+    // country here keeps the other two pages in sync, and (crucially) this
+    // state lives in the provider, not in this component, so navigating away
+    // from this tab and back does NOT reset it. This panel previously kept
+    // its own local `pageCountry` state, which reset to "" on every remount
+    // and briefly rendered the empty/loading state again even for a country
+    // that was already fully analyzed — that remount-reset was the flicker.
+    analysisCountry: pageCountry,
+    setAnalysisCountry: setPageCountry,
+    finalResult: baseFinalResult,
   } = usePipeline();
   const [saveDialogOpen, setSaveDialogOpen] = useState(false);
   // When the trial form has no region/country pre-selected (the NCT-lookup
@@ -62,39 +69,10 @@ export default function RecommendationPanel() {
       ? selectedCountries
       : allConfiguredCountries(regionOptions);
 
-  const [pageCountry, setPageCountry] = useState("");
-
-  useEffect(() => {
-    if (running) return;
-    if (!topRegion) return;
-    if (selectedCountries.length === 0) {
-      // No explicit region/country selection (global NCT-lookup run) —
-      // default to the auto-picked top region's country, which Run
-      // Analysis already fully analyzed, rather than clearing the picker to
-      // empty. The broader countryOptions dropdown below still lets the
-      // user switch to any other configured country from here.
-      if (!pageCountry) setPageCountry(topRegion.country);
-      return;
-    }
-    if (!selectedCountries.includes(pageCountry)) {
-      setPageCountry(
-        selectedCountries.includes(topRegion.country)
-          ? topRegion.country
-          : selectedCountries[0],
-      );
-    }
-  }, [selectedCountries.join("|"), topRegion, running]);
-
-  useEffect(() => {
-    if (!pageCountry) return;
-    if (analysisCache[pageCountry]) return;
-    if (prefetchingCountries.has(pageCountry)) return;
-    analyzeForCountry(pageCountry, { background: true });
-  }, [pageCountry, analysisCache, prefetchingCountries]);
-
-  const cached = pageCountry ? analysisCache[pageCountry] : undefined;
   const pageLoading =
-    !!pageCountry && !cached && (running || analyzing || prefetchingCountries.has(pageCountry));
+    !!pageCountry &&
+    !baseFinalResult &&
+    (running || analyzing || prefetchingCountries.has(pageCountry));
 
   const [statusFilter, setStatusFilter] = useState<LiveStatusFilter | "">("");
   const [recoByStatus, setRecoByStatus] = useState<Record<string, FinalResult>>({});
@@ -107,22 +85,22 @@ export default function RecommendationPanel() {
   }, [pageCountry]);
 
   useEffect(() => {
-    if (!pageCountry || !cached?.finalResult) return;
-    const s = normalizeStatus(cached.finalResult.status);
+    if (!pageCountry || !baseFinalResult) return;
+    const s = normalizeStatus(baseFinalResult.status);
     if (!s) return;
-    const key = `${cached.analysisId ?? pageCountry}::${s}`;
-    setRecoByStatus((prev) => (prev[key] ? prev : { ...prev, [key]: cached.finalResult }));
-  }, [pageCountry, cached?.finalResult]);
+    const key = `${baseFinalResult.analysisId ?? pageCountry}::${s}`;
+    setRecoByStatus((prev) => (prev[key] ? prev : { ...prev, [key]: baseFinalResult }));
+  }, [pageCountry, baseFinalResult]);
 
   useEffect(() => {
     if (statusFilter) return;
-    if (!cached?.finalResult) return;
-    setStatusFilter(normalizeStatus(cached.finalResult.status) ?? "RECRUITING");
-  }, [statusFilter, cached?.finalResult]);
+    if (!baseFinalResult) return;
+    setStatusFilter(normalizeStatus(baseFinalResult.status) ?? "RECRUITING");
+  }, [statusFilter, baseFinalResult]);
 
   useEffect(() => {
     if (!pageCountry || !statusFilter) return;
-    const analysisId = cached?.analysisId;
+    const analysisId = baseFinalResult?.analysisId;
     const key = `${analysisId ?? pageCountry}::${statusFilter}`;
     if (recoByStatus[key]) return;
     if (!analysisId) {
@@ -149,11 +127,11 @@ export default function RecommendationPanel() {
     return () => {
       cancelled = true;
     };
-  }, [pageCountry, statusFilter, cached?.analysisId, recoByStatus]);
+  }, [pageCountry, statusFilter, baseFinalResult?.analysisId, recoByStatus]);
 
   const finalResult =
     pageCountry && statusFilter
-      ? recoByStatus[`${cached?.analysisId ?? pageCountry}::${statusFilter}`] ?? null
+      ? recoByStatus[`${baseFinalResult?.analysisId ?? pageCountry}::${statusFilter}`] ?? null
       : null;
 
   const countryPicker = countryOptions.length > 0 && (

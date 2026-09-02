@@ -119,14 +119,12 @@ function siteIcon(): L.DivIcon {
 
 export default function SiteMapGlobalPage() {
   const {
-    indication,
     selectedCountries,
     country,
     setCountry,
     data,
     loading,
     error,
-    runSearch,
     allSites,
   } = useIndependentSiteSearch();
   const { regionOptions } = usePipeline();
@@ -142,7 +140,7 @@ export default function SiteMapGlobalPage() {
   // clicked pin's selection with.
   const [selectedSiteId, setSelectedSiteId] = useState<string | null>(null);
 
-  const [isFullScreen, setIsFullScreen] = useState(false);
+  const [isFullScreen] = useState(false);
   const mapContainerRef = useRef<HTMLDivElement | null>(null);
   const mapInstanceRef = useRef<L.Map | null>(null);
   const clusterGroupRef = useRef<any>(null);
@@ -295,14 +293,7 @@ export default function SiteMapGlobalPage() {
             </>
           )}
         </label>
-        <button
-          type="button"
-          className="predict-btn map-search-btn"
-          onClick={runSearch}
-          disabled={loading || !indication}
-        >
-          Search
-        </button>
+        
 
         {/* Compact inline notice next to the button instead of a large
             dashed placeholder box taking up the whole panel below. */}

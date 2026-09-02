@@ -65,7 +65,6 @@ export default function TopBar({
           <button
             type="button"
             className="user-chip"
-            data-tooltip="Account"
             onClick={() => setMenuOpen((o) => !o)}
           >
             <div className="user-avatar">

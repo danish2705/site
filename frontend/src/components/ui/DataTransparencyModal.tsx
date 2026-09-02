@@ -64,7 +64,9 @@ function Section({
               />
               <div>
                 <div style={{ fontSize: 12.5, fontWeight: 600 }}>{r.label}</div>
-                <div style={{ fontSize: 11.5, color: "var(--sub)" }}>{r.detail}</div>
+                <div style={{ fontSize: 11.5, color: "var(--sub)" }}>
+                  {r.detail}
+                </div>
               </div>
             </div>
           ))}
@@ -79,7 +81,9 @@ function Section({
                 alignItems: "flex-start",
                 padding: "6px 0",
                 borderBottom:
-                  i < syntheticRows.length - 1 ? "1px solid var(--line)" : "none",
+                  i < syntheticRows.length - 1
+                    ? "1px solid var(--line)"
+                    : "none",
               }}
             >
               <span
@@ -95,7 +99,9 @@ function Section({
               />
               <div>
                 <div style={{ fontSize: 12.5, fontWeight: 600 }}>{r.label}</div>
-                <div style={{ fontSize: 11.5, color: "var(--sub)" }}>{r.detail}</div>
+                <div style={{ fontSize: 11.5, color: "var(--sub)" }}>
+                  {r.detail}
+                </div>
               </div>
             </div>
           ))}
@@ -105,7 +111,11 @@ function Section({
   );
 }
 
-export default function DataTransparencyModal({ onClose }: { onClose: () => void }) {
+export default function DataTransparencyModal({
+  onClose,
+}: {
+  onClose: () => void;
+}) {
   const { meta, ranking, riskAssessment, finalResult } = usePipeline();
   const { allSites } = useSiteMap();
 
@@ -141,7 +151,9 @@ export default function DataTransparencyModal({ onClose }: { onClose: () => void
   const mapSynthetic: Row[] = [];
   if (allSites.length > 0) {
     const n = allSites.length;
-    const coordsLive = allSites.filter((s) => s.coordsSource !== "approximate").length;
+    const coordsLive = allSites.filter(
+      (s) => s.coordsSource !== "approximate",
+    ).length;
     mapLive.push({
       label: "Facility geocoding",
       detail:
@@ -151,7 +163,9 @@ export default function DataTransparencyModal({ onClose }: { onClose: () => void
     });
 
     const distanceLive = allSites.filter(
-      (s) => s.catchmentDistanceSource === "live-google" || s.catchmentDistanceSource === "live-osrm",
+      (s) =>
+        s.catchmentDistanceSource === "live-google" ||
+        s.catchmentDistanceSource === "live-osrm",
     ).length;
     if (distanceLive > 0) {
       mapLive.push({
@@ -177,7 +191,9 @@ export default function DataTransparencyModal({ onClose }: { onClose: () => void
       label: "Individual patient sample records",
       detail: "Fabricated illustrative sample — no live per-patient source",
     });
-    const riskEstimated = allSites.filter((s) => s.riskSource === "llm-estimated").length;
+    const riskEstimated = allSites.filter(
+      (s) => s.riskSource === "llm-estimated",
+    ).length;
     if (riskEstimated > 0) {
       mapSynthetic.push({
         label: "Site risk score",
@@ -232,7 +248,9 @@ export default function DataTransparencyModal({ onClose }: { onClose: () => void
     const records = riskAssessment.flatMap((r) => r.riskRecords);
     const liveCount = records.filter((r) => r.dataSource === "live").length;
     const excelCount = records.filter((r) => r.dataSource === "excel").length;
-    const estimatedCount = records.filter((r) => r.dataSource === "llm-estimated" || !r.dataSource).length;
+    const estimatedCount = records.filter(
+      (r) => r.dataSource === "llm-estimated" || !r.dataSource,
+    ).length;
     if (liveCount + excelCount > 0) {
       riskLive.push({
         label: "Risk register entries",
@@ -263,7 +281,8 @@ export default function DataTransparencyModal({ onClose }: { onClose: () => void
     if (finalResult.dataSource === "llm-estimated") {
       finalSynthetic.push({
         label: `Recommended site: ${finalResult.recommendedSite}`,
-        detail: "Remaining KPI fields LLM-estimated — no Excel baseline for this facility",
+        detail:
+          "Remaining KPI fields LLM-estimated — no Excel baseline for this facility",
       });
     }
   }
@@ -271,12 +290,17 @@ export default function DataTransparencyModal({ onClose }: { onClose: () => void
   const outreachSynthetic: Row[] = [
     {
       label: "Outreach contact email",
-      detail: "Fabricated placeholder — ClinicalTrials.gov does not disclose real per-facility contacts",
+      detail:
+        "Fabricated placeholder — ClinicalTrials.gov does not disclose real per-facility contacts",
     },
   ];
 
   const nothingLoaded =
-    !meta && allSites.length === 0 && !ranking && !riskAssessment && !finalResult;
+    !meta &&
+    allSites.length === 0 &&
+    !ranking &&
+    !riskAssessment &&
+    !finalResult;
 
   return (
     <div className="run-modal-backdrop" onClick={onClose}>
@@ -290,16 +314,17 @@ export default function DataTransparencyModal({ onClose }: { onClose: () => void
           <div>
             <h2>Data Transparency</h2>
             <p className="muted">
-              What's real vs. synthetic in this run — <span style={{ color: "var(--success)" }}>●</span> live data from
-              ClinicalTrials.gov / Google / OpenStreetMap, <span style={{ color: "var(--warning)" }}>●</span> synthetic
-              or LLM-estimated data used where no live source exists.
+              What's real vs. synthetic in this run —{" "}
+              <span style={{ color: "var(--success)" }}>●</span> live data from
+              ClinicalTrials.gov / Google / OpenStreetMap,{" "}
+              <span style={{ color: "var(--warning)" }}>●</span> synthetic or
+              LLM-estimated data used where no live source exists.
             </p>
           </div>
           <button
             type="button"
             className="icon-close-btn"
             onClick={onClose}
-            data-tooltip="Close"
             aria-label="Close"
           >
             <CloseIcon className="btn-icon" />
@@ -316,12 +341,36 @@ export default function DataTransparencyModal({ onClose }: { onClose: () => void
         )}
 
         <div style={{ marginTop: 12 }}>
-          <Section title="Indication & Trial Vocabulary" liveRows={metaLive} syntheticRows={metaSynthetic} />
-          <Section title="Site Map" liveRows={mapLive} syntheticRows={mapSynthetic} />
-          <Section title="Site Ranking" liveRows={rankLive} syntheticRows={rankSynthetic} />
-          <Section title="Risk Register" liveRows={riskLive} syntheticRows={riskSynthetic} />
-          <Section title="Final Recommendation" liveRows={finalLive} syntheticRows={finalSynthetic} />
-          <Section title="Outreach" liveRows={[]} syntheticRows={outreachSynthetic} />
+          <Section
+            title="Indication & Trial Vocabulary"
+            liveRows={metaLive}
+            syntheticRows={metaSynthetic}
+          />
+          <Section
+            title="Site Map"
+            liveRows={mapLive}
+            syntheticRows={mapSynthetic}
+          />
+          <Section
+            title="Site Ranking"
+            liveRows={rankLive}
+            syntheticRows={rankSynthetic}
+          />
+          <Section
+            title="Risk Register"
+            liveRows={riskLive}
+            syntheticRows={riskSynthetic}
+          />
+          <Section
+            title="Final Recommendation"
+            liveRows={finalLive}
+            syntheticRows={finalSynthetic}
+          />
+          <Section
+            title="Outreach"
+            liveRows={[]}
+            syntheticRows={outreachSynthetic}
+          />
         </div>
       </div>
     </div>
