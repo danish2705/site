@@ -61,13 +61,6 @@ export default function SiteRankingPanel() {
     regionOptions,
     prefetchingCountries,
     countryErrors,
-    // Shared across Risk Register/Ranking/Final Recommendation — picking a
-    // country here keeps the other two pages in sync, and (crucially) this
-    // state lives in the provider, not in this component, so navigating away
-    // from this tab and back does NOT reset it. This panel previously kept
-    // its own local `pageCountry` state, which reset to "" on every remount
-    // and briefly rendered the empty/loading state again even for a country
-    // that was already fully analyzed — that remount-reset was the flicker.
     analysisCountry: pageCountry,
     setAnalysisCountry: setPageCountry,
     ranking,
@@ -104,7 +97,9 @@ export default function SiteRankingPanel() {
   // shown is a clearly-labeled SYNTHETIC placeholder, not a real inbox.
   // Which site's Protocol fit checklist is currently expanded — one at a
   // time, toggled by clicking its badge (see the "Protocol fit" cell below).
-  const [expandedChecklistSiteId, setExpandedChecklistSiteId] = useState<string | null>(null);
+  const [expandedChecklistSiteId, setExpandedChecklistSiteId] = useState<
+    string | null
+  >(null);
 
   const [openDraftSiteId, setOpenDraftSiteId] = useState<string | null>(null);
   const [draftLoadingSiteId, setDraftLoadingSiteId] = useState<string | null>(
