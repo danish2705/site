@@ -2,7 +2,6 @@ import { useEffect, useRef, useState } from "react";
 import type { LiveMapResponse, MapSiteRow } from "../types";
 import { fetchLiveSiteMap } from "../services/map.service";
 import { usePipeline } from "./usePipeline";
-import { countriesFromRegionKeys } from "../utils/region";
 import { SITE_MAP_RADIUS_MILES } from "../utils/siteMapFormat";
 
 export interface IndependentSiteSearchState {
@@ -24,9 +23,8 @@ export interface IndependentSiteSearchState {
 }
 
 export function useIndependentSiteSearch(): IndependentSiteSearchState {
-  const { form, running } = usePipeline();
+  const { form, running, selectedCountries, nctScope } = usePipeline();
   const indication = form.indication;
-  const selectedCountries = countriesFromRegionKeys(form.regions);
   const selectedCountriesKey = selectedCountries.join("|");
 
   const [country, setCountry] = useState("");
@@ -52,6 +50,9 @@ export function useIndependentSiteSearch(): IndependentSiteSearchState {
         country: country || undefined,
         radiusMiles,
         ageGroups: form.ageGroups,
+        // Scoped mode: plot ONLY this trial's own disclosed sites — see
+        // PipelineContext's nctScope/runAnalysisFromNct.
+        nctId: nctScope || undefined,
       });
       setData(res);
     } catch (err) {
@@ -75,7 +76,7 @@ export function useIndependentSiteSearch(): IndependentSiteSearchState {
     if (!indication) return;
     if (selectedCountries.length > 0 && !country) return;
     runSearch();
-  }, [indication, country, selectedCountriesKey, radiusMiles]);
+  }, [indication, country, selectedCountriesKey, radiusMiles, nctScope]);
 
   return {
     indication,

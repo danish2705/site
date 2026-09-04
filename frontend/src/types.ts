@@ -349,6 +349,8 @@ export interface NctLookupResponse {
   /** Disclosed trial site countries — informational context only, not applied as a region/country filter (this app searches every configured region globally rather than assuming the best NEW site is wherever the original trial ran). */
   countries: string[];
   siteCount: number;
+  /** This study's own disclosed site/location list — when a caller opts into "scope everything to this one NCT" (see PipelineContext's runAnalysisFromNct), Ongoing Trials/Risk Assessment/Site Ranking/Site Map/Recommendation are all run against ONLY these facilities instead of the default broad indication-wide search. Empty when the study discloses no locations. */
+  facilities: LiveFacilityRow[];
 }
 
 /** One trial site plotted on the Site Map tab — see the backend's pipeline/liveMapData.ts for exactly what's live vs. synthetic vs. approximate in each field. */

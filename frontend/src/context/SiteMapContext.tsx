@@ -19,7 +19,6 @@ import {
 } from "../services/map.service";
 import { fetchEligibilityFilters } from "../services/eligibilityFilters.service";
 import { usePipeline } from "../hooks/usePipeline";
-import { countriesFromRegionKeys } from "../utils/region";
 import {
   SITE_MAP_RADIUS_MILES,
   type SortKey,
@@ -81,12 +80,8 @@ export interface SiteMapState {
 export const SiteMapContext = createContext<SiteMapState | null>(null);
 
 export function SiteMapProvider({ children }: { children: ReactNode }) {
-  const { form, running } = usePipeline();
+  const { form, running, selectedCountries, nctScope } = usePipeline();
   const indication = form.indication;
-  const selectedCountries = useMemo(
-    () => countriesFromRegionKeys(form.regions),
-    [form.regions],
-  );
 
   const [country, setCountry] = useState("");
   const [data, setData] = useState<LiveMapResponse | null>(null);
@@ -253,6 +248,9 @@ export function SiteMapProvider({ children }: { children: ReactNode }) {
         country: country || undefined,
         radiusMiles: SITE_MAP_RADIUS_MILES,
         ageGroups: form.ageGroups,
+        // Scoped mode: plot ONLY this trial's own disclosed sites — see
+        // PipelineContext's nctScope/runAnalysisFromNct.
+        nctId: nctScope || undefined,
       });
       setData(res);
       setSelectedSiteId(null);
@@ -278,7 +276,7 @@ export function SiteMapProvider({ children }: { children: ReactNode }) {
     if (!indication) return;
     if (selectedCountries.length > 0 && !country) return;
     runSearch();
-  }, [indication, country, selectedCountries]);
+  }, [indication, country, selectedCountries, nctScope]);
 
   const filteredSites = useMemo(() => {
     const q = search.trim().toLowerCase();

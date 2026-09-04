@@ -7,12 +7,32 @@ import Select from "../ui/Select";
 import EmptyState from "../ui/EmptyState";
 import { allConfiguredCountries } from "../../utils/region";
 
-type LiveStatusFilter = "RECRUITING" | "NOT_YET_RECRUITING" | "ACTIVE_NOT_RECRUITING";
+type LiveStatusFilter =
+  | "ALL"
+  | "RECRUITING"
+  | "NOT_YET_RECRUITING"
+  | "ACTIVE_NOT_RECRUITING"
+  | "ENROLLING_BY_INVITATION"
+  | "COMPLETED"
+  | "TERMINATED"
+  | "WITHDRAWN"
+  | "SUSPENDED";
 
+// "All statuses" plus every non-"live" status too (COMPLETED etc.) — an
+// NCT-scoped analysis (see PipelineContext's nctScope) is auditing this
+// trial's own disclosed site(s), which may well not be "live" (an older
+// trial's site is COMPLETED), so restricting to only 3 live statuses would
+// hide it entirely by default.
 const STATUS_OPTIONS: { value: LiveStatusFilter; label: string }[] = [
+  { value: "ALL", label: "All statuses" },
   { value: "RECRUITING", label: "Recruiting" },
   { value: "NOT_YET_RECRUITING", label: "Not Yet Recruiting" },
   { value: "ACTIVE_NOT_RECRUITING", label: "Active, Not Recruiting" },
+  { value: "ENROLLING_BY_INVITATION", label: "Enrolling by Invitation" },
+  { value: "COMPLETED", label: "Completed" },
+  { value: "TERMINATED", label: "Terminated" },
+  { value: "WITHDRAWN", label: "Withdrawn" },
+  { value: "SUSPENDED", label: "Suspended" },
 ];
 
 export default function RiskAssessmentPanel() {
@@ -34,6 +54,7 @@ export default function RiskAssessmentPanel() {
     setAnalysisCountry: setPageCountry,
     riskAssessment,
     finalResult,
+    nctScope,
   } = usePipeline();
   // When the trial form has no region/country pre-selected (the NCT-lookup
   // flow deliberately leaves this empty to search every region globally),
@@ -43,10 +64,14 @@ export default function RiskAssessmentPanel() {
     selectedCountries.length > 0
       ? selectedCountries
       : allConfiguredCountries(regionOptions);
-  // Default to Recruiting per request — the strongest, currently-live signal.
-  // Only these three statuses are offered; Completed/Terminated/Withdrawn/
-  // Suspended/unknown-status sites aren't useful candidates here.
-  const [statusFilter, setStatusFilter] = useState<LiveStatusFilter>("RECRUITING");
+  // Default to Recruiting per request — the strongest, currently-live signal
+  // — EXCEPT for an NCT-scoped analysis (auditing one specific trial's own
+  // disclosed site(s), which may not be "live" at all), which defaults to
+  // "All statuses" instead so its site isn't hidden just because it isn't
+  // currently recruiting.
+  const [statusFilter, setStatusFilter] = useState<LiveStatusFilter>(() =>
+    nctScope ? "ALL" : "RECRUITING",
+  );
 
   const recommendedSiteId = finalResult?.siteId;
   const pageLoading =
@@ -56,6 +81,7 @@ export default function RiskAssessmentPanel() {
 
   const filteredRows = useMemo(() => {
     if (!riskAssessment) return [];
+    if (statusFilter === "ALL") return riskAssessment;
     return riskAssessment.filter(
       (r) => (r.status ?? "").toUpperCase() === statusFilter,
     );

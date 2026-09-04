@@ -6,6 +6,8 @@ export interface LiveSiteMapParams {
   country?: string;
   radiusMiles?: number;
   ageGroups?: string[];
+  /** When set, the backend plots ONLY this trial's own disclosed sites instead of every trial for the indication — see PipelineContext's nctScope. */
+  nctId?: string;
 }
 
 export function fetchLiveSiteMap(
@@ -17,6 +19,7 @@ export function fetchLiveSiteMap(
   if (params.ageGroups && params.ageGroups.length > 0) {
     qs.set("ageGroups", params.ageGroups.join(","));
   }
+  if (params.nctId) qs.set("nctId", params.nctId);
   return apiJson<LiveMapResponse>(`/api/live-map?${qs.toString()}`, {
     fallbackError: "Could not load the site map.",
   });

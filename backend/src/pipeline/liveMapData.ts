@@ -7,6 +7,7 @@ import type {
 import {
   getFacilitiesForCondition,
   getCompletedTrialBenchmarks,
+  locationMatchesCountry,
   type LiveFacility,
 } from "../services/ctgov.client.js";
 import {
@@ -141,6 +142,8 @@ export interface BuildLiveSiteMapParams {
   radiusMiles?: number;
   maxSites?: number;
   ageGroups?: string[];
+  /** When supplied (non-empty), skips the broad getFacilitiesForCondition search entirely and plots ONLY these facilities instead — used to scope the Site Map to one specific trial's own disclosed sites (see liveMap.controller.ts's optional ?nctId= param and NctStudyLookup.facilities), rather than every trial for the indication. Still narrowed to `country` when one is given. */
+  facilitiesOverride?: LiveFacility[];
 }
 
 const MAP_STATUS_TIERS = [
@@ -159,12 +162,17 @@ export async function buildLiveSiteMapData(
   const maxSites = params.maxSites ?? 40;
   const warnings: string[] = [];
 
-  const rawFacilities = await getFacilitiesForCondition(params.indication, {
-    country: params.country || undefined,
-    pageSize: Math.max(maxSites * 6, 200),
-    ageGroups: params.ageGroups,
-    statuses: MAP_STATUS_TIERS,
-  });
+  const rawFacilities =
+    params.facilitiesOverride && params.facilitiesOverride.length > 0
+      ? params.facilitiesOverride.filter((f) =>
+          locationMatchesCountry(f.country, params.country),
+        )
+      : await getFacilitiesForCondition(params.indication, {
+          country: params.country || undefined,
+          pageSize: Math.max(maxSites * 6, 200),
+          ageGroups: params.ageGroups,
+          statuses: MAP_STATUS_TIERS,
+        });
   const facilities = dedupeFacilities(rawFacilities).slice(0, maxSites);
 
   if (facilities.length === 0) {

@@ -24,7 +24,7 @@ export default function TopBar({
       plain, non-interactive text) anywhere this handler isn't wired up. */
   onGoToLanding?: () => void;
 }) {
-  const { savedRuns, running } = usePipeline();
+  const { savedRuns, running, nctScope } = usePipeline();
   const hasSavedRuns = !!savedRuns && savedRuns.length > 0;
   const [menuOpen, setMenuOpen] = useState(false);
   const [dataTransparencyOpen, setDataTransparencyOpen] = useState(false);
@@ -75,8 +75,7 @@ export default function TopBar({
             type="button"
             className="history-btn edit-parameters-btn"
             onClick={onEditParameters}
-            disabled={running}
-            data-tooltip={running ? "Wait for the run to finish" : "Edit Analysis Parameters"}
+            disabled={running || !!nctScope}
           >
             <EditIcon className="btn-icon" />
             Edit Parameters

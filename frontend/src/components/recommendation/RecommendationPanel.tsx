@@ -17,12 +17,30 @@ import { downloadFinalRecommendationReport } from "../../utils/downloadReport";
 import WhyNumberOne from "./WhyNumberOne";
 import ScoreBreakdownDetailed from "./ScoreBreakdownDetailed";
 
-type LiveStatusFilter = "RECRUITING" | "NOT_YET_RECRUITING" | "ACTIVE_NOT_RECRUITING";
+type LiveStatusFilter =
+  | "RECRUITING"
+  | "NOT_YET_RECRUITING"
+  | "ACTIVE_NOT_RECRUITING"
+  | "ENROLLING_BY_INVITATION"
+  | "COMPLETED"
+  | "TERMINATED"
+  | "WITHDRAWN"
+  | "SUSPENDED";
 
+// Includes non-"live" statuses (COMPLETED etc.) so an NCT-scoped analysis
+// (see PipelineContext's nctScope) whose own disclosed site isn't currently
+// recruiting still has a status this picker — and this site's own default —
+// can actually match, instead of always falling back to "RECRUITING" and
+// 404ing when no candidate has that status.
 const STATUS_OPTIONS: { value: LiveStatusFilter; label: string }[] = [
   { value: "RECRUITING", label: "Recruiting" },
   { value: "NOT_YET_RECRUITING", label: "Not Yet Recruiting" },
   { value: "ACTIVE_NOT_RECRUITING", label: "Active, Not Recruiting" },
+  { value: "ENROLLING_BY_INVITATION", label: "Enrolling by Invitation" },
+  { value: "COMPLETED", label: "Completed" },
+  { value: "TERMINATED", label: "Terminated" },
+  { value: "WITHDRAWN", label: "Withdrawn" },
+  { value: "SUSPENDED", label: "Suspended" },
 ];
 
 function normalizeStatus(raw: string | null | undefined): LiveStatusFilter | null {
@@ -304,7 +322,6 @@ export default function RecommendationPanel() {
             type="button"
             className="save-run-btn"
             onClick={handleDownloadReport}
-            data-tooltip="Download a printable report of this recommendation"
           >
             <DownloadIcon className="btn-icon" />
             Download Report
@@ -314,7 +331,6 @@ export default function RecommendationPanel() {
             className="save-run-btn"
             onClick={draftOutreach}
             disabled={draftLoading}
-            data-tooltip="Draft-only outreach text — no real contact email exists for this site, and this app never actually sends anything."
           >
             {draftLoading ? (
               <span className="spinner" />

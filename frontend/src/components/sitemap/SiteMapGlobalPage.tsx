@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import L from "../../lib/leafletGlobal";
 import "leaflet.markercluster";
 import "leaflet/dist/leaflet.css";
@@ -126,7 +126,6 @@ export default function SiteMapGlobalPage() {
     error,
     allSites,
     radiusMiles,
-    setRadiusMiles,
   } = useIndependentSiteSearch();
   const { regionOptions } = usePipeline();
   // When the trial form has no region/country pre-selected (the NCT-lookup
@@ -141,42 +140,14 @@ export default function SiteMapGlobalPage() {
   // clicked pin's selection with.
   const [selectedSiteId, setSelectedSiteId] = useState<string | null>(null);
 
-  // Map filter bar (redesign spec item 10 — "Make the Map More Useful"):
-  // client-side filters over whatever the current search already returned,
-  // so narrowing the view never requires a fresh network round-trip.
-  const [showFilter, setShowFilter] = useState<"all" | "top10">("all");
-  const [riskFilter, setRiskFilter] = useState<"All" | "Low" | "Medium" | "High">(
-    "All",
-  );
-  const [patientsFilter, setPatientsFilter] = useState<"All" | "100" | "250" | "500">(
-    "All",
-  );
-
-  const filteredSites = useMemo(() => {
-    let list = allSites;
-    if (riskFilter !== "All") {
-      list = list.filter((s) => s.riskLevel === riskFilter);
-    }
-    if (patientsFilter !== "All") {
-      const threshold = Number(patientsFilter);
-      list = list.filter((s) => s.netAvailablePatients >= threshold);
-    }
-    if (showFilter === "top10") {
-      list = [...list]
-        .sort((a, b) => b.netAvailablePatients - a.netAvailablePatients)
-        .slice(0, 10);
-    }
-    return list;
-  }, [allSites, riskFilter, patientsFilter, showFilter]);
-
   // Clear a selection (and whatever preview/radius ring it drove) the
-  // moment a filter change makes that site disappear from the map, rather
+  // moment a fresh search makes that site disappear from the map, rather
   // than leaving a stale preview card open for a pin that's no longer shown.
   useEffect(() => {
-    if (selectedSiteId && !filteredSites.some((s) => s.siteId === selectedSiteId)) {
+    if (selectedSiteId && !allSites.some((s) => s.siteId === selectedSiteId)) {
       setSelectedSiteId(null);
     }
-  }, [filteredSites, selectedSiteId]);
+  }, [allSites, selectedSiteId]);
 
   const selectedSite = selectedSiteId
     ? (allSites.find((s) => s.siteId === selectedSiteId) ?? null)
@@ -278,7 +249,7 @@ export default function SiteMapGlobalPage() {
       radiusCircleRef.current = null;
     }
     const latLngs: [number, number][] = [];
-    for (const s of filteredSites) {
+    for (const s of allSites) {
       const marker = L.marker([s.lat, s.lng], { icon: siteIcon() });
       marker.bindPopup(buildPopupHtml(s, SITE_MAP_METRIC), { maxWidth: 280 });
       marker.bindTooltip(buildMarkerTooltipHtml(s), {
@@ -303,19 +274,19 @@ export default function SiteMapGlobalPage() {
     } else {
       map.setView(WORLD_CENTER, WORLD_ZOOM);
     }
-  }, [filteredSites]);
+  }, [allSites]);
 
   useEffect(() => {
     if (!selectedSiteId) return;
     const clusterGroup = clusterGroupRef.current;
     const marker = markerByIdRef.current.get(selectedSiteId);
-    const site = filteredSites.find((s) => s.siteId === selectedSiteId);
+    const site = allSites.find((s) => s.siteId === selectedSiteId);
     if (!clusterGroup || !marker || !site) return;
     showRadiusRing(site);
     clusterGroup.zoomToShowLayer(marker, () => {
       marker.openPopup();
     });
-  }, [selectedSiteId, filteredSites]);
+  }, [selectedSiteId, allSites]);
 
   return (
     <div className="card">
@@ -358,86 +329,6 @@ export default function SiteMapGlobalPage() {
           </span>
         )}
       </div>
-
-      {data && allSites.length > 0 && (
-        <div className="map-filter-bar">
-          <div className="map-filter-group">
-            <span className="map-filter-group-label">Show</span>
-            <div className="map-filter-pills">
-              <button
-                type="button"
-                className={`map-filter-pill${showFilter === "all" ? " active" : ""}`}
-                onClick={() => setShowFilter("all")}
-              >
-                All Sites
-              </button>
-              <button
-                type="button"
-                className={`map-filter-pill${showFilter === "top10" ? " active" : ""}`}
-                onClick={() => setShowFilter("top10")}
-                data-tooltip="Top 10 by net available patients"
-              >
-                Top 10
-              </button>
-            </div>
-          </div>
-
-          <div className="map-filter-group">
-            <span className="map-filter-group-label">Risk</span>
-            <div className="map-filter-pills">
-              {(["All", "Low", "Medium", "High"] as const).map((level) => (
-                <button
-                  key={level}
-                  type="button"
-                  className={`map-filter-pill${riskFilter === level ? " active" : ""}`}
-                  onClick={() => setRiskFilter(level)}
-                >
-                  {level}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <div className="map-filter-group">
-            <span className="map-filter-group-label">Patients</span>
-            <div className="map-filter-pills">
-              {(["All", "100", "250", "500"] as const).map((threshold) => (
-                <button
-                  key={threshold}
-                  type="button"
-                  className={`map-filter-pill${patientsFilter === threshold ? " active" : ""}`}
-                  onClick={() => setPatientsFilter(threshold)}
-                  data-tooltip={threshold === "All" ? undefined : `${threshold}+ net available patients`}
-                >
-                  {threshold === "All" ? "All" : `${threshold}+`}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <div className="map-filter-group">
-            <span className="map-filter-group-label">Catchment</span>
-            <div className="map-filter-pills">
-              {[5, 25, 50].map((miles) => (
-                <button
-                  key={miles}
-                  type="button"
-                  className={`map-filter-pill${radiusMiles === miles ? " active" : ""}`}
-                  onClick={() => setRadiusMiles(miles)}
-                  disabled={loading}
-                  data-tooltip={`Re-run the search with a ${miles}-mile catchment radius`}
-                >
-                  {miles} mi
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <span className="map-filter-count">
-            {filteredSites.length} of {allSites.length} site(s) shown
-          </span>
-        </div>
-      )}
 
       <div className="card-scroll-body">
         {error && <p className="error-text">{error}</p>}

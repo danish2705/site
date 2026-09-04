@@ -5,6 +5,7 @@ import {
   type CombinedCatchmentSiteInput,
 } from "../pipeline/liveMapData.js";
 import { resolveSpecialty } from "../pipeline/liveIndications.js";
+import { getStudyByNctId } from "../services/ctgov.client.js";
 import { badRequest } from "../utils/httpError.js";
 
 export async function getLiveSiteMap(
@@ -40,12 +41,23 @@ export async function getLiveSiteMap(
     throw badRequest((err as Error).message);
   }
 
+  // Optional "scope to one trial's own disclosed sites" mode — see
+  // NctStudyLookup.facilities / frontend PipelineContext's
+  // runAnalysisFromNct. Best-effort: an unknown/unresolvable nctId just
+  // falls back to the normal broad indication-wide search rather than
+  // failing the whole map load.
+  const nctId = req.query.nctId ? String(req.query.nctId).trim() : "";
+  const facilitiesOverride = nctId
+    ? (await getStudyByNctId(nctId))?.facilities
+    : undefined;
+
   const response = await buildLiveSiteMapData({
     indication,
     specialty,
     country: country || undefined,
     radiusMiles,
     ageGroups,
+    facilitiesOverride,
   });
 
   res.json(response);

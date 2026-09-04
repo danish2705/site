@@ -105,6 +105,7 @@ export async function getNctLookup(req: Request, res: Response): Promise<void> {
     durationMonths: monthsBetween(study.startDate, study.primaryCompletionDate),
     countries: study.countries,
     siteCount: study.siteCount,
+    facilities: study.facilities,
   };
 
   res.json(response);

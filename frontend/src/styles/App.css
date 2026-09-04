@@ -4073,58 +4073,9 @@ tr.pinned-row {
 }
 
 /* ---------------------------------------------------------------------
-   Site Map filter bar + in-place preview card (redesign spec item 10) —
+   Site Map in-place preview card (redesign spec item 10) —
    SiteMapGlobalPage.tsx.
    --------------------------------------------------------------------- */
-.map-filter-bar {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 18px;
-  margin: 10px 0 4px;
-}
-.map-filter-group {
-  display: flex;
-  flex-direction: column;
-  gap: 5px;
-}
-.map-filter-group-label {
-  font-size: 10.5px;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  color: var(--sub);
-}
-.map-filter-pills {
-  display: flex;
-  gap: 4px;
-  background: var(--bg);
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  padding: 3px;
-}
-.map-filter-pill {
-  border: none;
-  background: transparent;
-  padding: 5px 11px;
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--sub);
-  border-radius: 6px;
-  cursor: pointer;
-  white-space: nowrap;
-}
-.map-filter-pill.active {
-  background: var(--card);
-  color: var(--accent-dark);
-  box-shadow: 0 1px 2px rgba(2, 24, 72, 0.08);
-}
-.map-filter-count {
-  margin-left: auto;
-  font-size: 12px;
-  color: var(--sub);
-  font-weight: 600;
-}
 .site-preview-card {
   margin-top: 12px;
   background: var(--card);

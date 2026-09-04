@@ -61,7 +61,7 @@ function LandingIllustration() {
 }
 
 export default function LandingScreen({ onEnterDashboard, onStartManual }: LandingScreenProps) {
-  const { setForm, runAnalysis } = usePipeline();
+  const { runAnalysisFromNct } = usePipeline();
   const [nctInput, setNctInput] = useState("");
   const [searching, setSearching] = useState(false);
   const [searchError, setSearchError] = useState<string | null>(null);
@@ -101,19 +101,19 @@ export default function LandingScreen({ onEnterDashboard, onStartManual }: Landi
       phase: lookupResult.phase ?? "",
       sampleSize: lookupResult.enrollmentCount ?? "",
       durationMonths: lookupResult.durationMonths ?? "",
-      // No live source for budget tier — searches every region globally
-      // with cost excluded from the scoring entirely, rather than guessing
-      // a tier the trial never disclosed.
+      // No live source for budget tier — this run is scoped to the trial's
+      // own disclosed sites (see runAnalysisFromNct), so cost is excluded
+      // from the scoring entirely rather than guessing a tier the trial
+      // never disclosed.
       budgetTier: "All",
-      // Deliberately left global (no region/country pre-selection) — see
-      // NctLookupResponse.countries for why the trial's own disclosed sites
-      // aren't used to restrict the search.
+      // Left empty — the trial's own disclosed site countries drive this
+      // run instead (see runAnalysisFromNct/nctScope), not a manual region
+      // pre-selection.
       regions: [],
       ageGroups: lookupResult.ageGroups,
     };
-    setForm(newForm);
     onEnterDashboard();
-    runAnalysis(newForm);
+    runAnalysisFromNct(lookupResult, newForm);
   }
 
   return (

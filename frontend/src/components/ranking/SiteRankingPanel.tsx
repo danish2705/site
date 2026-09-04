@@ -15,14 +15,31 @@ import { allConfiguredCountries } from "../../utils/region";
 type RankingViewMode = "cards" | "table";
 
 type LiveStatusFilter =
+  | "ALL"
   | "RECRUITING"
   | "NOT_YET_RECRUITING"
-  | "ACTIVE_NOT_RECRUITING";
+  | "ACTIVE_NOT_RECRUITING"
+  | "ENROLLING_BY_INVITATION"
+  | "COMPLETED"
+  | "TERMINATED"
+  | "WITHDRAWN"
+  | "SUSPENDED";
 
+// "All statuses" plus every non-"live" status too (COMPLETED etc.) — an
+// NCT-scoped analysis (see PipelineContext's nctScope) is auditing this
+// trial's own disclosed site(s), which may well not be "live" (an older
+// trial's site is COMPLETED), so restricting to only 3 live statuses would
+// hide it entirely by default.
 const STATUS_OPTIONS: { value: LiveStatusFilter; label: string }[] = [
+  { value: "ALL", label: "All statuses" },
   { value: "RECRUITING", label: "Recruiting" },
   { value: "NOT_YET_RECRUITING", label: "Not Yet Recruiting" },
   { value: "ACTIVE_NOT_RECRUITING", label: "Active, Not Recruiting" },
+  { value: "ENROLLING_BY_INVITATION", label: "Enrolling by Invitation" },
+  { value: "COMPLETED", label: "Completed" },
+  { value: "TERMINATED", label: "Terminated" },
+  { value: "WITHDRAWN", label: "Withdrawn" },
+  { value: "SUSPENDED", label: "Suspended" },
 ];
 
 function statusLabel(status: string | null): string {
@@ -67,14 +84,20 @@ export default function SiteRankingPanel() {
     analysisCountry: pageCountry,
     setAnalysisCountry: setPageCountry,
     ranking,
+    nctScope,
   } = usePipeline();
 
   const countryOptions =
     selectedCountries.length > 0
       ? selectedCountries
       : allConfiguredCountries(regionOptions);
-  const [statusFilter, setStatusFilter] =
-    useState<LiveStatusFilter>("RECRUITING");
+  // Default to Recruiting per request — EXCEPT for an NCT-scoped analysis
+  // (auditing one specific trial's own disclosed site(s), which may not be
+  // "live" at all), which defaults to "All statuses" instead so its site
+  // isn't hidden just because it isn't currently recruiting.
+  const [statusFilter, setStatusFilter] = useState<LiveStatusFilter>(() =>
+    nctScope ? "ALL" : "RECRUITING",
+  );
   // Cards/Table toggle (redesign refresh) — Cards is the new glanceable
   // default; Table renders the exact same markup/columns/behavior this page
   // always had, unchanged, for anyone who wants the full detail view.
@@ -88,7 +111,11 @@ export default function SiteRankingPanel() {
   const filteredRanking = useMemo(() => {
     if (!ranking) return [];
     return ranking
-      .filter((r) => (r.status ?? "").toUpperCase() === statusFilter)
+      .filter(
+        (r) =>
+          statusFilter === "ALL" ||
+          (r.status ?? "").toUpperCase() === statusFilter,
+      )
       .map((r, i) => ({ ...r, rank: i + 1 }));
   }, [ranking, statusFilter]);
 
@@ -273,14 +300,24 @@ export default function SiteRankingPanel() {
       </div>
       {draftError && <p className="error-text">{draftError}</p>}
       <div className="card-scroll-body ranking-scroll-body">
-        {viewMode === "cards" && (
+        {viewMode === "cards" && filteredRanking.length === 0 && (
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              flex: 1,
+              minHeight: 200,
+            }}
+          >
+            <EmptyState
+              title="No sites match"
+              detail="No sites match the selected status filter."
+            />
+          </div>
+        )}
+        {viewMode === "cards" && filteredRanking.length > 0 && (
           <div className="ranking-cards">
-            {filteredRanking.length === 0 && (
-              <EmptyState
-                title="No sites match"
-                detail="No sites match the selected status filter."
-              />
-            )}
             {filteredRanking[0] && (
               <RankingSiteCard
                 row={filteredRanking[0]}

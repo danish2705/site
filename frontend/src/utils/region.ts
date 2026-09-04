@@ -28,6 +28,24 @@ export function countriesFromRegionKeys(keys: string[]): string[] {
  * populate their dropdown with and showed a permanently-disabled "no region
  * selected" placeholder even once a real, global analysis had already run.
  */
+/**
+ * Loose country-name equality (case-insensitive, either side may be a
+ * substring of the other) — mirrors the backend's ctgov.client.ts
+ * locationMatchesCountry, used here so a scoped NCT's own facility list
+ * (grouped client-side by country) matches the same way the backend would
+ * have matched it.
+ */
+export function countryMatches(
+  a: string | null | undefined,
+  b: string | null | undefined,
+): boolean {
+  if (!b) return true;
+  if (!a) return false;
+  const x = a.trim().toLowerCase();
+  const y = b.trim().toLowerCase();
+  return x === y || x.includes(y) || y.includes(x);
+}
+
 export function allConfiguredCountries(
   regionOptions: { country: string }[],
 ): string[] {

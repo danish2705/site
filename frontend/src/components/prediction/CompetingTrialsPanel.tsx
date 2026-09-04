@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import type { LiveTrialLandscapeResponse } from "../../types";
 import { fetchLiveTrialLandscape } from "../../services/liveTrials.service";
 import { usePipeline } from "../../hooks/usePipeline";
+import { countryMatches } from "../../utils/region";
 import WizardNextLink from "../ui/WizardNextLink";
 import TableSkeleton from "../ui/TableSkeleton";
 import Select from "../ui/Select";
@@ -29,8 +30,14 @@ export default function CompetingTrialsPanel({
     | "enrolling_by_invitation"
     | "completed"
     | "other";
-  const [statusFilter, setStatusFilter] = useState<StatusFilter>("recruiting");
-  const { setOngoingTrialSites } = usePipeline();
+  const { setOngoingTrialSites, nctScope, nctScopeFacilities } = usePipeline();
+  // Default to Recruiting per request — EXCEPT for an NCT-scoped analysis
+  // (auditing one specific trial's own disclosed site(s), which may not be
+  // "live" at all), which defaults to "all" instead so its site isn't
+  // hidden just because it isn't currently recruiting.
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>(() =>
+    nctScope ? "all" : "recruiting",
+  );
 
   useEffect(() => {
     if (selectedCountries.length === 0) {
@@ -62,15 +69,30 @@ export default function CompetingTrialsPanel({
   }
 
   useEffect(() => {
+    // Scoped mode: this trial's own disclosed sites (nctScopeFacilities) are
+    // already known — no need for (and no reason to run) a fresh broad
+    // ClinicalTrials.gov search by indication, which is exactly what used to
+    // surface OTHER trials' NCT codes here.
+    if (nctScope) return;
     if (!indication || !countryResolved) return;
     setData(null);
     runSearch(country);
-  }, [indication, country, countryResolved]);
+  }, [indication, country, countryResolved, nctScope]);
 
-  const facilities = data?.facilities ?? [];
+  // Scoped mode sources rows directly from this one trial's own disclosed
+  // site list (already fetched by the landing page's NCT lookup) instead of
+  // `data` (a broad, indication-wide search this panel deliberately skips
+  // above). Every row here shares the same nctId — no "why am I seeing
+  // other NCT codes" confusion, and no recency filter either: these are the
+  // trial's own current locations, not a staleness heuristic for excluding
+  // OTHER trials.
+  const facilities = nctScope
+    ? nctScopeFacilities.filter((f) => countryMatches(f.country, country))
+    : (data?.facilities ?? []);
 
   const RECENT_YEARS = 3;
   const recentFacilities = useMemo(() => {
+    if (nctScope) return facilities;
     const cutoff = new Date();
     cutoff.setFullYear(cutoff.getFullYear() - RECENT_YEARS);
     return facilities.filter((f) => {
@@ -79,7 +101,7 @@ export default function CompetingTrialsPanel({
       return !isNaN(d.getTime()) && d >= cutoff;
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [facilities]);
+  }, [facilities, nctScope]);
 
   useEffect(() => {
     if (recentFacilities.length > 0) setOngoingTrialSites(recentFacilities);
@@ -204,7 +226,7 @@ export default function CompetingTrialsPanel({
         </p>
       ))}
 
-      {data && (
+      {(nctScope || data) && (
         <>
           <div className="ct-toolbar">
             <div className="ct-stat-item ct-stat-item--inline">
@@ -230,7 +252,11 @@ export default function CompetingTrialsPanel({
                 </svg>
               </div>
               <div className="ct-stat-text">
-                <div className="k">Trial / Site Rows Found (Last {RECENT_YEARS} yrs)</div>
+                <div className="k">
+                  {nctScope
+                    ? "Disclosed Site Rows"
+                    : `Trial / Site Rows Found (Last ${RECENT_YEARS} yrs)`}
+                </div>
                 <div className="v">{recentFacilities.length.toLocaleString()}</div>
               </div>
             </div>
@@ -342,7 +368,7 @@ export default function CompetingTrialsPanel({
                           whiteSpace: "nowrap",
                         }}
                       >
-                        {data.indication}
+                        {indication}
                       </td>
                     </tr>
                   );
@@ -351,7 +377,9 @@ export default function CompetingTrialsPanel({
                   <tr>
                     <td colSpan={5} className="predict-placeholder">
                       {facilities.length === 0
-                        ? "No trials found on ClinicalTrials.gov for this indication."
+                        ? nctScope
+                          ? `${nctScope} doesn't disclose any sites in ${country || "this selection"}.`
+                          : "No trials found on ClinicalTrials.gov for this indication."
                         : search.trim()
                           ? `No rows match "${search}".`
                           : "No rows match the selected status filter."}

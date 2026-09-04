@@ -74,6 +74,8 @@ export interface NctLookupResponse {
   /** De-duplicated disclosed site countries — informational context only; NOT applied as a region/country filter (see NctStudyLookup.countries in ctgov.client.ts for why). */
   countries: string[];
   siteCount: number;
+  /** This study's own disclosed site/location list — lets the frontend optionally run Risk Assessment/Site Ranking/Site Map/Recommendation against ONLY this trial's own sites instead of the default broad indication-wide search. Empty when the study discloses no locations. */
+  facilities: LiveFacilityRow[];
 }
 
 /** One trial site plotted on the Site Map tab — see pipeline/liveMapData.ts for exactly what's live vs. synthetic vs. approximate in each field. */

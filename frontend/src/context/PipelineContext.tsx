@@ -18,6 +18,7 @@ import type {
   FinalResult,
   StageEventPayload,
   LiveFacilityRow,
+  NctLookupResponse,
 } from "../types";
 import { STAGE_LIST } from "../constants/pipeline";
 import type { WorkflowStep } from "../constants/workflow";
@@ -26,7 +27,7 @@ import { streamRun, streamSiteAnalysis } from "../services/pipeline.service";
 import { fetchLiveTrialLandscape } from "../services/liveTrials.service";
 import { createRun, getRun, listRuns } from "../services/runs.service";
 import { useRoute } from "./RouteContext";
-import { countriesFromRegionKeys } from "../utils/region";
+import { countriesFromRegionKeys, countryMatches } from "../utils/region";
  
 /** Same last-3-years recency window CompetingTrialsPanel applies to its own
  * table — reused here so a country picked directly from Risk Register goes
@@ -207,10 +208,20 @@ export interface PipelineState {
  
   /** Availability guard for the guided workflow nav (WorkflowNav) and WizardNextLink — same rules the old 5-step wizardStepAvailable used, just extended to cover the 3 Site Map pages (always available, same as before when they were an always-reachable tab). "Predict Region with AI" is no longer a workflow step — it's a modal opened from the sidebar, not gated by this function. */
   workflowStepAvailable: (step: WorkflowStep) => boolean;
- 
+
+  /** Set once an analysis was started from the landing page's NCT-lookup flow via runAnalysisFromNct — the NCT id being scoped to. When set, Ongoing Trials/Risk Assessment/Site Ranking/Site Map/Recommendation all run against ONLY this trial's own disclosed sites (nctScopeFacilities) instead of the default broad indication-wide ClinicalTrials.gov search. null for a normal (manual or indication-only) run. */
+  nctScope: string | null;
+  /** This trial's own disclosed site/location list (every country) — the source analyzeForCountry filters by country from while nctScope is set. */
+  nctScopeFacilities: LiveFacilityRow[];
+
   handleSubmit: (e: FormEvent<HTMLFormElement>) => Promise<void>;
-  /** Runs Stages 1-8 for an explicit form (no submit event needed) — used by the landing page's NCT-lookup auto-fill flow and by the full-page/modal Analysis Parameters forms (ParametersFormPage, EditParametersModal) to run the analysis with no native form submit needed. Call setForm with the same values first so the UI (parameters form, saved-run metadata) reflects what's actually running. */
+  /** Runs Stages 1-8 for an explicit form (no submit event needed) — used by the full-page/modal Analysis Parameters forms (ParametersFormPage, EditParametersModal) to run the analysis with no native form submit needed. Call setForm with the same values first so the UI (parameters form, saved-run metadata) reflects what's actually running. Clears nctScope, if any — this is the broad, indication-wide analysis, not a single-trial audit. */
   runAnalysis: (formToUse: TrialForm) => Promise<void>;
+  /** The landing page's "Search by NCT Number" flow calls this instead of runAnalysis — scopes Ongoing Trials/Risk Assessment/Site Ranking/Site Map/Recommendation to ONLY the looked-up trial's own disclosed sites (lookup.facilities), rather than running the full Stage 1-3 broad indication-wide prediction. Sets nctScope so every downstream panel knows to stay scoped. Errors (via the shared `error` state) if the study discloses no usable site locations to scope to. */
+  runAnalysisFromNct: (
+    lookup: NctLookupResponse,
+    formToUse: TrialForm,
+  ) => Promise<void>;
   /** Aborts the in-flight Run Analysis stream — see RunAnalysisOverlay's Cancel button. No-op if nothing is running. */
   cancelRun: () => void;
   /** Increments every time cancelRun() actually cancels an in-flight run — App.tsx watches this to re-expand the Analysis Parameters sidebar, which auto-collapses once a run starts (the sidebar has no other reason to reopen on its own after a cancel, unlike a normal completed/failed run where the user can just use the collapse toggle). */
@@ -237,7 +248,7 @@ export const PipelineContext = createContext<PipelineState | null>(null);
  
 export function PipelineProvider({ children }: { children: ReactNode }) {
   const [meta, setMeta] = useState<MetaResponse | null>(null);
-  const [form, setForm] = useState<TrialForm>({
+  const [form, setFormState] = useState<TrialForm>({
     indication: "",
     phase: "",
     sampleSize: "",
@@ -246,6 +257,25 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
     regions: [],
     ageGroups: [],
   });
+  // Mirrors `form`, updated synchronously (inside the setFormState updater,
+  // so it's current the instant setForm returns) — analyzeForCountry reads
+  // this instead of the `form` closure because runAnalysisFromNct calls
+  // setForm(formToUse) and then immediately (same tick, before React
+  // re-renders) awaits analyzeForCountry(...): without this ref,
+  // analyzeForCountry would still see whatever `form` was at the START of
+  // this render (e.g. the empty initial form on the very first NCT-lookup
+  // run) and wrongly bail out with "Select an indication...".
+  const formRef = useRef<TrialForm>(form);
+  function setForm(updater: TrialForm | ((f: TrialForm) => TrialForm)): void {
+    setFormState((prev) => {
+      const next =
+        typeof updater === "function"
+          ? (updater as (f: TrialForm) => TrialForm)(prev)
+          : updater;
+      formRef.current = next;
+      return next;
+    });
+  }
   const [stages, setStages] = useState<StagesMap>(emptyStages());
   const [running, setRunning] = useState(false);
   const [llmInfo, setLlmInfo] = useState<string | null>(null);
@@ -260,6 +290,22 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
     LiveFacilityRow[] | null
   >(null);
   const [analyzing, setAnalyzing] = useState(false);
+  // nctScope: set by runAnalysisFromNct, cleared by runAnalysis. Mirrored
+  // into refs so analyzeForCountry (which may be invoked synchronously
+  // right after runAnalysisFromNct sets this state, before React re-renders)
+  // always reads the up-to-date value instead of a stale closure.
+  const [nctScope, setNctScopeState] = useState<string | null>(null);
+  const [nctScopeFacilities, setNctScopeFacilitiesState] = useState<
+    LiveFacilityRow[]
+  >([]);
+  const nctScopeRef = useRef<string | null>(null);
+  const nctScopeFacilitiesRef = useRef<LiveFacilityRow[]>([]);
+  function applyNctScope(nctId: string | null, facilities: LiveFacilityRow[]): void {
+    nctScopeRef.current = nctId;
+    nctScopeFacilitiesRef.current = facilities;
+    setNctScopeState(nctId);
+    setNctScopeFacilitiesState(facilities);
+  }
   const [topRegion, setTopRegion] = useState<TopRegionInfo | null>(null);
   const [analysisCountryState, setAnalysisCountryState] = useState("");
   const [analysisCache, setAnalysisCache] = useState<
@@ -449,6 +495,10 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
       setError("Please select an indication before running the analysis.");
       return;
     }
+    // A manual/full run is the broad, indication-wide analysis — not a
+    // single-trial audit, so any NCT scope from a previous landing-page
+    // lookup no longer applies.
+    applyNctScope(null, []);
     setStages(emptyStages());
     setFinalResult(null);
     setRanking(null);
@@ -564,6 +614,75 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
     }
   }
  
+  /**
+   * The landing page's "Search by NCT Number" flow calls this instead of
+   * runAnalysis(). Rather than running the full Stage 1-3 broad
+   * indication-wide prediction (which would surface every OTHER trial for
+   * the same indication — the "why am I seeing other NCT codes" behavior
+   * this whole flow exists to avoid), this scopes Ongoing Trials/Risk
+   * Assessment/Site Ranking/Site Map/Recommendation to ONLY the looked-up
+   * trial's own disclosed sites (lookup.facilities), reusing the same
+   * per-country /api/site-analysis pipeline analyzeForCountry already
+   * drives (Stages 4-8) — just sourced from this one trial's own site list
+   * instead of a fresh broad ClinicalTrials.gov search.
+   */
+  async function runAnalysisFromNct(
+    lookup: NctLookupResponse,
+    formToUse: TrialForm,
+  ): Promise<void> {
+    if (!formToUse.indication) {
+      setError("Please select an indication before running the analysis.");
+      return;
+    }
+    const scopedFacilities = filterAnalyzableFacilities(lookup.facilities ?? []);
+    if (scopedFacilities.length === 0) {
+      setError(
+        `${lookup.nctId} doesn't disclose any usable site locations, so it can't be scoped to a site-level analysis — try "Enter Study Details Manually" for a full indication-wide search instead.`,
+      );
+      return;
+    }
+    const countryCounts = new Map<string, number>();
+    for (const f of scopedFacilities) {
+      if (!f.country) continue;
+      countryCounts.set(f.country, (countryCounts.get(f.country) ?? 0) + 1);
+    }
+    if (countryCounts.size === 0) {
+      setError(
+        `${lookup.nctId}'s disclosed sites are missing country information, so a site-level analysis can't be scoped to them.`,
+      );
+      return;
+    }
+
+    setForm(formToUse);
+    setStages(emptyStages());
+    setFinalResult(null);
+    setRanking(null);
+    setRiskAssessment(null);
+    setLlmInfo(null);
+    setError(null);
+    setNotice(null);
+    setOngoingTrialSites(null);
+    setTopRegion(null);
+    setAnalysisCountryState("");
+    setAnalysisCache({});
+    setPrefetchQueue([]);
+    setPrefetchingCountries(new Set());
+    setCountryErrors({});
+    applyNctScope(lookup.nctId, scopedFacilities);
+
+    // Default/foreground view: whichever disclosed country has the most of
+    // this trial's own sites. The rest of its countries are picked up
+    // automatically by the existing auto-prefetch effects below (they queue
+    // every entry in `selectedCountries` once `topRegion` is set, which
+    // analyzeForCountry does as soon as this first call succeeds).
+    const primaryCountry = [...countryCounts.entries()].sort(
+      (a, b) => b[1] - a[1],
+    )[0][0];
+    const primaryResult = await analyzeForCountry(primaryCountry);
+    if (primaryResult) setAnalysisCountryState(primaryCountry);
+    setRoute("competing");
+  }
+
   /** Kept only for any leftover native <form onSubmit> usage — thin wrapper around runAnalysis(). ParametersFormPage/EditParametersModal call runAnalysis directly instead so they can control the transition (dashboard handoff / modal close) around it. */
   async function handleSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -696,7 +815,7 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
     opts?: { background?: boolean },
   ): Promise<FinalResult | null> {
     const background = !!opts?.background;
-    if (!form.indication) {
+    if (!formRef.current.indication) {
       if (!background) setError("Select an indication before analyzing a country.");
       return null;
     }
@@ -720,36 +839,58 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
     let localRisk: RiskAssessmentRow[] | null = null;
     let localRanking: RankingRow[] | null = null;
     const localTopRegion: TopRegionInfo = { region, country };
- 
+
     try {
-      const landscape = await fetchLiveTrialLandscape({
-        indication: form.indication,
-        country,
-        ageGroups: form.ageGroups,
-      });
-      const recentFacilities = filterRecentFacilities(landscape.facilities);
-      const facilities = filterAnalyzableFacilities(recentFacilities);
-      if (facilities.length === 0) {
-        const msg =
-          recentFacilities.length > 0
-            ? `Live ClinicalTrials.gov sites were found for "${form.indication}" in ${country}, but none had a usable facility name to analyze.`
-            : `No live ClinicalTrials.gov sites found for "${form.indication}" in ${country} (within the last 3 years).`;
-        if (!background) setError(msg);
-        setCountryErrors((prev) => ({ ...prev, [country]: msg }));
-        return null;
+      let facilities: LiveFacilityRow[];
+      if (nctScopeRef.current) {
+        // Scoped mode: source facilities from this trial's own disclosed
+        // site list instead of fetching every trial for the indication —
+        // see runAnalysisFromNct. No 3-year recency filter here: these are
+        // the same trial's own current locations, not a staleness heuristic
+        // for filtering out OTHER trials.
+        const ownSitesInCountry = nctScopeFacilitiesRef.current.filter((f) =>
+          countryMatches(f.country, country),
+        );
+        facilities = filterAnalyzableFacilities(ownSitesInCountry);
+        if (facilities.length === 0) {
+          const msg =
+            ownSitesInCountry.length > 0
+              ? `${nctScopeRef.current} discloses site(s) in ${country}, but none had a usable facility name to analyze.`
+              : `${nctScopeRef.current} doesn't disclose any site locations in ${country}.`;
+          if (!background) setError(msg);
+          setCountryErrors((prev) => ({ ...prev, [country]: msg }));
+          return null;
+        }
+      } else {
+        const landscape = await fetchLiveTrialLandscape({
+          indication: formRef.current.indication,
+          country,
+          ageGroups: formRef.current.ageGroups,
+        });
+        const recentFacilities = filterRecentFacilities(landscape.facilities);
+        facilities = filterAnalyzableFacilities(recentFacilities);
+        if (facilities.length === 0) {
+          const msg =
+            recentFacilities.length > 0
+              ? `Live ClinicalTrials.gov sites were found for "${formRef.current.indication}" in ${country}, but none had a usable facility name to analyze.`
+              : `No live ClinicalTrials.gov sites found for "${formRef.current.indication}" in ${country} (within the last 3 years).`;
+          if (!background) setError(msg);
+          setCountryErrors((prev) => ({ ...prev, [country]: msg }));
+          return null;
+        }
       }
       if (!background) {
         setOngoingTrialSites(facilities);
         setTopRegion(localTopRegion);
       }
- 
+
       const res = await streamSiteAnalysis({
-        indication: form.indication,
-        phase: form.phase || undefined,
-        sampleSize: form.sampleSize,
-        durationMonths: form.durationMonths,
-        budgetTier: form.budgetTier || undefined,
-        ageGroups: form.ageGroups,
+        indication: formRef.current.indication,
+        phase: formRef.current.phase || undefined,
+        sampleSize: formRef.current.sampleSize,
+        durationMonths: formRef.current.durationMonths,
+        budgetTier: formRef.current.budgetTier || undefined,
+        ageGroups: formRef.current.ageGroups,
         region,
         country,
         facilities,
@@ -828,10 +969,21 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
     }
   }
  
-  const selectedCountries = useMemo(
-    () => countriesFromRegionKeys(form.regions),
-    [form.regions],
-  );
+  const selectedCountries = useMemo(() => {
+    // Scoped mode: the relevant "selected countries" are wherever this
+    // trial actually discloses sites, not the (deliberately empty, see
+    // LandingScreen) form.regions selection.
+    if (nctScope) {
+      return [
+        ...new Set(
+          nctScopeFacilities
+            .map((f) => f.country)
+            .filter((c): c is string => !!c),
+        ),
+      ];
+    }
+    return countriesFromRegionKeys(form.regions);
+  }, [form.regions, nctScope, nctScopeFacilities]);
  
   /**
    * Switches which country Risk Register/Ranking/Final Recommendation show.
@@ -1056,8 +1208,11 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
     pipelineDone,
     runningStageLabel,
     workflowStepAvailable,
+    nctScope,
+    nctScopeFacilities,
     handleSubmit,
     runAnalysis,
+    runAnalysisFromNct,
     cancelRun,
     cancelSignal,
     saveLabel,

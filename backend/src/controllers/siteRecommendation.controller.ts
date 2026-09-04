@@ -4,10 +4,24 @@ import { buildFinalResultPayload } from "../pipeline/finalResult.js";
 import { generateRecommendation } from "../llm/client.js";
 import { badRequest, notFoundError } from "../utils/httpError.js";
 
+// The 3 "live" statuses cover the normal (broad, indication-wide) flow's
+// candidate NEW sites. An NCT-scoped analysis (see frontend PipelineContext's
+// runAnalysisFromNct) can legitimately have its own disclosed site sitting at
+// a non-live status (e.g. an older trial's site is COMPLETED) — restricting
+// this endpoint to only the 3 live values made every such status
+// unreachable, always 404ing with "No candidate site with live status ...".
+// The full ClinicalTrials.gov OverallStatus vocabulary is accepted here so
+// any status actually present in the analyzed pool can be requested.
 const VALID_STATUSES = new Set([
   "RECRUITING",
   "NOT_YET_RECRUITING",
   "ACTIVE_NOT_RECRUITING",
+  "ENROLLING_BY_INVITATION",
+  "COMPLETED",
+  "TERMINATED",
+  "WITHDRAWN",
+  "SUSPENDED",
+  "UNKNOWN",
 ]);
 
 export async function postSiteRecommendationByStatus(

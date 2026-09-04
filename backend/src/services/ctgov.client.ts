@@ -35,7 +35,7 @@ interface CacheEntry<T> {
 
 const cache = new Map<string, CacheEntry<unknown>>();
 
-function locationMatchesCountry(
+export function locationMatchesCountry(
   locCountry: string | null | undefined,
   targetCountry: string | undefined,
 ): boolean {
@@ -113,6 +113,8 @@ export interface NctStudyLookup {
   countries: string[];
   /** Total disclosed locations (all countries) on this study's record. */
   siteCount: number;
+  /** This study's own disclosed site/location list, in the same shape as getFacilitiesForCondition's rows — powers the optional "scope everything to this one NCT's own sites" flow (see nctLookup.controller.ts and frontend PipelineContext's runAnalysisFromNct) instead of the default broad indication-wide search. */
+  facilities: LiveFacility[];
 }
 
 interface RawNctStudy {
@@ -126,6 +128,7 @@ interface RawNctStudy {
       overallStatus?: string;
       startDateStruct?: { date?: string };
       primaryCompletionDateStruct?: { date?: string };
+      lastUpdatePostDateStruct?: { date?: string };
     };
     designModule?: {
       phases?: string[];
@@ -139,7 +142,13 @@ interface RawNctStudy {
       healthyVolunteers?: boolean;
     };
     contactsLocationsModule?: {
-      locations?: Array<{ country?: string }>;
+      locations?: Array<{
+        facility?: string;
+        city?: string;
+        state?: string;
+        country?: string;
+        status?: string;
+      }>;
     };
   };
 }
@@ -159,7 +168,12 @@ const NCT_LOOKUP_FIELDS = [
   "HealthyVolunteers",
   "StartDate",
   "PrimaryCompletionDate",
+  "LastUpdatePostDate",
+  "LocationFacility",
+  "LocationCity",
+  "LocationState",
   "LocationCountry",
+  "LocationStatus",
 ].join(",");
 
 /**
@@ -198,6 +212,20 @@ export async function getStudyByNctId(
       ),
     ];
     const conditions = ps.conditionsModule?.conditions ?? [];
+    const lastUpdatePostDate =
+      ps.statusModule?.lastUpdatePostDateStruct?.date ?? null;
+    const facilities: LiveFacility[] = locations.map((loc) => ({
+      nctId: ps.identificationModule!.nctId!,
+      briefTitle: ps.identificationModule?.briefTitle ?? null,
+      facility: loc.facility ?? null,
+      city: loc.city ?? null,
+      state: loc.state ?? null,
+      country: loc.country ?? null,
+      status: loc.status ?? ps.statusModule?.overallStatus ?? null,
+      lastUpdatePostDate,
+      minimumAge: ps.eligibilityModule?.minimumAge ?? null,
+      maximumAge: ps.eligibilityModule?.maximumAge ?? null,
+    }));
     const result: NctStudyLookup = {
       nctId: ps.identificationModule.nctId,
       briefTitle: ps.identificationModule.briefTitle ?? null,
@@ -223,6 +251,7 @@ export async function getStudyByNctId(
         ps.statusModule?.primaryCompletionDateStruct?.date ?? null,
       countries,
       siteCount: locations.length,
+      facilities,
     };
     setCached(cacheKey, result, config.ctgov.cacheTtlMs);
     return result;
