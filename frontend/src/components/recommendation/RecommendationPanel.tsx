@@ -6,12 +6,16 @@ import StageLoader from "../ui/StageLoader";
 import EmptyState from "../ui/EmptyState";
 import SaveRunDialog from "../runs/SaveRunDialog";
 import Select from "../ui/Select";
-import { SaveIcon, MailIcon } from "../ui/Icons";
+import { SaveIcon, MailIcon, DownloadIcon } from "../ui/Icons";
 import { fetchOutreachDraft } from "../../services/siteCombination.service";
 import { fetchRecommendationForStatus } from "../../services/pipeline.service";
 import OutreachDraftModal from "../ui/OutreachDraftModal";
 import type { FinalResult, OutreachDraft } from "../../types";
 import { allConfiguredCountries } from "../../utils/region";
+import { deriveWhyNumberOne } from "../../utils/whyNumberOne";
+import { downloadFinalRecommendationReport } from "../../utils/downloadReport";
+import WhyNumberOne from "./WhyNumberOne";
+import ScoreBreakdownDetailed from "./ScoreBreakdownDetailed";
 
 type LiveStatusFilter = "RECRUITING" | "NOT_YET_RECRUITING" | "ACTIVE_NOT_RECRUITING";
 
@@ -248,6 +252,11 @@ export default function RecommendationPanel() {
     );
   }
   const site = finalResult;
+  const why = deriveWhyNumberOne(site);
+
+  function handleDownloadReport() {
+    downloadFinalRecommendationReport(site, form, why);
+  }
 
   async function draftOutreach() {
     if (draftOpen) {
@@ -294,6 +303,15 @@ export default function RecommendationPanel() {
           <button
             type="button"
             className="save-run-btn"
+            onClick={handleDownloadReport}
+            data-tooltip="Download a printable report of this recommendation"
+          >
+            <DownloadIcon className="btn-icon" />
+            Download Report
+          </button>
+          <button
+            type="button"
+            className="save-run-btn"
             onClick={draftOutreach}
             disabled={draftLoading}
             data-tooltip="Draft-only outreach text — no real contact email exists for this site, and this app never actually sends anything."
@@ -330,6 +348,7 @@ export default function RecommendationPanel() {
       )}
       <div style={{ height: "16px" }} />
       <div className="card-scroll-body">
+
         <div className="final-grid final-grid--reco">
           <div className="item">
             <div className="k">Region</div>
@@ -365,6 +384,15 @@ export default function RecommendationPanel() {
           </div>
         </div>
 
+        <div className="final-why final-why--boxed">
+          <div className="final-why-title">Score Breakdown</div>
+          <ScoreBreakdownDetailed
+            score={site.score}
+            components={site.components}
+            liveKpiFields={site.liveKpiFields}
+          />
+        </div>
+
         {finalResult.riskExplanation && (
           <div className="final-why">
             <div className="final-why-title">
@@ -374,11 +402,10 @@ export default function RecommendationPanel() {
           </div>
         )}
 
-        <p className="final-text final-text--reco">
-          <strong>AI Recommendation ({llmInfo}):</strong> {finalResult.text}
-        </p>
-
-
+        <div className="final-why">
+          <div className="final-why-title">Why this is the #1 site</div>
+          <WhyNumberOne data={why} llmInfo={llmInfo} />
+        </div>
       </div>
 
       <WizardNextLink />

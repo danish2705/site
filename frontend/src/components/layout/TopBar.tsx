@@ -7,6 +7,7 @@ export default function TopBar({
   onOpenHistory,
   onEditParameters,
   showEditParameters = true,
+  onGoToLanding,
 }: {
   onOpenHistory: () => void;
   /** Opens EditParametersModal — the only way back into the Analysis
@@ -18,6 +19,10 @@ export default function TopBar({
       where the user is already editing parameters and there's nothing yet
       to jump back to. */
   showEditParameters?: boolean;
+  /** Clicking the "Clinical Trial Site Selection" brand/logo returns to the
+      landing/start screen. Optional so TopBar can still render (brand as
+      plain, non-interactive text) anywhere this handler isn't wired up. */
+  onGoToLanding?: () => void;
 }) {
   const { savedRuns, running } = usePipeline();
   const hasSavedRuns = !!savedRuns && savedRuns.length > 0;
@@ -39,14 +44,30 @@ export default function TopBar({
   return (
     <>
       <header className="top-bar">
-      <div className="top-bar-brand">
-        <div className="brand-mark">
-          <svg viewBox="0 0 24 24" fill="currentColor">
-            <path d="M12 2 2 21h20L12 2zm0 5.2 5.8 11.3H9.4L12 7.2z" />
-          </svg>
+      {onGoToLanding ? (
+        <button
+          type="button"
+          className="top-bar-brand top-bar-brand--link"
+          onClick={onGoToLanding}
+          data-tooltip="Back to the start screen"
+        >
+          <div className="brand-mark">
+            <svg viewBox="0 0 24 24" fill="currentColor">
+              <path d="M12 2 2 21h20L12 2zm0 5.2 5.8 11.3H9.4L12 7.2z" />
+            </svg>
+          </div>
+          <span className="brand-name">Clinical Trial Site Selection</span>
+        </button>
+      ) : (
+        <div className="top-bar-brand">
+          <div className="brand-mark">
+            <svg viewBox="0 0 24 24" fill="currentColor">
+              <path d="M12 2 2 21h20L12 2zm0 5.2 5.8 11.3H9.4L12 7.2z" />
+            </svg>
+          </div>
+          <span className="brand-name">Clinical Trial Site Selection</span>
         </div>
-        <span className="brand-name">Clnical Trial Site Selection</span>
-      </div>
+      )}
 
       <div className="top-bar-actions">
         {showEditParameters && (

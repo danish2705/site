@@ -27,8 +27,12 @@ import HistoryModal from "../runs/HistoryModal";
  */
 export default function ParametersFormPage({
   onEnterDashboard,
+  onGoToLanding,
 }: {
   onEnterDashboard: () => void;
+  /** Clicking the "Clinical Trial Site Selection" brand/logo returns to the
+      landing/start screen. Optional so this page still renders without it. */
+  onGoToLanding?: () => void;
 }) {
   const { form, meta, setForm, runAnalysis } = usePipeline();
   const [historyOpen, setHistoryOpen] = useState(false);
@@ -45,6 +49,7 @@ export default function ParametersFormPage({
         onOpenHistory={() => setHistoryOpen(true)}
         onEditParameters={() => {}}
         showEditParameters={false}
+        onGoToLanding={onGoToLanding}
       />
       <div className="params-page-inner">
         <div className="params-page-columns">

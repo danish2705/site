@@ -125,6 +125,18 @@ body {
   gap: 9px;
   flex-shrink: 0;
 }
+.top-bar-brand--link {
+  border: none;
+  background: none;
+  padding: 4px 6px;
+  margin: 0 0 0 -6px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+.top-bar-brand--link:hover {
+  background: var(--accent-soft);
+}
 .brand-mark {
   width: 30px;
   height: 30px;
@@ -3960,4 +3972,544 @@ tr.pinned-row {
   .landing-illustration {
     max-width: 200px;
   }
+}
+
+/* ---------------------------------------------------------------------
+   Decision Summary panel (redesign spec item 6) — DecisionSummaryPanel.tsx.
+   Sits at the very top of RecommendationPanel's scroll body so the answer
+   ("here's the recommended site") is the first thing visible, before the
+   metric grid and the full Why #1? breakdown below it.
+   --------------------------------------------------------------------- */
+.decision-summary {
+  border-radius: var(--radius);
+  padding: 18px 22px;
+  margin-bottom: 18px;
+  background: linear-gradient(
+    135deg,
+    color-mix(in srgb, var(--accent) 92%, black),
+    var(--accent)
+  );
+  color: #fff;
+  box-shadow: var(--shadow);
+}
+.decision-summary-tag {
+  display: inline-block;
+  font-size: 10.5px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.85);
+  background: rgba(255, 255, 255, 0.16);
+  padding: 4px 10px;
+  border-radius: 20px;
+  margin-bottom: 12px;
+}
+.decision-summary-main {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+.decision-summary-name {
+  font-size: 22px;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+}
+.decision-summary-location {
+  font-size: 13.5px;
+  color: rgba(255, 255, 255, 0.82);
+  margin-top: 2px;
+}
+.decision-summary-score {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
+  flex-shrink: 0;
+}
+.decision-summary-score-value {
+  font-size: 34px;
+  font-weight: 800;
+  line-height: 1;
+}
+.decision-summary-score-max {
+  font-size: 16px;
+  font-weight: 700;
+  color: rgba(255, 255, 255, 0.75);
+}
+.decision-summary-confidence.low {
+  background: rgba(255, 255, 255, 0.92);
+  color: var(--low);
+}
+.decision-summary-confidence.medium {
+  background: rgba(255, 255, 255, 0.92);
+  color: color-mix(in srgb, var(--med) 80%, black);
+}
+.decision-summary-confidence.high {
+  background: rgba(255, 255, 255, 0.92);
+  color: var(--high);
+}
+.decision-summary-highlights {
+  list-style: none;
+  margin: 14px 0 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 8px 18px;
+}
+.decision-summary-highlights li {
+  font-size: 13px;
+  padding-left: 18px;
+  position: relative;
+  color: rgba(255, 255, 255, 0.94);
+}
+.decision-summary-highlights li::before {
+  content: "✓";
+  position: absolute;
+  left: 0;
+  font-weight: 800;
+  color: #fff;
+}
+
+/* ---------------------------------------------------------------------
+   Site Map filter bar + in-place preview card (redesign spec item 10) —
+   SiteMapGlobalPage.tsx.
+   --------------------------------------------------------------------- */
+.map-filter-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 18px;
+  margin: 10px 0 4px;
+}
+.map-filter-group {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.map-filter-group-label {
+  font-size: 10.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--sub);
+}
+.map-filter-pills {
+  display: flex;
+  gap: 4px;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 3px;
+}
+.map-filter-pill {
+  border: none;
+  background: transparent;
+  padding: 5px 11px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--sub);
+  border-radius: 6px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.map-filter-pill.active {
+  background: var(--card);
+  color: var(--accent-dark);
+  box-shadow: 0 1px 2px rgba(2, 24, 72, 0.08);
+}
+.map-filter-count {
+  margin-left: auto;
+  font-size: 12px;
+  color: var(--sub);
+  font-weight: 600;
+}
+.site-preview-card {
+  margin-top: 12px;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 14px 16px;
+}
+.site-preview-card-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+.site-preview-card-name {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--ink);
+}
+.site-preview-card-location {
+  font-size: 12.5px;
+  color: var(--sub);
+  margin-top: 2px;
+}
+.site-preview-card-close {
+  border: none;
+  background: none;
+  color: var(--sub);
+  cursor: pointer;
+  font-size: 18px;
+  line-height: 1;
+  padding: 2px 4px;
+}
+.site-preview-card-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 10px;
+  margin-top: 12px;
+}
+.site-preview-card-stat-k {
+  font-size: 10.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--sub);
+  font-weight: 700;
+  margin-bottom: 3px;
+}
+.site-preview-card-stat-v {
+  font-size: 13.5px;
+  font-weight: 700;
+  color: var(--ink);
+}
+
+/* ---------------------------------------------------------------------
+   Score Breakdown card (gauge + labeled color-banded bars) on the Final
+   Recommendation page — ScoreGauge.tsx / ScoreBreakdownDetailed.tsx.
+   Deliberately separate from .score-component/.score-component-* above,
+   which stays exactly as-is for the Ranking table's compact bars.
+   --------------------------------------------------------------------- */
+.final-why--boxed {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 16px 20px 20px;
+}
+.score-breakdown-detailed {
+  margin-top: 8px;
+}
+.score-breakdown-detailed-body {
+  display: flex;
+  align-items: center;
+  gap: 32px;
+  flex-wrap: wrap;
+}
+.score-gauge {
+  flex-shrink: 0;
+}
+.score-gauge-value {
+  font-size: 28px;
+  font-weight: 800;
+  fill: var(--ink);
+}
+.score-gauge-label {
+  font-size: 8.5px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  fill: var(--sub);
+}
+.score-breakdown-rows {
+  flex: 1;
+  min-width: 260px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.score-breakdown-row-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+.score-breakdown-row-label {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--ink);
+}
+.score-breakdown-row-weight {
+  font-size: 11px;
+  color: var(--sub);
+}
+.score-breakdown-row-track-wrap {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.score-breakdown-row-track {
+  position: relative;
+  display: block;
+  flex: 1;
+  height: 8px;
+  border-radius: 4px;
+  background: var(--border);
+  overflow: hidden;
+}
+.score-breakdown-row-fill {
+  display: block;
+  height: 100%;
+  border-radius: 4px;
+}
+.score-breakdown-row-fill--good {
+  background: var(--success);
+}
+.score-breakdown-row-fill--mid {
+  background: var(--warning);
+}
+.score-breakdown-row-fill--bad {
+  background: var(--danger);
+}
+.score-breakdown-row-value {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--ink);
+  min-width: 24px;
+  text-align: right;
+}
+.score-breakdown-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 18px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+}
+.chip--good {
+  color: var(--success);
+  background: var(--success-light);
+  border-color: color-mix(in srgb, var(--success) 30%, white);
+}
+.chip--warn {
+  color: color-mix(in srgb, var(--warning) 80%, black);
+  background: var(--warning-light);
+  border-color: color-mix(in srgb, var(--warning) 35%, white);
+}
+
+/* ---------------------------------------------------------------------
+   "Why this is the #1 site" — colored Strengths/Watch-outs boxes +
+   full-width AI Conclusion box, replacing the plain 3-column layout.
+   --------------------------------------------------------------------- */
+.why-number-one {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+.why-number-one-conclusion {
+  grid-column: 1 / -1;
+}
+.why-number-one-col {
+  border-radius: 10px;
+  padding: 16px 18px;
+  border: 1px solid transparent;
+}
+.why-number-one-col--strengths {
+  background: var(--success-light);
+  border-color: color-mix(in srgb, var(--success) 25%, white);
+}
+.why-number-one-col--watch {
+  background: var(--warning-light);
+  border-color: color-mix(in srgb, var(--warning) 30%, white);
+}
+.why-number-one-col--conclusion {
+  background: var(--primary-light);
+  border-color: color-mix(in srgb, var(--primary) 20%, white);
+}
+.why-number-one-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 800;
+  color: var(--ink);
+  margin-bottom: 10px;
+}
+.why-number-one-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 800;
+  flex-shrink: 0;
+}
+.why-number-one-icon--good {
+  background: var(--success);
+}
+.why-number-one-icon--warn {
+  background: var(--warning);
+}
+.why-number-one-head--plain {
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--accent-dark);
+  margin-bottom: 10px;
+}
+.why-number-one-list {
+  margin: 0;
+  padding-left: 18px;
+}
+.why-number-one-list li {
+  font-size: 13px;
+  line-height: 1.5;
+  margin-bottom: 6px;
+  color: var(--ink);
+}
+.why-number-one-empty {
+  font-size: 13px;
+  color: var(--sub);
+  margin: 0;
+}
+.why-number-one-conclusion-text {
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--ink);
+  margin: 0;
+}
+.why-number-one-attribution {
+  margin-top: 10px;
+  font-size: 11.5px;
+  color: var(--sub);
+}
+@media (max-width: 820px) {
+  .why-number-one {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ---------------------------------------------------------------------
+   Ranking page Cards/Table toggle + Cards view (redesign refresh) —
+   SiteRankingPanel.tsx. The existing .ranking-table etc. above are
+   untouched — Table view keeps every column/behavior exactly as before.
+   --------------------------------------------------------------------- */
+.view-toggle {
+  display: flex;
+  gap: 3px;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 3px;
+}
+.view-toggle-btn {
+  border: none;
+  background: transparent;
+  padding: 6px 16px;
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--sub);
+  border-radius: 6px;
+  cursor: pointer;
+}
+.view-toggle-btn.active {
+  background: var(--card);
+  color: var(--accent-dark);
+  box-shadow: 0 1px 2px rgba(2, 24, 72, 0.08);
+}
+.ranking-cards {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+.ranking-hero-card {
+  border: 1.5px solid var(--accent);
+  border-radius: 14px;
+  background: linear-gradient(180deg, var(--primary-light), var(--card) 60%);
+  padding: 20px 22px;
+}
+.ranking-card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 16px;
+}
+.ranking-mini-card {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--card);
+  padding: 16px 18px;
+  display: flex;
+  flex-direction: column;
+}
+.ranking-card-top {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+.ranking-rank-badge {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: #fff;
+  font-size: 12.5px;
+  font-weight: 800;
+  flex-shrink: 0;
+}
+.ranking-hero-card .ranking-rank-badge {
+  width: 34px;
+  height: 34px;
+  font-size: 14px;
+}
+.ranking-card-identity {
+  flex: 1;
+  min-width: 0;
+}
+.ranking-card-name {
+  font-size: 14.5px;
+  font-weight: 700;
+  color: var(--ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ranking-hero-card .ranking-card-name {
+  font-size: 17px;
+}
+.ranking-card-region {
+  font-size: 12px;
+  color: var(--sub);
+  margin-top: 2px;
+}
+.ranking-card-score {
+  flex-shrink: 0;
+  text-align: right;
+  font-size: 20px;
+  font-weight: 800;
+  color: var(--accent-dark);
+}
+.ranking-hero-card .ranking-card-score {
+  font-size: 26px;
+}
+.ranking-card-score-max {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--sub);
+}
+.ranking-card-breakdown {
+  margin-top: 14px;
+}
+.ranking-card-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 14px;
+}
+.ranking-card-footer {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+}
+.ranking-card-requirements {
+  margin-top: 12px;
 }

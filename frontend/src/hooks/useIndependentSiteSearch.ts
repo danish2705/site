@@ -15,6 +15,12 @@ export interface IndependentSiteSearchState {
   error: string | null;
   runSearch: () => Promise<void>;
   allSites: MapSiteRow[];
+  /** Catchment radius (miles) used both for the backend's population lookup
+      and for the ring drawn around a selected site — see the Site Map's
+      "Catchment" filter (redesign spec item 10). Defaults to
+      SITE_MAP_RADIUS_MILES; changing it re-runs the search. */
+  radiusMiles: number;
+  setRadiusMiles: (radiusMiles: number) => void;
 }
 
 export function useIndependentSiteSearch(): IndependentSiteSearchState {
@@ -24,6 +30,7 @@ export function useIndependentSiteSearch(): IndependentSiteSearchState {
   const selectedCountriesKey = selectedCountries.join("|");
 
   const [country, setCountry] = useState("");
+  const [radiusMiles, setRadiusMiles] = useState(SITE_MAP_RADIUS_MILES);
   const [data, setData] = useState<LiveMapResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -43,7 +50,7 @@ export function useIndependentSiteSearch(): IndependentSiteSearchState {
       const res = await fetchLiveSiteMap({
         indication,
         country: country || undefined,
-        radiusMiles: SITE_MAP_RADIUS_MILES,
+        radiusMiles,
         ageGroups: form.ageGroups,
       });
       setData(res);
@@ -68,7 +75,7 @@ export function useIndependentSiteSearch(): IndependentSiteSearchState {
     if (!indication) return;
     if (selectedCountries.length > 0 && !country) return;
     runSearch();
-  }, [indication, country, selectedCountriesKey]);
+  }, [indication, country, selectedCountriesKey, radiusMiles]);
 
   return {
     indication,
@@ -80,5 +87,7 @@ export function useIndependentSiteSearch(): IndependentSiteSearchState {
     error,
     runSearch,
     allSites: data?.sites ?? [],
+    radiusMiles,
+    setRadiusMiles,
   };
 }

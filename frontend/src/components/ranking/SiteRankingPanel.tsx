@@ -1,6 +1,7 @@
 import { Fragment, useMemo, useState } from "react";
 import { usePipeline } from "../../hooks/usePipeline";
 import ScoreBreakdown from "./ScoreBreakdown";
+import RankingSiteCard from "./RankingSiteCard";
 import WizardNextLink from "../ui/WizardNextLink";
 import StageLoader from "../ui/StageLoader";
 import Select from "../ui/Select";
@@ -10,6 +11,8 @@ import { MailIcon, CheckIcon, XIcon, ChevronDownIcon } from "../ui/Icons";
 import type { OutreachDraft, RankingRow } from "../../types";
 import EmptyState from "../ui/EmptyState";
 import { allConfiguredCountries } from "../../utils/region";
+
+type RankingViewMode = "cards" | "table";
 
 type LiveStatusFilter =
   | "RECRUITING"
@@ -72,6 +75,10 @@ export default function SiteRankingPanel() {
       : allConfiguredCountries(regionOptions);
   const [statusFilter, setStatusFilter] =
     useState<LiveStatusFilter>("RECRUITING");
+  // Cards/Table toggle (redesign refresh) — Cards is the new glanceable
+  // default; Table renders the exact same markup/columns/behavior this page
+  // always had, unchanged, for anyone who wants the full detail view.
+  const [viewMode, setViewMode] = useState<RankingViewMode>("cards");
 
   const pageLoading =
     !!pageCountry &&
@@ -218,12 +225,35 @@ export default function SiteRankingPanel() {
     );
   }
 
+  function draftLabelFor(row: RankingRow): string {
+    if (draftLoadingSiteId === row.siteId) return "Drafting…";
+    if (openDraftSiteId === row.siteId) return "Hide draft";
+    if (drafts[row.siteId]) return "View draft";
+    return "Draft email";
+  }
+
   return (
     <div className="card">
       <div className="predict-head">
         <div className="predict-head-top map-controls map-controls--flush">
           {countryPicker}
-          <div className="predict-head-actions" style={{ marginLeft: "auto" }}>
+          <div className="view-toggle" style={{ marginLeft: "auto" }}>
+            <button
+              type="button"
+              className={`view-toggle-btn${viewMode === "cards" ? " active" : ""}`}
+              onClick={() => setViewMode("cards")}
+            >
+              Cards
+            </button>
+            <button
+              type="button"
+              className={`view-toggle-btn${viewMode === "table" ? " active" : ""}`}
+              onClick={() => setViewMode("table")}
+            >
+              Table
+            </button>
+          </div>
+          <div className="predict-head-actions">
             <Select
               className="status-filter-select"
               value={statusFilter}
@@ -243,6 +273,56 @@ export default function SiteRankingPanel() {
       </div>
       {draftError && <p className="error-text">{draftError}</p>}
       <div className="card-scroll-body ranking-scroll-body">
+        {viewMode === "cards" && (
+          <div className="ranking-cards">
+            {filteredRanking.length === 0 && (
+              <EmptyState
+                title="No sites match"
+                detail="No sites match the selected status filter."
+              />
+            )}
+            {filteredRanking[0] && (
+              <RankingSiteCard
+                row={filteredRanking[0]}
+                hero
+                statusLabel={statusLabel}
+                statusBand={statusBand}
+                expanded={expandedChecklistSiteId === filteredRanking[0].siteId}
+                onToggleExpand={() =>
+                  setExpandedChecklistSiteId((prev) =>
+                    prev === filteredRanking[0].siteId ? null : filteredRanking[0].siteId,
+                  )
+                }
+                draftLabel={draftLabelFor(filteredRanking[0])}
+                draftLoading={draftLoadingSiteId === filteredRanking[0].siteId}
+                onDraftClick={() => draftOutreachFor(filteredRanking[0])}
+              />
+            )}
+            {filteredRanking.length > 1 && (
+              <div className="ranking-card-grid">
+                {filteredRanking.slice(1).map((r) => (
+                  <RankingSiteCard
+                    key={r.siteId}
+                    row={r}
+                    statusLabel={statusLabel}
+                    statusBand={statusBand}
+                    expanded={expandedChecklistSiteId === r.siteId}
+                    onToggleExpand={() =>
+                      setExpandedChecklistSiteId((prev) =>
+                        prev === r.siteId ? null : r.siteId,
+                      )
+                    }
+                    draftLabel={draftLabelFor(r)}
+                    draftLoading={draftLoadingSiteId === r.siteId}
+                    onDraftClick={() => draftOutreachFor(r)}
+                  />
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {viewMode === "table" && (
         <div className="table-scroll">
           <table className="ranking-table">
             <colgroup>
@@ -444,6 +524,7 @@ export default function SiteRankingPanel() {
             </tbody>
           </table>
         </div>
+        )}
       </div>
       <WizardNextLink />
 

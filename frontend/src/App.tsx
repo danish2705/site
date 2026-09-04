@@ -21,7 +21,7 @@ import RunAnalysisOverlay from "./components/ui/RunAnalysisOverlay";
 import LandingScreen from "./components/landing/LandingScreen";
 import { countriesFromRegionKeys } from "./utils/region";
  
-function Dashboard() {
+function Dashboard({ onGoToLanding }: { onGoToLanding: () => void }) {
   const [historyOpen, setHistoryOpen] = useState(false);
   // Opens EditParametersModal — the Analysis Parameters form no longer lives
   // as a permanent sidebar; this is the only way back into it once a run has
@@ -51,6 +51,7 @@ function Dashboard() {
       <TopBar
         onOpenHistory={() => setHistoryOpen(true)}
         onEditParameters={() => setEditParametersOpen(true)}
+        onGoToLanding={onGoToLanding}
       />
 
       <div className="dashboard-body">
@@ -149,10 +150,13 @@ function AppShell() {
   }
   if (entryMode === "form") {
     return (
-      <ParametersFormPage onEnterDashboard={() => setEntryMode("dashboard")} />
+      <ParametersFormPage
+        onEnterDashboard={() => setEntryMode("dashboard")}
+        onGoToLanding={() => setEntryMode("landing")}
+      />
     );
   }
-  return <Dashboard />;
+  return <Dashboard onGoToLanding={() => setEntryMode("landing")} />;
 }
 
 export default function App() {
