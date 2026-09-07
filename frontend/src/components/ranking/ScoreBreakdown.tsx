@@ -1,4 +1,5 @@
 import type { ComponentScores } from "../../types";
+import Tooltip from "../ui/Tooltip";
 
 const SCORE_COMPONENTS: {
   key: keyof ComponentScores;
@@ -58,10 +59,11 @@ export default function ScoreBreakdown({
                 : "");
 
         return (
-          <div
+          <Tooltip
             key={key}
+            as="div"
             className={`score-component${isPartlyLive ? " score-component--live" : ""}`}
-            data-tooltip={title}
+            text={title}
           >
             <span className="score-component-label">{label.slice(0, 4)}</span>
             <span className="score-component-track">
@@ -72,7 +74,7 @@ export default function ScoreBreakdown({
                 />
               )}
             </span>
-          </div>
+          </Tooltip>
         );
       })}
     </div>

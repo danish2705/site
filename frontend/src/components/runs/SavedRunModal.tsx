@@ -1,6 +1,7 @@
 import type { SavedRunDetail } from "../../types";
 import ScoreBreakdown from "../ranking/ScoreBreakdown";
 import { CloseIcon } from "../ui/Icons";
+import Tooltip from "../ui/Tooltip";
 
 export default function SavedRunModal({
   run,
@@ -26,15 +27,16 @@ export default function SavedRunModal({
               {new Date(run.run.created_at).toLocaleString()}
             </p>
           </div>
-          <button
+          <Tooltip
+            as="button"
             type="button"
             className="icon-close-btn"
             onClick={onClose}
-            data-tooltip="Close"
+            text="Close"
             aria-label="Close"
           >
             <CloseIcon className="btn-icon" />
-          </button>
+          </Tooltip>
         </div>
 
         {run.run.recommendation_text && (
@@ -92,12 +94,13 @@ export default function SavedRunModal({
                       {s.meets_requirements ? (
                         <span className="badge low">Meets all</span>
                       ) : (
-                        <span
+                        <Tooltip
+                          as="span"
                           className="badge medium"
-                          data-tooltip={`Fails: ${(s.failed_criteria ?? []).join(", ")}`}
+                          text={`Fails: ${(s.failed_criteria ?? []).join(", ")}`}
                         >
                           {(s.failed_criteria ?? []).length} unmet
-                        </span>
+                        </Tooltip>
                       )}
                     </td>
                     <td>

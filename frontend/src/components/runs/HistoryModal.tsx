@@ -45,7 +45,7 @@ export default function HistoryModal({ onClose }: { onClose: () => void }) {
     <>
       <div className="run-modal-backdrop" onClick={onClose}>
         <div
-          className="run-modal run-modal-square"
+          className="run-modal run-modal-wide"
           onClick={(e) => e.stopPropagation()}
           role="dialog"
           aria-modal="true"
@@ -67,8 +67,9 @@ export default function HistoryModal({ onClose }: { onClose: () => void }) {
               </button>
               <button
                 type="button"
-                className="icon-close-btn icon-close-btn--labeled"
+                className="icon-close-btn"
                 onClick={onClose}
+                data-tooltip="Close"
                 aria-label="Close"
               >
                 <CloseIcon className="btn-icon" />

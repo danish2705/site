@@ -153,8 +153,9 @@ export default function SiteMapDetailsPage() {
         {data && allSites.length > 0 && (
           <>
 
-            <label
-              data-tooltip="Uncheck to compare against the total eligible population, including patients already enrolled in another trial for this indication"
+            <Tooltip
+              as="label"
+              text="Uncheck to compare against the total eligible population, including patients already enrolled in another trial for this indication"
               style={{
                 display: "flex",
                 alignItems: "center",
@@ -191,7 +192,7 @@ export default function SiteMapDetailsPage() {
                   </>
                 );
               })()}
-            </label>
+            </Tooltip>
 
             <div className="table-scroll">
               <table
@@ -210,10 +211,11 @@ export default function SiteMapDetailsPage() {
                 </colgroup>
                 <thead>
                   <tr>
-                    <th
-                      data-tooltip="Check to compare combined catchment across sites"
+                    <Tooltip
+                      as="th"
+                      text="Check to compare combined catchment across sites"
                       style={{ padding: "8px 4px" }}
-                    ></th>
+                    ></Tooltip>
                     <th className="sortable" onClick={() => toggleSort("site")}>
                       Site{sortArrow("site")}
                     </th>
@@ -223,20 +225,22 @@ export default function SiteMapDetailsPage() {
                     <th className="sortable" onClick={() => toggleSort("gross")}>
                       Gross Eligible{sortArrow("gross")}
                     </th>
-                    <th
-                      ref={filterHeaderRef}
-                      data-tooltip={
+                    <Tooltip
+                      as="th"
+                      elementRef={filterHeaderRef}
+                      text={
                         excludeEnrolled
                           ? "Eligible patients minus an estimated already-enrolled-elsewhere share"
                           : "Eligible patients including those already enrolled in another trial elsewhere"
                       }
                     >
                       {excludeEnrolled ? "Available" : "Available + Enrolled"}{" "}
-                      <button
+                      <Tooltip
+                        as="button"
                         type="button"
                         className="net-available-filter-btn"
-                        data-tooltip="Filter by inclusion/exclusion criteria"
-                        onClick={(e) => {
+                        text="Filter by inclusion/exclusion criteria"
+                        onClick={(e: any) => {
                           e.stopPropagation();
                           setFilterPanelOpen((v) => !v);
                         }}
@@ -251,7 +255,7 @@ export default function SiteMapDetailsPage() {
                         }}
                       >
                         ▾{activeEligFilters.length > 0 ? ` ${activeEligFilters.length}` : ""}
-                      </button>
+                      </Tooltip>
 
                       {filterPanelOpen &&
                         filterPanelRect &&
@@ -323,9 +327,10 @@ export default function SiteMapDetailsPage() {
                               </label>
 
                               {eligFilters.filters.map((f) => (
-                                <label
+                                <Tooltip
+                                  as="label"
                                   key={f.id}
-                                  data-tooltip={`${f.detail}\n\n(${f.type} — ~${f.estimatedExcludedPercent}% of the general population excluded, AI-estimated)`}
+                                  text={`${f.detail}\n\n(${f.type} — ~${f.estimatedExcludedPercent}% of the general population excluded, AI-estimated)`}
                                   style={{
                                     display: "flex",
                                     alignItems: "flex-start",
@@ -366,7 +371,7 @@ export default function SiteMapDetailsPage() {
                                   >
                                     ~{f.estimatedExcludedPercent}%
                                   </span>
-                                </label>
+                                </Tooltip>
                               ))}
 
                               {/* Sticky at the bottom, same trick as the
@@ -413,19 +418,21 @@ export default function SiteMapDetailsPage() {
                         </div>,
                         document.body,
                       )}
-                    </th>
-                    <th
-                      data-tooltip="Available x this site's own synthetic consent/conversion rate — 100 eligible patients doesn't mean 100 enrolled"
+                    </Tooltip>
+                    <Tooltip
+                      as="th"
+                      text="Available x this site's own synthetic consent/conversion rate — 100 eligible patients doesn't mean 100 enrolled"
                       style={{ whiteSpace: "normal", lineHeight: 1.3 }}
                     >
                       Expected Recruitment
-                    </th>
-                    <th
-                      data-tooltip="Illustrative split of Net Available — not real claims data"
+                    </Tooltip>
+                    <Tooltip
+                      as="th"
+                      text="Illustrative split of Net Available — not real claims data"
                       style={{ whiteSpace: "normal", lineHeight: 1.3 }}
                     >
                       Segments (illustrative)
-                    </th>
+                    </Tooltip>
                     <th
                       className="sortable"
                       onClick={() => toggleSort("risk")}
@@ -450,12 +457,17 @@ export default function SiteMapDetailsPage() {
                           onClick={(e) => e.stopPropagation()}
                           style={{ padding: "8px 4px", textAlign: "center" }}
                         >
-                          <input
-                            type="checkbox"
-                            checked={combineIds.has(s.siteId)}
-                            onChange={() => toggleCombine(s.siteId)}
-                            data-tooltip="Include in combined-catchment comparison"
-                          />
+                          <Tooltip
+                            as="span"
+                            text="Include in combined-catchment comparison"
+                            style={{ display: "inline-flex" }}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={combineIds.has(s.siteId)}
+                              onChange={() => toggleCombine(s.siteId)}
+                            />
+                          </Tooltip>
                         </td>
                         <td
                           style={{
@@ -475,8 +487,9 @@ export default function SiteMapDetailsPage() {
                         >
                           {location}
                         </td>
-                        <td
-                          data-tooltip={
+                        <Tooltip
+                          as="td"
+                          text={
                             s.populationInRadius === 0
                               ? "No population data available for this site's catchment area — not a real zero"
                               : undefined
@@ -485,7 +498,7 @@ export default function SiteMapDetailsPage() {
                           {s.populationInRadius === 0
                             ? "No data found"
                             : s.grossEligiblePatients.toLocaleString()}
-                        </td>
+                        </Tooltip>
                         <td>
                           {s.populationInRadius === 0 ? (
                             "No data found"
@@ -507,8 +520,9 @@ export default function SiteMapDetailsPage() {
                             </>
                           )}
                         </td>
-                        <td
-                          data-tooltip={
+                        <Tooltip
+                          as="td"
+                          text={
                             s.populationInRadius === 0
                               ? "No population data available for this site's catchment area — not a real zero"
                               : `${(Math.round(s.assumedConsentRate * 1000) / 10).toFixed(1)}% assumed consent/conversion rate (synthetic, varies per site) applied to the Available figure above`
@@ -524,7 +538,7 @@ export default function SiteMapDetailsPage() {
                               </span>
                             </>
                           )}
-                        </td>
+                        </Tooltip>
                         <Tooltip
                           as="td"
                           text={
@@ -547,12 +561,13 @@ export default function SiteMapDetailsPage() {
                               : "n/a"}
                         </Tooltip>
                         <td>
-                          <span
+                          <Tooltip
+                            as="span"
                             className={`badge ${riskBand(s.riskScore)}`}
-                            data-tooltip={`${s.riskLevel} risk (AI-labeled) — ${s.riskRationale}`}
+                            text={`${s.riskLevel} risk (AI-labeled) — ${s.riskRationale}`}
                           >
                             {s.riskScore !== null ? `${s.riskScore}/100` : "N/A"}
-                          </span>
+                          </Tooltip>
                         </td>
                       </tr>
                     );

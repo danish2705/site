@@ -5,6 +5,7 @@ import RankingSiteCard from "./RankingSiteCard";
 import WizardNextLink from "../ui/WizardNextLink";
 import StageLoader from "../ui/StageLoader";
 import Select from "../ui/Select";
+import Tooltip from "../ui/Tooltip";
 import { fetchOutreachDraft } from "../../services/siteCombination.service";
 import OutreachDraftModal from "../ui/OutreachDraftModal";
 import { MailIcon, CheckIcon, XIcon, ChevronDownIcon } from "../ui/Icons";
@@ -98,10 +99,7 @@ export default function SiteRankingPanel() {
   const [statusFilter, setStatusFilter] = useState<LiveStatusFilter>(() =>
     nctScope ? "ALL" : "RECRUITING",
   );
-  // Cards/Table toggle (redesign refresh) — Cards is the new glanceable
-  // default; Table renders the exact same markup/columns/behavior this page
-  // always had, unchanged, for anyone who wants the full detail view.
-  const [viewMode, setViewMode] = useState<RankingViewMode>("cards");
+  const [viewMode, setViewMode] = useState<RankingViewMode>("table");
 
   const pageLoading =
     !!pageCountry &&
@@ -381,20 +379,21 @@ export default function SiteRankingPanel() {
                 <th>Region</th>
                 <th>Score</th>
                 <th>Breakdown</th>
-                <th data-tooltip="Real-arithmetic projection from this site's enrollment rate — probability shown only when this site has 2+ of its own real completed trials to bootstrap from.">
+                <Tooltip as="th" text="Real-arithmetic projection from this site's enrollment rate — probability shown only when this site has 2+ of its own real completed trials to bootstrap from.">
                   Enrollment forecast
-                </th>
+                </Tooltip>
                 <th>Protocol fit</th>
                 <th>Risk</th>
-                <th data-tooltip="Live ClinicalTrials.gov status for this site.">
+                <Tooltip as="th" text="Live ClinicalTrials.gov status for this site.">
                   Status
-                </th>
-                <th
+                </Tooltip>
+                <Tooltip
+                  as="th"
                   style={{ textAlign: "center" }}
-                  data-tooltip="Draft-only outreach text — no real contact email exists for these sites, and this app never actually sends anything."
+                  text="Draft-only outreach text — no real contact email exists for these sites, and this app never actually sends anything."
                 >
                   Outreach
-                </th>
+                </Tooltip>
               </tr>
             </thead>
             <tbody>
@@ -417,12 +416,13 @@ export default function SiteRankingPanel() {
                     <td>
                       {r.score}/100
                       {r.confidence !== "High" && (
-                        <div
+                        <Tooltip
+                          as="div"
+                          text={r.caveats.join(" ")}
                           className="score-confidence"
-                          data-tooltip={r.caveats.join(" ")}
                         >
                           {r.confidence.toLowerCase()} confidence
-                        </div>
+                        </Tooltip>
                       )}
                     </td>
                     <td>
@@ -502,12 +502,13 @@ export default function SiteRankingPanel() {
                       </span>
                     </td>
                     <td style={{ textAlign: "center" }}>
-                      <button
+                      <Tooltip
+                        as="button"
                         type="button"
                         className="predict-btn predict-btn-icon"
                         onClick={() => draftOutreachFor(r)}
                         disabled={draftLoadingSiteId === r.siteId}
-                        data-tooltip={
+                        text={
                           draftLoadingSiteId === r.siteId
                             ? "Drafting…"
                             : openDraftSiteId === r.siteId
@@ -522,7 +523,7 @@ export default function SiteRankingPanel() {
                         ) : (
                           <MailIcon className="btn-icon" />
                         )}
-                      </button>
+                      </Tooltip>
                     </td>
                   </tr>
                   {expandedChecklistSiteId === r.siteId && (

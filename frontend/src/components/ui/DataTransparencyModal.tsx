@@ -2,6 +2,7 @@ import { usePipeline } from "../../hooks/usePipeline";
 import { useSiteMap } from "../../context/SiteMapContext";
 import { CloseIcon } from "./Icons";
 import EmptyState from "./EmptyState";
+import Tooltip from "./Tooltip";
 
 interface Row {
   label: string;
@@ -51,8 +52,9 @@ function Section({
                 borderBottom: i < liveRows.length - 1 ? "1px solid var(--line)" : "none",
               }}
             >
-              <span
-                data-tooltip="Live / real data"
+              <Tooltip
+                as="span"
+                text="Live / real data"
                 style={{
                   width: 7,
                   height: 7,
@@ -86,8 +88,9 @@ function Section({
                     : "none",
               }}
             >
-              <span
-                data-tooltip="Synthetic / LLM-estimated data"
+              <Tooltip
+                as="span"
+                text="Synthetic / LLM-estimated data"
                 style={{
                   width: 7,
                   height: 7,

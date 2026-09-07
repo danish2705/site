@@ -93,25 +93,146 @@ export function buildFinalRecommendationReportHtml(
 </html>`;
 }
 
+function safeFileSlug(site: FinalResult): string {
+  return (
+    site.recommendedSite
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/(^-|-$)/g, "") || "recommendation"
+  );
+}
+
 /**
- * Triggers a browser download of the report as a standalone .html file
- * (openable in any browser and printable to PDF from there).
+ * "Download Report" now asks the user to pick PDF or Excel (see
+ * DownloadFormatMenu.tsx) rather than always producing the same file, so
+ * the single combined HTML-download helper that used to back that button
+ * has been split into the two format-specific functions below.
  */
-export function downloadFinalRecommendationReport(
+
+/**
+ * Opens the same report markup `buildFinalRecommendationReportHtml`
+ * produces in a new browser tab and immediately invokes the browser's own
+ * print dialog on it — every modern browser offers "Save as PDF" as a
+ * print destination, so this produces a real PDF without needing a PDF
+ * library or a server round-trip (there is no backend report-generation
+ * endpoint). `document.write` + `onload` is used instead of a Blob/data
+ * URL because some browsers don't reliably fire `load` on those for a
+ * freshly `window.open`-ed document; a short timeout is a fallback for
+ * browsers that don't fire `onload` here either.
+ */
+export function downloadFinalRecommendationReportPdf(
   site: FinalResult,
   form: TrialForm,
   why: WhyNumberOne,
 ): void {
   const html = buildFinalRecommendationReportHtml(site, form, why);
-  const blob = new Blob([html], { type: "text/html;charset=utf-8" });
+  const printWindow = window.open("", "_blank");
+  if (!printWindow) {
+    // Popup blocked — nothing silently failed, let the user know why nothing happened.
+    window.alert(
+      "Your browser blocked the print/PDF window. Please allow pop-ups for this site and try again.",
+    );
+    return;
+  }
+  printWindow.document.open();
+  printWindow.document.write(html);
+  printWindow.document.close();
+  let printed = false;
+  const doPrint = () => {
+    if (printed) return;
+    printed = true;
+    printWindow.focus();
+    printWindow.print();
+  };
+  printWindow.onload = doPrint;
+  setTimeout(doPrint, 400);
+}
+
+function csvEscape(value: string): string {
+  if (/[",\n\r]/.test(value)) {
+    return `"${value.replace(/"/g, '""')}"`;
+  }
+  return value;
+}
+
+function csvRow(...cells: (string | number | null | undefined)[]): string {
+  return cells.map((c) => csvEscape(c === null || c === undefined ? "" : String(c))).join(",") + "\r\n";
+}
+
+function componentCsvValue(value: number | null): string {
+  return value === null || value === undefined ? "No data" : `${value.toFixed(0)}/100`;
+}
+
+/**
+ * Builds the report as CSV — opens directly in Excel (and every other
+ * spreadsheet app) with zero extra dependencies, unlike a true .xlsx
+ * binary which would need a bundled library this app doesn't currently
+ * have. Plain CSV also avoids the "file format and extension don't match"
+ * warning Excel shows when opening an HTML table saved with an .xls
+ * extension.
+ */
+export function buildFinalRecommendationReportCsv(
+  site: FinalResult,
+  form: TrialForm,
+  why: WhyNumberOne,
+): string {
+  const generatedAt = new Date().toLocaleString();
+  let csv = "";
+  csv += csvRow("Clinical Trial Site Selection — Recommendation Report");
+  csv += csvRow("Indication", form.indication || "—");
+  csv += csvRow("Phase", form.phase || "—");
+  csv += csvRow("Generated", generatedAt);
+  csv += csvRow();
+
+  csv += csvRow("Recommended Site", site.recommendedSite);
+  csv += csvRow("Region", site.region);
+  csv += csvRow("Country", site.country);
+  csv += csvRow("Score", `${site.score}/100`);
+  csv += csvRow("Confidence", site.confidence);
+  csv += csvRow("Risk Level", site.riskLevel);
+  csv += csvRow("Estimated Patients", site.estimatedPatients?.toLocaleString() ?? "—");
+  csv += csvRow();
+
+  csv += csvRow("Score Breakdown");
+  csv += csvRow("Component", "Score");
+  csv += csvRow("Recruitment", componentCsvValue(site.components.recruitment));
+  csv += csvRow("Quality", componentCsvValue(site.components.quality));
+  csv += csvRow("Retention", componentCsvValue(site.components.retention));
+  csv += csvRow("Diversity", componentCsvValue(site.components.diversity));
+  csv += csvRow("Cost efficiency", componentCsvValue(site.components.cost));
+  csv += csvRow();
+
+  csv += csvRow("Strengths");
+  why.strengths.forEach((s) => (csv += csvRow(s)));
+  csv += csvRow();
+
+  csv += csvRow("Watch-outs");
+  if (why.watchOuts.length > 0) {
+    why.watchOuts.forEach((w) => (csv += csvRow(w)));
+  } else {
+    csv += csvRow("No material watch-outs identified.");
+  }
+  csv += csvRow();
+
+  csv += csvRow("AI Conclusion");
+  csv += csvRow(why.conclusion);
+
+  return csv;
+}
+
+export function downloadFinalRecommendationReportExcel(
+  site: FinalResult,
+  form: TrialForm,
+  why: WhyNumberOne,
+): void {
+  const csv = buildFinalRecommendationReportCsv(site, form, why);
+  // Leading BOM so Excel opens the UTF-8 file with accented/special
+  // characters intact instead of guessing the wrong encoding.
+  const blob = new Blob(["﻿", csv], { type: "text/csv;charset=utf-8" });
   const url = URL.createObjectURL(blob);
-  const safeName = site.recommendedSite
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/(^-|-$)/g, "");
   const a = document.createElement("a");
   a.href = url;
-  a.download = `site-selection-report-${safeName || "recommendation"}.html`;
+  a.download = `site-selection-report-${safeFileSlug(site)}.csv`;
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);

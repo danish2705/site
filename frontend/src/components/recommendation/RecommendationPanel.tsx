@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { usePipeline } from "../../hooks/usePipeline";
 import WhyThisRating from "../risk/WhyThisRating";
 import WizardNextLink from "../ui/WizardNextLink";
@@ -6,6 +6,7 @@ import StageLoader from "../ui/StageLoader";
 import EmptyState from "../ui/EmptyState";
 import SaveRunDialog from "../runs/SaveRunDialog";
 import Select from "../ui/Select";
+import Tooltip from "../ui/Tooltip";
 import { SaveIcon, MailIcon, DownloadIcon } from "../ui/Icons";
 import { fetchOutreachDraft } from "../../services/siteCombination.service";
 import { fetchRecommendationForStatus } from "../../services/pipeline.service";
@@ -13,7 +14,11 @@ import OutreachDraftModal from "../ui/OutreachDraftModal";
 import type { FinalResult, OutreachDraft } from "../../types";
 import { allConfiguredCountries } from "../../utils/region";
 import { deriveWhyNumberOne } from "../../utils/whyNumberOne";
-import { downloadFinalRecommendationReport } from "../../utils/downloadReport";
+import {
+  downloadFinalRecommendationReportPdf,
+  downloadFinalRecommendationReportExcel,
+} from "../../utils/downloadReport";
+import DownloadFormatMenu, { type DownloadFormat } from "../ui/DownloadFormatMenu";
 import WhyNumberOne from "./WhyNumberOne";
 import ScoreBreakdownDetailed from "./ScoreBreakdownDetailed";
 
@@ -188,6 +193,16 @@ export default function RecommendationPanel() {
   const [draftLoading, setDraftLoading] = useState(false);
   const [draft, setDraft] = useState<OutreachDraft | null>(null);
   const [draftError, setDraftError] = useState<string | null>(null);
+  // Declared here — before the `if (!finalResult)` early return below —
+  // rather than after it. Every hook in a component must run on every
+  // render regardless of props/state (the Rules of Hooks); these two were
+  // previously declared after that early return, so a render that took
+  // the early-return branch (no result yet) called fewer hooks than one
+  // that reached the rest of the component, and React's hook-call-order
+  // bookkeeping threw "Rendered more hooks than during the previous
+  // render" the moment the page toggled between those two states.
+  const [downloadMenuOpen, setDownloadMenuOpen] = useState(false);
+  const downloadBtnRef = useRef<HTMLButtonElement>(null);
 
   if (!finalResult) {
     if (pageLoading || statusLoading) {
@@ -272,8 +287,13 @@ export default function RecommendationPanel() {
   const site = finalResult;
   const why = deriveWhyNumberOne(site);
 
-  function handleDownloadReport() {
-    downloadFinalRecommendationReport(site, form, why);
+  function handleSelectDownloadFormat(format: DownloadFormat) {
+    setDownloadMenuOpen(false);
+    if (format === "pdf") {
+      downloadFinalRecommendationReportPdf(site, form, why);
+    } else {
+      downloadFinalRecommendationReportExcel(site, form, why);
+    }
   }
 
   async function draftOutreach() {
@@ -320,12 +340,21 @@ export default function RecommendationPanel() {
         <div style={{ display: "flex", gap: 8, marginLeft: "auto" }}>
           <button
             type="button"
+            ref={downloadBtnRef}
             className="save-run-btn"
-            onClick={handleDownloadReport}
+            aria-haspopup="menu"
+            aria-expanded={downloadMenuOpen}
+            onClick={() => setDownloadMenuOpen((v) => !v)}
           >
             <DownloadIcon className="btn-icon" />
             Download Report
           </button>
+          <DownloadFormatMenu
+            anchorRef={downloadBtnRef}
+            open={downloadMenuOpen}
+            onClose={() => setDownloadMenuOpen(false)}
+            onSelect={handleSelectDownloadFormat}
+          />
           <button
             type="button"
             className="save-run-btn"
@@ -384,7 +413,7 @@ export default function RecommendationPanel() {
           </div>
           <div className="item">
             <div className="k">Site Score</div>
-            <div className="v" data-tooltip={finalResult.scoreExplanation}>
+            <Tooltip as="div" className="v" text={finalResult.scoreExplanation}>
               {finalResult.score}/100
               {finalResult.confidence !== "High" && (
                 <span className="score-confidence">
@@ -392,7 +421,7 @@ export default function RecommendationPanel() {
                   ({finalResult.confidence.toLowerCase()} confidence)
                 </span>
               )}
-            </div>
+            </Tooltip>
           </div>
           <div className="item">
             <div className="k">Risk Level</div>

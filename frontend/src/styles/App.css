@@ -755,7 +755,20 @@ body {
    .sidebar-run-btn, .sidebar-run-hint) are untouched and shared as-is —
    only this outer layout differs from the old narrow sidebar column. */
 .params-page {
-  min-height: 100vh;
+  /* Was min-height: 100vh — a MINIMUM lets this box grow taller than the
+     viewport to fit its content, but html/body/#root are `overflow:
+     hidden` (see the top of this file), so anything past 100vh was simply
+     clipped there instead of ever reaching this element's own
+     `overflow-y: auto` below. On a short/laptop screen — this page's text,
+     inputs and "Start Analysis" button are all deliberately larger here
+     than elsewhere (see the font-size bumps below), and
+     .params-form-actions pushes that button down with margin-top: auto —
+     the bottom of the form (often the submit button itself) could end up
+     rendered below the visible viewport with no way to scroll to it. A
+     fixed `height: 100vh` instead makes this the actual bounded scroll
+     container, so its own scrollbar engages whenever content is taller
+     than the viewport. */
+  height: 100vh;
   width: 100%;
   display: flex;
   flex-direction: column;
@@ -1740,6 +1753,10 @@ tbody tr:hover {
   background: var(--no-data-bg);
   font-style: italic;
 }
+.badge.accent {
+  color: var(--accent-dark);
+  background: var(--accent-soft);
+}
 .protocol-fit-toggle {
   display: inline-flex;
   align-items: center;
@@ -1970,15 +1987,16 @@ tbody tr:hover {
   border-radius: 12px;
   padding: 13px 15px;
 }
-/* Site Combination Planner's strategy cards now sit on a light color tint
-   of their own (STRATEGY_CARD_TINT in SiteCombinationPlanner.tsx) — the
-   shared .final-grid .item's grey (var(--background)) read as muddy against that
-   tint, so these specific cards get white metric boxes instead. Scoped
-   to .combo-strategy-card only; every other .final-grid usage (Final
-   Recommendation, Site Map Details, Eligibility Criteria) keeps the grey. */
-.combo-strategy-card .final-grid .item {
-  background: var(--card);
-}
+/* Site Combination Planner's strategy cards used to sit on a full,
+   saturated color-tint background of their own (one of --low-bg/--info-bg/
+   --warning-light/--accent-soft per strategy) — visually a different
+   language from Final Recommendation's white cards + subtle accents. They
+   now use the same white .card surface as everywhere else, with the
+   strategy color reduced to a thin top accent bar + a small badge (see
+   .combo-strategy-card below and STRATEGY_ACCENT in
+   SiteCombinationPlanner.tsx), so their .final-grid metric boxes go back to
+   the same shared grey every other .final-grid usage already gets — no
+   override needed here any more. */
 /* Final Recommendation's own 5 metric boxes — each gets a faint (4-6%)
    wash of a color tied to what it represents, instead of the shared flat
    grey, so the row reads at a glance instead of five identical boxes.
@@ -4378,6 +4396,12 @@ tr.pinned-row {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
   gap: 16px;
+  /* Equal card heights via ordinary CSS Grid row-stretch (the default
+     align-items: stretch) rather than a fixed height + internal scrollbar:
+     every .ranking-mini-card has height: 100% (see below) so it fills
+     whatever height the row ends up at, and the row's height is simply
+     the tallest card's own natural content height — so every card lines
+     up without ever clipping or scrolling its own content. */
 }
 .ranking-mini-card {
   border: 1px solid var(--line);
@@ -4386,11 +4410,18 @@ tr.pinned-row {
   padding: 16px 18px;
   display: flex;
   flex-direction: column;
+  /* Fills the grid row (see .ranking-card-grid's comment) instead of a
+     fixed pixel height — a longer site name or more wrapped badges makes
+     the whole row taller, and every other card in that row grows to
+     match via this height: 100%, rather than any one card scrolling or
+     clipping its own content. */
+  height: 100%;
 }
 .ranking-card-top {
   display: flex;
   align-items: flex-start;
   gap: 12px;
+  flex-shrink: 0;
 }
 .ranking-rank-badge {
   display: flex;
@@ -4445,6 +4476,27 @@ tr.pinned-row {
   font-weight: 700;
   color: var(--sub);
 }
+/* Wraps the score breakdown + badges (RankingSiteCard.tsx) — the part of
+   the card whose natural height varies most (more/fewer live-KPI rows,
+   badge text wrapping to a second line). The card itself is now a fixed
+   height (see .ranking-mini-card/.ranking-hero-card) with flex-direction:
+   column, so flex: 1 lets this region claim exactly the space left over
+   after the top identity row and the footer, and min-height: 0 is the
+   standard flexbox fix that lets a flex child actually shrink below its
+   content size instead of forcing the parent to grow — without it,
+   overflow-y: auto would never engage and the card would stretch anyway.
+   Content that doesn't fit scrolls here instead of growing the card, so
+   every card in a grid row stays exactly aligned. */
+.ranking-card-scroll {
+  /* No longer a scroll container — equal card height now comes from CSS
+     Grid row-stretch (see .ranking-card-grid/.ranking-mini-card), so every
+     card's content already fits at its own natural size and never needs
+     to scroll internally. flex: 1 still makes this region absorb any
+     leftover space in a taller (stretched) card, so .ranking-card-footer
+     stays pinned to the bottom instead of floating mid-card. */
+  flex: 1;
+  min-height: 0;
+}
 .ranking-card-breakdown {
   margin-top: 14px;
 }
@@ -4460,7 +4512,168 @@ tr.pinned-row {
   margin-top: 14px;
   padding-top: 12px;
   border-top: 1px solid var(--line);
+  /* Pinned to the bottom of the fixed-height card by flex layout alone
+     (the .ranking-card-scroll sibling above already consumes all
+     remaining space via flex: 1) — never pushed off-card. */
+  flex-shrink: 0;
 }
-.ranking-card-requirements {
-  margin-top: 12px;
+/* Floating Protocol Fit checklist — RequirementChecklistPopover.tsx.
+   Rendered via portal to document.body (position: fixed), so it is
+   deliberately NOT a descendant of .ranking-card-grid/.ranking-scroll-body
+   and is unaffected by their overflow/stacking rules. See the component's
+   own doc comment for the full root-cause explanation. */
+.protocol-fit-popover {
+  z-index: 8000;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 12px 14px;
+  box-shadow: 0 12px 32px rgba(2, 24, 72, 0.18);
+  /* The checklist itself scrolls (not the card behind it) when a site has
+     more requirement rows than fit comfortably on screen — capped well
+     below the viewport height so the popover can never run off-screen
+     top or bottom regardless of where its anchor button sits. */
+  max-height: min(360px, calc(100vh - 32px));
+  overflow-y: auto;
+}
+/* Download Report format menu — DownloadFormatMenu.tsx. Same
+   portal-to-document.body + position:fixed pattern as .protocol-fit-popover
+   above, for the same reason: the Download Report button lives inside
+   .card-scroll-body, so a plain position:absolute menu could get clipped. */
+.download-format-menu {
+  z-index: 8000;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 6px;
+  box-shadow: 0 12px 32px rgba(2, 24, 72, 0.18);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.download-format-menu-item {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 1px;
+  width: 100%;
+  border: none;
+  background: transparent;
+  border-radius: 8px;
+  padding: 8px 10px;
+  text-align: left;
+  cursor: pointer;
+  font-family: inherit;
+}
+.download-format-menu-item:hover,
+.download-format-menu-item:focus-visible {
+  background: var(--background);
+  outline: none;
+}
+.download-format-menu-item-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--ink);
+}
+.download-format-menu-item-sub {
+  font-size: 11.5px;
+  color: var(--sub);
+}
+.requirement-checklist--popover td,
+.requirement-checklist--popover th {
+  white-space: normal;
+}
+.requirement-checklist--popover thead th {
+  position: sticky;
+  top: 0;
+  background: var(--card);
+}
+.requirement-checklist--popover .req-criterion {
+  white-space: normal;
+}
+
+/* ---------------------------------------------------------------------
+   Site Combination Planner theme alignment — brings its strategy cards
+   onto the same visual language as Final Recommendation / Ranking: a
+   nested section (not a floating box-shadowed card) using the same
+   green/blue/amber/purple "-light" tinted-background + color-mix border
+   treatment as Final Recommendation's own Why-#1 boxes
+   (.why-number-one-col--strengths/--watch/--conclusion), plus a thin top
+   accent bar + badge. See SiteCombinationPlanner.tsx (STRATEGY_ACCENT/
+   STRATEGY_BG/STRATEGY_BORDER supply --strategy-accent/--strategy-bg/
+   --strategy-border per strategy).
+   --------------------------------------------------------------------- */
+.combo-strategy-card {
+  /* Nested INSIDE the page's own outer .card (SiteCombinationPlanner.tsx
+     wraps everything in className="card"), exactly like Final
+     Recommendation's nested sections do (.final-why--boxed,
+     .why-number-one-col) — none of which use box-shadow or the full
+     --radius (14px); a floating box-shadow here doubled up with the outer
+     card's own shadow and read as a separate floating card rather than a
+     section within one. --strategy-bg/--strategy-border carry the same
+     colored-tint treatment why-number-one-col uses, falling back to a
+     plain white card if a strategy isn't in the map. */
+  position: relative;
+  background: var(--strategy-bg, var(--card));
+  border: 1px solid var(--strategy-border, var(--line));
+  border-radius: 12px;
+  padding: 16px 20px 20px;
+  overflow: hidden;
+}
+.combo-strategy-card::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 4px;
+  background: var(--strategy-accent, var(--accent));
+}
+.combo-strategy-card-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.combo-strategy-card-title {
+  font-size: 14.5px;
+  font-weight: 700;
+  color: var(--ink);
+}
+.combo-strategy-site-row {
+  padding: 8px 10px;
+  background: var(--background);
+  border-radius: 8px;
+}
+.combo-strategy-site-name {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.combo-strategy-site-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 3px;
+  font-size: 11.5px;
+  color: var(--sub);
+}
+.combo-strategy-site-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  height: 220px;
+  overflow-y: auto;
+}
+.combo-strategy-section-label {
+  font-size: 10.5px;
+  color: var(--sub);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  font-weight: 700;
+  margin-top: 14px;
+  margin-bottom: 6px;
 }

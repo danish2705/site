@@ -127,17 +127,8 @@ export default function SiteMapGlobalPage() {
     allSites,
     radiusMiles,
   } = useIndependentSiteSearch();
-  const { regionOptions } = usePipeline();
-  // When the trial form has no region/country pre-selected (the NCT-lookup
-  // flow deliberately leaves this empty to search every region globally),
-  // fall back to every country this app is configured to search at all,
-  // rather than showing a permanently-disabled "no region selected"
-  // dropdown even though a real, global map is already loaded below.
+  const { regionOptions, running } = usePipeline();
   const fallbackCountryOptions = allConfiguredCountries(regionOptions);
-  // Local to this page only — Site Map Details no longer shares state with
-  // this page (each of the 3 Site Map pages now has its own independent
-  // country/site data, per request), so there's nothing else to sync a
-  // clicked pin's selection with.
   const [selectedSiteId, setSelectedSiteId] = useState<string | null>(null);
 
   // Clear a selection (and whatever preview/radius ring it drove) the
@@ -320,10 +311,7 @@ export default function SiteMapGlobalPage() {
           )}
         </label>
         
-
-        {/* Compact inline notice next to the button instead of a large
-            dashed placeholder box taking up the whole panel below. */}
-        {!data && !loading && !error && (
+        {!data && !loading && !error && !running && (
           <span className="map-no-search-note">
             No search yet — hit Search to plot sites.
           </span>
@@ -333,15 +321,8 @@ export default function SiteMapGlobalPage() {
       <div className="card-scroll-body">
         {error && <p className="error-text">{error}</p>}
 
-        {/* Always visible (not conditionally hidden) — creating the Leaflet
-            map while its container is display:none leaves Leaflet with a
-            stale/zero size it never recovers from on its own. The loading
-            spinner overlays this same box (centered over the map itself)
-            instead of sitting in its own space above it, so it doesn't
-            leave a tall, mostly-empty gap between the toolbar and the map
-            while a search is in flight. */}
         <div style={{ marginTop: 14, position: "relative" }}>
-          {loading && (
+          {loading && !running && (
             <div className="map-loading-overlay">
               <StageLoader label="Loading site map…" />
             </div>

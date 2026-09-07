@@ -49,7 +49,6 @@ export default function TopBar({
           type="button"
           className="top-bar-brand top-bar-brand--link"
           onClick={onGoToLanding}
-          data-tooltip="Back to the start screen"
         >
           <div className="brand-mark">
             <svg viewBox="0 0 24 24" fill="currentColor">

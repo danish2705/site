@@ -1,6 +1,7 @@
 import { CloseIcon } from "./Icons";
 import { buildGmailComposeUrl, buildOutlookComposeUrl } from "../../utils/emailLinks";
 import type { OutreachDraft } from "../../types";
+import Tooltip from "./Tooltip";
 
 export default function OutreachDraftModal({
   draft,
@@ -22,15 +23,16 @@ export default function OutreachDraftModal({
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
             <h2 style={{ fontSize: 18 }}>Outreach draft (not sent)</h2>
           </div>
-          <button
+          <Tooltip
+            as="button"
             type="button"
             className="icon-close-btn"
             onClick={onClose}
-            data-tooltip="Close"
+            text="Close"
             aria-label="Close"
           >
             <CloseIcon className="btn-icon" />
-          </button>
+          </Tooltip>
         </div>
 
         <div style={{ fontSize: 13 }}>

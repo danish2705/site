@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import type { TrialForm, RegionPredictionResponse } from "../../types";
 import { predictRegion } from "../../services/region.service";
 import EmptyState from "../ui/EmptyState";
+import Tooltip from "../ui/Tooltip";
 
 export default function AIRegionPrediction({
   form,
@@ -315,12 +316,13 @@ export default function AIRegionPrediction({
                           <td>
                             {c.competingTrials}
                             {c.competingTrialsSource === "live" && (
-                              <span
+                              <Tooltip
+                                as="span"
                                 className="chip live-chip"
-                                data-tooltip="Live count from ClinicalTrials.gov"
+                                text="Live count from ClinicalTrials.gov"
                               >
                                 live
-                              </span>
+                              </Tooltip>
                             )}
                           </td>
                           <td>${c.avgCostPerPatient.toLocaleString()}</td>

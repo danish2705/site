@@ -1,5 +1,8 @@
+import { useRef } from "react";
 import ScoreBreakdown from "./ScoreBreakdown";
-import { MailIcon, CheckIcon, XIcon, ChevronDownIcon } from "../ui/Icons";
+import RequirementChecklistPopover from "./RequirementChecklistPopover";
+import Tooltip from "../ui/Tooltip";
+import { MailIcon, ChevronDownIcon } from "../ui/Icons";
 import type { RankingRow } from "../../types";
 
 /**
@@ -37,6 +40,7 @@ export default function RankingSiteCard({
   const requirementsLabel = row.meetsRequirements
     ? "Meets all"
     : `${metCount}/${row.requirementChecks.length} met`;
+  const protocolFitRef = useRef<HTMLButtonElement>(null);
 
   return (
     <div className={hero ? "ranking-hero-card" : "ranking-mini-card"}>
@@ -52,63 +56,46 @@ export default function RankingSiteCard({
           {row.score}
           <span className="ranking-card-score-max">/100</span>
           {row.confidence !== "High" && (
-            <div className="score-confidence" data-tooltip={row.caveats.join(" ")}>
+            <Tooltip as="div" text={row.caveats.join(" ")} className="score-confidence">
               {row.confidence.toLowerCase()} confidence
-            </div>
+            </Tooltip>
           )}
         </div>
       </div>
 
-      <div className="ranking-card-breakdown">
-        <ScoreBreakdown
-          components={row.components}
-          liveKpiFields={row.liveKpiFields}
-          liveKpiSourceNctId={row.liveKpiSourceNctId}
-          raceBreakdown={row.raceBreakdown}
-        />
-      </div>
-
-      <div className="ranking-card-badges">
-        <span className={`badge ${row.riskLevel.toLowerCase()}`}>{row.riskLevel} Risk</span>
-        <button
-          type="button"
-          className={`protocol-fit-toggle badge ${row.meetsRequirements ? "low" : "medium"}`}
-          aria-expanded={expanded}
-          onClick={onToggleExpand}
-        >
-          {requirementsLabel}
-          <ChevronDownIcon />
-        </button>
-        <span className={`badge ${statusBand(row.status)}`}>{statusLabel(row.status)}</span>
-      </div>
-
-      {expanded && (
-        <div className="ranking-card-requirements">
-          <table className="requirement-checklist">
-            <thead>
-              <tr>
-                <th></th>
-                <th>Required</th>
-                <th>This site</th>
-              </tr>
-            </thead>
-            <tbody>
-              {row.requirementChecks.map((c) => (
-                <tr key={c.criterion}>
-                  <td>
-                    <span className={`req-criterion ${c.pass ? "req-pass" : "req-fail"}`}>
-                      {c.pass ? <CheckIcon /> : <XIcon />}
-                      {c.criterion}
-                    </span>
-                  </td>
-                  <td>{c.required}</td>
-                  <td>{c.actual}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+      <div className="ranking-card-scroll">
+        <div className="ranking-card-breakdown">
+          <ScoreBreakdown
+            components={row.components}
+            liveKpiFields={row.liveKpiFields}
+            liveKpiSourceNctId={row.liveKpiSourceNctId}
+            raceBreakdown={row.raceBreakdown}
+          />
         </div>
-      )}
+
+        <div className="ranking-card-badges">
+          <span className={`badge ${row.riskLevel.toLowerCase()}`}>{row.riskLevel} Risk</span>
+          <button
+            ref={protocolFitRef}
+            type="button"
+            className={`protocol-fit-toggle badge ${row.meetsRequirements ? "low" : "medium"}`}
+            aria-expanded={expanded}
+            aria-haspopup="dialog"
+            onClick={onToggleExpand}
+          >
+            {requirementsLabel}
+            <ChevronDownIcon />
+          </button>
+          <span className={`badge ${statusBand(row.status)}`}>{statusLabel(row.status)}</span>
+        </div>
+      </div>
+
+      <RequirementChecklistPopover
+        anchorRef={protocolFitRef}
+        open={expanded}
+        onClose={onToggleExpand}
+        checks={row.requirementChecks}
+      />
 
       <div className="ranking-card-footer">
         <button
