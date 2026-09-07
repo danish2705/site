@@ -52,22 +52,24 @@ export default function ParametersFormPage({
         onGoToLanding={onGoToLanding}
       />
       <div className="params-page-inner">
-        <div className="params-page-columns">
-          <div className="params-form-col">
-            <ParametersFormFields onSubmit={handleStart} />
-          </div>
-          <div className="params-predict-col">
-            <div className="card params-predict-card">
-              <AIRegionPrediction
-                form={form}
-                disabled={!meta}
-                onApply={(region, country) =>
-                  setForm((f) => ({
-                    ...f,
-                    regions: [`${region}||${country}`],
-                  }))
-                }
-              />
+        <div className="card params-page-card">
+          <div className="params-page-columns">
+            <div className="params-form-col">
+              <ParametersFormFields onSubmit={handleStart} />
+            </div>
+            <div className="params-predict-col">
+              <div className="params-predict-card">
+                <AIRegionPrediction
+                  form={form}
+                  disabled={!meta}
+                  onApply={(region, country) =>
+                    setForm((f) => ({
+                      ...f,
+                      regions: [`${region}||${country}`],
+                    }))
+                  }
+                />
+              </div>
             </div>
           </div>
         </div>

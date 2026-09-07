@@ -1,6 +1,5 @@
 import { useEffect, useRef, type FormEvent } from "react";
 import { usePipeline } from "../../hooks/usePipeline";
-import { CloseIcon } from "../ui/Icons";
 import ParametersFormFields from "./ParametersFormFields";
 
 /**
@@ -8,10 +7,14 @@ import ParametersFormFields from "./ParametersFormFields";
  * Parameters" button in TopBar once a run has already been kicked off (the
  * old always-visible sidebar is gone; this is now the only way back into the
  * form). Reuses the app's existing modal chrome (.run-modal-backdrop/
- * .run-modal/.icon-close-btn — same classes HistoryModal/PredictRegionModal
- * use) plus PredictRegionModal's sticky top-right close-bar pattern and
- * Escape-key handling, so a cross/X button is always reachable even once the
- * form's own content grows taller than the modal.
+ * .run-modal — same classes HistoryModal/PredictRegionModal use) plus
+ * Escape-key handling. The close (X) button renders inline with
+ * ParametersFormFields' own "Edit Parameters" title (via the onClose prop)
+ * rather than in a separate bar above it — .sidebar-form-title-row is
+ * sticky in this modal (see App.css), so it's still always reachable even
+ * once the form's content grows taller than the modal, just without a
+ * second, disconnected close bar and the extra top padding that used to
+ * reserve room for it.
  */
 export default function EditParametersModal({
   onClose,
@@ -47,20 +50,11 @@ export default function EditParametersModal({
         ref={dialogRef}
         tabIndex={-1}
       >
-        <div className="predict-region-modal-close-bar">
-          <button
-            type="button"
-            className="icon-close-btn"
-            onClick={onClose}
-            aria-label="Close"
-          >
-            <CloseIcon className="btn-icon" />
-          </button>
-        </div>
         <ParametersFormFields
           onSubmit={handleStart}
           title="Edit Parameters"
           submitLabel="Start Analysis"
+          onClose={onClose}
         />
       </div>
     </div>

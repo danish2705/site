@@ -15,6 +15,16 @@
   --accent: var(--primary);
   --accent-dark: var(--primary-dark);
   --accent-soft: var(--primary-light);
+  /* A handful of solid-accent buttons (.btn-primary, .predict-btn,
+     .apply-btn, the predict workflow-nav icon) used to hover straight to
+     --accent-dark — --primary-dark is a near-black navy, several steps
+     darker than --accent itself, so the hover read as an abrupt, harsh
+     jump rather than a gentle darken. This mixes in a modest 15% black
+     instead, for a softer, more "slightly darker" hover that still stays
+     within the same purple family (not --accent-dark's own separate use
+     as dark-on-light TEXT elsewhere — e.g. .save-run-btn, .predict-tab.
+     active — which is unrelated and untouched). */
+  --accent-hover: color-mix(in srgb, var(--primary) 85%, black);
   --low: var(--success);
   --low-bg: var(--success-light);
   --med: var(--warning);
@@ -539,14 +549,27 @@ body {
 .card.sidebar-form {
   padding: 16px 20px;
 }
+/* Wraps .sidebar-form-title (icon + text) together with an optional close
+   (X) button on the same row, right-aligned — see ParametersFormFields.tsx's
+   onClose prop. Carries the margin that used to live directly on
+   .sidebar-form-title itself: that margin has to be on this outer row
+   instead, or it would just add space between the title and the close
+   button (both flex children of this row) rather than space below the
+   whole header. */
+.sidebar-form-title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 0 0 12px;
+  flex-shrink: 0;
+}
 .sidebar-form-title {
   display: flex;
   align-items: center;
   gap: 9px;
   font-size: 15px;
   font-weight: 800;
-  margin: 0 0 12px;
-  flex-shrink: 0;
 }
 .sidebar-form-scroll {
   flex: 1;
@@ -773,10 +796,13 @@ body {
   display: flex;
   flex-direction: column;
   align-items: center;
-  /* Matches the form card's own background instead of the app's gray
-     --bg — a full-bleed white page rather than a white card floating on a
-     visibly gray surround (the "spread across the screen" look). */
-  background: var(--card);
+  /* Was var(--card) (white), matching the form's own background back when
+     the page had no card boundary of its own — a white card would have
+     had nothing to visibly contrast against. Now that the whole page sits
+     inside one .card (.params-page-card), the standard gray app
+     background is what makes that card actually read as a card, exactly
+     like every other workflow page (.dashboard-body's own background). */
+  background: var(--bg);
   overflow-y: auto;
 }
 .params-page-inner {
@@ -790,86 +816,137 @@ body {
      shrink-wrapping to its own content height and leaving a tall, mostly
      empty page underneath it. */
   flex: 1;
+  /* Without this, this flex item's default min-height is "auto" (i.e.
+     content-based) rather than 0 — so when its content (the two columns
+     below) wants to be taller than the viewport, THIS box simply grows to
+     fit instead of staying bounded at its share of .params-page's height.
+     That breaks every min-height: 0 further down the chain
+     (.params-page-columns, .params-predict-card, .predict-card-content):
+     each of those only works if every flex ancestor up to the actual
+     scroll container is itself bounded — with this missing, nothing
+     shrinks and .params-predict-card ends up sized by its own content
+     instead of staying a fixed height, which is the whole point of this
+     round's fix (see .params-predict-card below). */
+  min-height: 0;
   display: flex;
   flex-direction: column;
-  padding: 48px clamp(24px, 3vw, 56px) 40px;
+  /* Was 48px clamp(24px, 3vw, 56px) 40px — noticeably more outer
+     whitespace on every side than any other workflow page has, since
+     those pages (Ranking, Final Recommendation, etc.) get their spacing
+     from .dashboard-body instead of a page-specific wrapper. Reusing that
+     exact value here instead of a new one keeps this page's margins
+     consistent with the rest of the app. */
+  padding: 14px clamp(18px, 3vw, 36px) 10px;
 }
-/* Everything on this page reads noticeably larger than the old 340px-wide
-   sidebar it replaced was ever sized for — bumping font sizes here (scoped
-   to .params-page only, so the Edit Parameters modal, which reuses the same
-   field markup at a much smaller footprint, is unaffected). */
+/* Typography on this page previously ran noticeably larger than the rest
+   of the workflow (Final Recommendation, Ranking, etc.) — these overrides
+   used to bump every size up from what the old 340px-wide sidebar this
+   page replaced was sized for. They've been brought back down to the same
+   scale/tokens already used everywhere else (.card h2/.predict-title at
+   17px, .sidebar-run-btn/.predict-btn/.field-block > input at 13.5-14px,
+   .field-label/.field-hint at 11-11.5px, etc.) instead of inventing a
+   separate, page-specific type scale — most rules below now only adjust
+   spacing, not font-size, and several are removed entirely in favor of
+   the base rule (scoped to .params-page only, so the Edit Parameters
+   modal, which already reused the smaller base sizes, is unaffected). */
 .params-page .sidebar-form-title {
-  font-size: 30px;
-  gap: 12px;
-  margin-bottom: 26px;
+  /* Now that the page sits inside one .card (see .params-page-card),
+     "Analysis Parameters" reads as that card's own title — sized to match
+     .card h2/.predict-title (17px) exactly, the same title scale every
+     other card in the app uses, rather than the slightly larger
+     stand-alone page heading it was when this page had no card boundary
+     of its own. */
+  font-size: 17px;
 }
-.params-page .sidebar-form-icon {
-  width: 30px;
-  height: 30px;
-}
-.params-page .sidebar-progress-count {
-  font-size: 13.5px;
-}
-.params-page .field-label {
-  font-size: 13.5px;
-}
-.params-page .field-hint,
-.params-page .sidebar-run-hint {
-  font-size: 13.5px;
+.params-page .sidebar-form-title-row {
+  margin-bottom: 22px;
 }
 .params-page .field-block {
-  margin-bottom: 30px;
-  gap: 9px;
-}
-.params-page .field-block > input,
-.params-page .field-block > select,
-.params-page .ui-select-control {
-  font-size: 16px;
-  padding: 13px 16px;
+  gap: 8px;
 }
 .params-page .phase-pill {
-  font-size: 14.5px;
-  padding: 10px 18px;
+  padding: 7px 13px;
 }
 .params-page .params-form-submit.sidebar-run-btn {
-  font-size: 16px;
-  padding: 15px 36px;
+  padding: 12px 28px;
 }
-.params-page .predict-title {
-  font-size: 19px;
+.params-page .predict-btn {
+  padding: 10px 18px;
 }
+/* .llm-badge has no other size declared anywhere else in the app (this is
+   its only usage today), so — unlike the rules above — this one stays: a
+   small badge like .phase-pill's 12.5px, not a page-specific bump. */
 .params-page .llm-badge {
   font-size: 12px;
 }
-.params-page .predict-btn {
-  font-size: 14.5px;
-  padding: 12px 22px;
-}
 .params-predict-card .card-scroll-body {
-  /* Centers the "No prediction yet" placeholder in the middle of the panel
-     instead of it sitting at the top with a tall gap of blank space below —
-     the panel now stretches full-height to match the form, which the
-     placeholder never accounted for. Once a real result renders, this rule
-     is harmless: that content already fills (and scrolls within) the
-     space on its own. */
+  /* display:flex + flex-direction:column (not justify-content: center —
+     see .empty-state below for why) so .empty-state can center itself
+     with margin: auto without a separate wrapper element. */
   display: flex;
   flex-direction: column;
-  justify-content: center;
 }
 .params-predict-card .empty-state {
   max-width: 380px;
-  margin: 0 auto;
+  /* margin: auto (not the card-scroll-body's justify-content, which used
+     to be set to "center") centers JUST this placeholder — both axes —
+     within the flex column above, and only while it's actually rendered
+     (the "No prediction yet" state, before result && p is true). The
+     previous approach centered the whole scroll body's content instead,
+     which meant that once a real (and taller-than-the-card) prediction
+     result rendered in its place, the box opened already scrolled to the
+     middle of that content — hiding the "Recommended region" hero and its
+     "Use this region" button above the fold entirely, with no visual hint
+     that scrolling up would reveal them. */
+  margin: auto;
+  /* No icon/title/detail size overrides anymore — this now uses the same
+     .empty-state-icon (34x34)/.empty-state-title (13px)/.empty-state-detail
+     (12px) sizes as every other empty state in the app (e.g. Ranking's "No
+     search yet"), instead of a page-specific larger variant. */
 }
-.params-predict-card .empty-state-icon {
-  width: 42px;
-  height: 42px;
-  font-size: 18px;
+/* The "Scored candidates" table (10 columns) is far wider than this
+   card's ~38%-of-page column, and needs its own horizontal scrollbar —
+   but a general rule elsewhere (.card-scroll-body .table-scroll {
+   overflow: visible }, written for other pages' narrower tables) disables
+   that locally, so the table's overflow bled into .card-scroll-body
+   itself instead: the entire card became horizontally scrollable, which
+   is what made "Recommended region"/"Use this region" look missing rather
+   than just off to the left. Re-enabling it here, scoped to this card
+   only, keeps every other page's existing (and presumably intentional)
+   .table-scroll behavior untouched. */
+.params-predict-card .card-scroll-body .table-scroll {
+  overflow-x: auto;
+  overflow-y: visible;
 }
-.params-predict-card .empty-state-title {
-  font-size: 16px;
+/* The gap between "Using: gpt-4.1 / Re-predict" and the "Recommended
+   region" hero below it was doubled up: .predict-card-content's own flex
+   gap (16px) already spaces .predict-head from .card-scroll-body, but a
+   second, unscoped rule (.predict-head + .card-scroll-body { margin-top:
+   16px }) added another 16px on top of that via margin, and .predict-hero
+   itself (the first thing inside .card-scroll-body) has its own
+   margin-top: 18px again — roughly 50px of stacked spacing in total.
+   Zeroing the two margins here (scoped to this card only, so other pages
+   reusing .predict-head/.predict-hero are unaffected) leaves just the
+   16px flex gap, which is already the right amount. */
+.params-predict-card .predict-head + .card-scroll-body {
+  margin-top: 0;
 }
-.params-predict-card .empty-state-detail {
-  font-size: 13.5px;
+.params-predict-card .predict-hero {
+  margin-top: 0;
+}
+/* The single card enclosing the whole page (see ParametersFormPage.tsx) —
+   same .card token as every other workflow page's outer boundary, just
+   slotted into .params-page-inner's existing flex column in place of the
+   bare .params-page-columns that used to sit directly on the page
+   background. flex/min-height carry the same bounded-height chain through
+   to .params-page-columns below; margin-bottom: 0 drops .card's default
+   bottom margin since this is the only/last thing on the page. */
+.params-page-card {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  margin-bottom: 0;
 }
 /* Left: the form. Right: "Predict Region with AI", inline instead of a
    modal — see ParametersFormPage. Roughly 62/38; both columns stretch to
@@ -892,17 +969,42 @@ body {
   min-width: 0;
   display: flex;
   flex-direction: column;
+  /* Now the only visual separation between the two panes — the predict
+     panel lost its own .card border/shadow/padding since it's nested
+     inside .params-page-card instead of floating as its own card next to
+     the form (see .params-predict-card below). */
+  border-left: 1px solid var(--line);
+  padding-left: 32px;
 }
 .params-predict-card {
+  /* No longer a .card of its own (see ParametersFormPage.tsx) — it's a
+     nested pane within the single .params-page-card that now encloses the
+     whole page, separated from the form by .params-predict-col's border
+     instead of its own border/shadow. The fixed-height/scroll behavior
+     below is unchanged: it stretches to match its sibling .params-form-col
+     (same row, align-items: stretch — the two panes are always the same
+     height), and everything from here up the chain
+     (.params-page-columns/.params-page-card/.params-page-inner/
+     .params-page) is bounded to the viewport via min-height: 0 +
+     .params-page's own height: 100vh. So this pane's OWN height never
+     changes when a prediction comes back with more or fewer
+     candidates/factors — only its internal .card-scroll-body (below)
+     scrolls. overflow: hidden is the hard clamp: even if something inside
+     ever ignored that scroll region, it could not visually escape this
+     pane's boundary. */
   flex: 1;
   min-height: 0;
   display: flex;
   flex-direction: column;
+  overflow: hidden;
 }
 /* AIRegionPrediction's own top-level wrapper — give it the height the card
    above now provides so its internal .card-scroll-body (already
    flex:1/overflow-y:auto elsewhere in the app, e.g. .wizard-panel) can
-   actually scroll its own results instead of just growing the page. */
+   actually scroll its own results instead of just growing the page. Only
+   .card-scroll-body scrolls — .predict-head (the "Predicted Region /
+   Country" title + Re-predict button) is a normal, non-flex sibling above
+   it, so it stays fixed/visible the whole time. */
 .params-predict-card .predict-card-content {
   flex: 1;
   min-height: 0;
@@ -921,21 +1023,41 @@ body {
 }
 .params-page-inner .card.params-form {
   flex: 1;
+  /* Bounds this to its share of the now min-height: 0'd .params-page-inner
+     instead of growing to fit .params-form-grid's content — required for
+     that grid's own flex: 1 + overflow-y: auto (below) to actually have a
+     fixed height to scroll within. */
+  min-height: 0;
 }
 .params-page-inner .params-form-grid {
   row-gap: 8px;
   align-content: start;
+  /* Its own scroll region within the now-bounded .card.params-form column
+     (flex: 1, sibling of .params-form-actions below) — mirrors
+     .sidebar-form-scroll's role for the regular sidebar form. Needed now
+     that .params-page-inner has min-height: 0: the page itself no longer
+     grows to fit an overly tall field grid, so the grid must be able to
+     scroll on its own instead, or fields past the bottom of the viewport
+     would simply be unreachable. */
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
 }
-/* Pushes the divider + Start Analysis button down to the bottom of the
-   viewport rather than sitting right under the last field — this is what
-   actually makes the page read as full-height instead of a short block of
-   fields with blank space beneath it. */
-.params-page-inner .params-form-actions {
-  margin-top: auto;
-  padding-top: 32px;
-}
+/* Used to push the divider + Start Analysis button all the way to the
+   bottom via margin-top: auto — but the two-column field layout (see
+   .params-form-col-group) is shorter than the single-column-per-row grid
+   this was tuned for, and .params-form-col stretches to match whatever
+   height .params-predict-card needs (which can be considerably taller
+   once a prediction result renders), so that auto margin often opened up
+   a large, disconnected-looking gap between the fields and the button
+   instead of a natural, compact footer. Falling back to the base
+   .params-form-actions spacing (margin-top: 14px, below) keeps the button
+   directly under the fields regardless of how tall the column ends up. */
 .params-form .sidebar-form-title {
   font-size: 20px;
+}
+.params-form .sidebar-form-title-row {
   margin-bottom: 22px;
 }
 .params-form .sidebar-form-icon {
@@ -952,9 +1074,28 @@ body {
   display: grid;
   grid-template-columns: 1fr 1fr;
   column-gap: 28px;
+  /* Exactly two direct children now — .params-form-col-group (left) and
+     .params-form-col-group (right), see ParametersFormFields.tsx — rather
+     than seven field-blocks left to fall into a 2-column grid in field
+     order. That auto-flow used to put Indication/Phase on row 1, Age
+     Group/Target Enrollment on row 2, etc., with Region forced to span
+     both columns (see the now-removed :nth-child(5) rule below) to avoid
+     misaligning everything after it; explicit column groups mean each
+     field can go in the specific column the design calls for regardless
+     of how many fields land in each side. */
+  align-items: start;
 }
-.params-form-grid .field-block:nth-child(5) {
-  grid-column: 1 / -1;
+.params-form-col-group {
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+}
+.params-form-col-group .field-block {
+  /* The gap above already spaces fields within a column — field-block's
+     own margin-bottom (used everywhere else it appears, e.g. the sidebar
+     and Edit Parameters modal, which still stack fields in one column)
+     would otherwise double up on that spacing here. */
+  margin-bottom: 0;
 }
 .params-form-actions {
   display: flex;
@@ -985,7 +1126,12 @@ body {
 .edit-parameters-modal {
   width: min(920px, 96vw);
   max-height: 90vh;
-  padding-top: 44px;
+  /* Used to be padding-top: 44px, reserving room above the title for a
+     separate close (X) button bar that floated on its own. The close
+     button now renders inline with the title itself (see
+     ParametersFormFields.tsx's onClose prop), so there's no second bar to
+     make room for — removing this is most of what closed the gap above
+     the heading. */
 }
 .edit-parameters-modal .card.params-form {
   padding: 0;
@@ -993,6 +1139,17 @@ body {
   box-shadow: none;
   background: transparent;
   margin-bottom: 0;
+}
+/* Keeps the title + close button reachable while scrolling a long form,
+   the same guarantee the old separate close bar gave — just as one
+   header row instead of two disconnected pieces. .run-modal itself is the
+   scrolling element (overflow-y: auto), so top: 0 sticks this right at
+   the inner edge of its own padding. */
+.edit-parameters-modal .sidebar-form-title-row {
+  position: sticky;
+  top: 0;
+  background: var(--card);
+  z-index: 2;
 }
 @media (max-width: 1080px) {
   /* Stack the form above the Predict Region with AI panel instead of
@@ -1006,13 +1163,33 @@ body {
     flex: none;
     max-width: 100%;
   }
+  /* Flip the divider from a vertical rule (side-by-side columns) to a
+     horizontal one above the stacked predict panel. */
+  .params-predict-col {
+    border-left: none;
+    padding-left: 0;
+    border-top: 1px solid var(--line);
+    padding-top: 28px;
+  }
+  /* Stacked layout: .params-form-col/.params-predict-col are flex: none
+     now, so they no longer stretch to a shared row height — without an
+     explicit height here this card would go right back to growing with
+     its own content (the desktop fix above only bounds it via row
+     stretch, which no longer applies once the columns stack). A fixed
+     height keeps it exactly as fixed on tablet as it is on desktop, with
+     .card-scroll-body still doing the internal scrolling. */
   .params-predict-card {
-    min-height: 360px;
+    height: 420px;
   }
 }
 @media (max-width: 720px) {
   .params-form-grid {
     grid-template-columns: 1fr;
+    /* Stacking the two .params-form-col-group columns turns this into a
+       2-row grid — row-gap was tuned at 8px for the old single-column
+       field-by-field layout (see .params-page-inner .params-form-grid),
+       far too tight between two whole groups of 3-4 fields each. */
+    row-gap: 22px;
   }
   .params-page .params-form {
     padding: 28px 22px;
@@ -1079,7 +1256,10 @@ body {
 .region-checklist {
   display: flex;
   flex-direction: column;
-  max-height: 96px;
+  /* Was 96px — barely fit 2-3 rows before scrolling kicked in, so most of
+     the list was hidden by default. Tall enough to show ~6 rows at once
+     while still capping out and scrolling for longer lists. */
+  max-height: 145px;
   overflow-y: auto;
   border: 1px solid var(--line);
   border-radius: 9px;
@@ -1477,7 +1657,7 @@ input[type="number"]::-webkit-inner-spin-button {
   transition: background 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease;
 }
 .btn-primary:hover {
-  background: var(--accent-dark);
+  background: var(--accent-hover);
   box-shadow: 0 6px 16px rgba(67, 66, 209, 0.28);
   transform: translateY(-1px);
 }
@@ -2122,7 +2302,7 @@ tbody tr:hover {
   transition: background 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease;
 }
 .predict-btn:hover {
-  background: var(--accent-dark);
+  background: var(--accent-hover);
   box-shadow: 0 6px 16px rgba(67, 66, 209, 0.28);
   transform: translateY(-1px);
 }
@@ -2272,7 +2452,7 @@ td.predict-placeholder {
   white-space: nowrap;
 }
 .apply-btn:hover {
-  background: var(--accent-dark);
+  background: var(--accent-hover);
 }
 .apply-btn:disabled {
   opacity: 0.65;
@@ -2774,6 +2954,13 @@ tr.row-pick td {
   font-size: 13px;
   font-weight: 600;
   cursor: pointer;
+  transition: background 0.15s ease;
+}
+/* Had no hover feedback at all — the same soft var(--bg) tint every other
+   light/outline button in the app already uses (.icon-btn, .history-btn,
+   .user-chip, etc.), for consistency across variants. */
+.btn-secondary:hover:not(:disabled) {
+  background: var(--bg);
 }
 .btn-secondary:disabled {
   opacity: 0.6;
@@ -3574,7 +3761,7 @@ tr.pinned-row {
   font-size: 14px;
 }
 .workflow-nav-item--predict:hover:not(:disabled) .workflow-nav-index {
-  background: var(--accent-dark);
+  background: var(--accent-hover);
 }
 
 .wizard-panel > * {

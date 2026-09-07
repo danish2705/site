@@ -3,6 +3,7 @@ import { usePipeline } from "../../hooks/usePipeline";
 import Select from "../ui/Select";
 import SearchableSelect from "../ui/SearchableSelect";
 import RegionMultiSelect from "../prediction/RegionMultiSelect";
+import { CloseIcon } from "../ui/Icons";
 import { searchIndications } from "../../services/indicationSearch.service";
 
 async function searchIndicationValues(query: string): Promise<string[]> {
@@ -41,10 +42,17 @@ export default function ParametersFormFields({
   onSubmit,
   title = "Analysis Parameters",
   submitLabel = "Start Analysis",
+  onClose,
 }: {
   onSubmit: (e: FormEvent) => void;
   title?: string;
   submitLabel?: string;
+  /** Renders a close (X) button inline on the same row as the title,
+      right-aligned — used by EditParametersModal so the heading and its
+      close button sit together instead of the button floating in its own
+      separate bar above. Omitted entirely (no button, plain title row) on
+      the full-page host, which has no "close" concept. */
+  onClose?: () => void;
 }) {
   const { meta, form, setForm, regionOptions, running } = usePipeline();
 
@@ -71,22 +79,41 @@ export default function ParametersFormFields({
 
   return (
     <form className="card params-form" onSubmit={onSubmit}>
-      <div className="sidebar-form-title">
-        <span className="sidebar-form-icon" aria-hidden="true">
-          <svg
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="1.8"
-            strokeLinecap="round"
-            strokeLinejoin="round"
+      {/* .sidebar-form-title-row carries the space below the whole header
+          (title + close button together) — see EditParametersModal, whose
+          close (X) button used to float in its own separate sticky bar
+          above this title, both reserving extra top padding for it AND
+          leaving it visually disconnected from the heading it belongs to.
+          Passing onClose renders it right here instead, same row as the
+          title, right-aligned. */}
+      <div className="sidebar-form-title-row">
+        <div className="sidebar-form-title">
+          <span className="sidebar-form-icon" aria-hidden="true">
+            <svg
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.8"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <rect x="5" y="3" width="14" height="18" rx="2" />
+              <path d="M9 3v2h6V3" />
+              <path d="M8 10h8M8 14h8M8 18h5" />
+            </svg>
+          </span>
+          {title}
+        </div>
+        {onClose && (
+          <button
+            type="button"
+            className="icon-close-btn"
+            onClick={onClose}
+            aria-label="Close"
           >
-            <rect x="5" y="3" width="14" height="18" rx="2" />
-            <path d="M9 3v2h6V3" />
-            <path d="M8 10h8M8 14h8M8 18h5" />
-          </svg>
-        </span>
-        {title}
+            <CloseIcon className="btn-icon" />
+          </button>
+        )}
       </div>
 
       <div className="sidebar-progress" data-tooltip={`${doneCount} of ${totalCount} fields set`}>
@@ -101,159 +128,168 @@ export default function ParametersFormFields({
         </span>
       </div>
 
+      {/* Two independent column stacks (not a single interleaved grid) so
+          each field lands in the specific left/right column requested,
+          regardless of how many fields end up in each — Left: Indication,
+          Age Group, Region/Country. Right: Phase, Target Enrollment,
+          Duration, Budget Tier. */}
       <div className="params-form-grid">
-        <label className={`field-block${fieldStatus[0].done ? " field-block--done" : ""}`}>
-          <span className="field-label">
-            Indication <span className="field-required">*</span>
-            {fieldStatus[0].done && <span className="field-check-badge">✓</span>}
-          </span>
-          <SearchableSelect
-            fullWidth
-            value={form.indication}
-            onChange={(v) => setForm({ ...form, indication: v, regions: [] })}
-            disabled={!meta}
-            placeholder="Select or search indication…"
-            options={(meta?.indications ?? []).map((ind) => ({
-              value: ind,
-              label: ind,
-            }))}
-            onSearch={searchIndicationValues}
-          />
-        </label>
-
-        <label className={`field-block${fieldStatus[1].done ? " field-block--done" : ""}`}>
-          <span className="field-label">
-            Phase
-            {fieldStatus[1].done && <span className="field-check-badge">✓</span>}
-          </span>
-          <div className="phase-pills">
-            {PHASES.map((p) => (
-              <button
-                key={p}
-                type="button"
-                className={`phase-pill ${form.phase === p ? "active" : ""}`}
-                onClick={() => setForm({ ...form, phase: p })}
-              >
-                {form.phase === p && (
-                  <span className="phase-pill-check">✓</span>
-                )}
-                {p}
-              </button>
-            ))}
-          </div>
-        </label>
-
-        <label className={`field-block${fieldStatus[2].done ? " field-block--done" : ""}`}>
-          <span className="field-label">
-            Age Group
-            {fieldStatus[2].done && <span className="field-check-badge">✓</span>}
-          </span>
-          <div className="phase-pills">
-            {AGE_GROUPS.map((a) => {
-              const active = form.ageGroups.includes(a);
-              return (
-                <button
-                  key={a}
-                  type="button"
-                  className={`phase-pill ${active ? "active" : ""}`}
-                  onClick={() =>
-                    setForm({
-                      ...form,
-                      ageGroups: active
-                        ? form.ageGroups.filter((g) => g !== a)
-                        : [...form.ageGroups, a],
-                    })
-                  }
-                >
-                  {active && <span className="phase-pill-check">✓</span>}
-                  {a}
-                </button>
-              );
-            })}
-          </div>
-        </label>
-
-        <label className={`field-block${fieldStatus[3].done ? " field-block--done" : ""}`}>
-          <span className="field-label">
-            Target Enrollment
-            {fieldStatus[3].done && <span className="field-check-badge">✓</span>}
-          </span>
-          <input
-            type="number"
-            min={10}
-            placeholder="e.g. 300"
-            value={form.sampleSize}
-            onChange={(e) =>
-              setForm({
-                ...form,
-                sampleSize:
-                  e.target.value === "" ? "" : Number(e.target.value),
-              })
-            }
-          />
-        </label>
-
-        <label className={`field-block${fieldStatus[4].done ? " field-block--done" : ""}`}>
-          <span className="field-label-row">
+        <div className="params-form-col-group">
+          <label className={`field-block${fieldStatus[0].done ? " field-block--done" : ""}`}>
             <span className="field-label">
-              Region / Country
-              {fieldStatus[4].done && <span className="field-check-badge">✓</span>}
+              Indication <span className="field-required">*</span>
+              {fieldStatus[0].done && <span className="field-check-badge">✓</span>}
             </span>
-            {form.regions.length > 0 && (
-              <span className="field-selected-chip">
-                {form.regions.length} selected
+            <SearchableSelect
+              fullWidth
+              value={form.indication}
+              onChange={(v) => setForm({ ...form, indication: v, regions: [] })}
+              disabled={!meta}
+              placeholder="Select or search indication…"
+              options={(meta?.indications ?? []).map((ind) => ({
+                value: ind,
+                label: ind,
+              }))}
+              onSearch={searchIndicationValues}
+            />
+          </label>
+
+          <label className={`field-block${fieldStatus[2].done ? " field-block--done" : ""}`}>
+            <span className="field-label">
+              Age Group
+              {fieldStatus[2].done && <span className="field-check-badge">✓</span>}
+            </span>
+            <div className="phase-pills">
+              {AGE_GROUPS.map((a) => {
+                const active = form.ageGroups.includes(a);
+                return (
+                  <button
+                    key={a}
+                    type="button"
+                    className={`phase-pill ${active ? "active" : ""}`}
+                    onClick={() =>
+                      setForm({
+                        ...form,
+                        ageGroups: active
+                          ? form.ageGroups.filter((g) => g !== a)
+                          : [...form.ageGroups, a],
+                      })
+                    }
+                  >
+                    {active && <span className="phase-pill-check">✓</span>}
+                    {a}
+                  </button>
+                );
+              })}
+            </div>
+          </label>
+
+          <label className={`field-block${fieldStatus[4].done ? " field-block--done" : ""}`}>
+            <span className="field-label-row">
+              <span className="field-label">
+                Region / Country
+                {fieldStatus[4].done && <span className="field-check-badge">✓</span>}
+              </span>
+              {form.regions.length > 0 && (
+                <span className="field-selected-chip">
+                  {form.regions.length} selected
+                </span>
+              )}
+            </span>
+            <RegionMultiSelect
+              options={regionOptions}
+              selected={form.regions}
+              onChange={(regions) => setForm({ ...form, regions })}
+              disabled={!meta}
+            />
+          </label>
+        </div>
+
+        <div className="params-form-col-group">
+          <label className={`field-block${fieldStatus[1].done ? " field-block--done" : ""}`}>
+            <span className="field-label">
+              Phase
+              {fieldStatus[1].done && <span className="field-check-badge">✓</span>}
+            </span>
+            <div className="phase-pills">
+              {PHASES.map((p) => (
+                <button
+                  key={p}
+                  type="button"
+                  className={`phase-pill ${form.phase === p ? "active" : ""}`}
+                  onClick={() => setForm({ ...form, phase: p })}
+                >
+                  {form.phase === p && (
+                    <span className="phase-pill-check">✓</span>
+                  )}
+                  {p}
+                </button>
+              ))}
+            </div>
+          </label>
+
+          <label className={`field-block${fieldStatus[3].done ? " field-block--done" : ""}`}>
+            <span className="field-label">
+              Target Enrollment
+              {fieldStatus[3].done && <span className="field-check-badge">✓</span>}
+            </span>
+            <input
+              type="number"
+              min={10}
+              placeholder="e.g. 300"
+              value={form.sampleSize}
+              onChange={(e) =>
+                setForm({
+                  ...form,
+                  sampleSize:
+                    e.target.value === "" ? "" : Number(e.target.value),
+                })
+              }
+            />
+          </label>
+
+          <label className={`field-block${fieldStatus[5].done ? " field-block--done" : ""}`}>
+            <span className="field-label">
+              Duration (months)
+              {fieldStatus[5].done && <span className="field-check-badge">✓</span>}
+            </span>
+            <input
+              type="number"
+              min={1}
+              placeholder="e.g. 18"
+              value={form.durationMonths}
+              onChange={(e) =>
+                setForm({
+                  ...form,
+                  durationMonths:
+                    e.target.value === "" ? "" : Number(e.target.value),
+                })
+              }
+            />
+            {durationHint && (
+              <span className="field-hint">
+                Typical {form.phase} trials run {durationHint} months
               </span>
             )}
-          </span>
-          <RegionMultiSelect
-            options={regionOptions}
-            selected={form.regions}
-            onChange={(regions) => setForm({ ...form, regions })}
-            disabled={!meta}
-          />
-        </label>
+          </label>
 
-        <label className={`field-block${fieldStatus[5].done ? " field-block--done" : ""}`}>
-          <span className="field-label">
-            Duration (months)
-            {fieldStatus[5].done && <span className="field-check-badge">✓</span>}
-          </span>
-          <input
-            type="number"
-            min={1}
-            placeholder="e.g. 18"
-            value={form.durationMonths}
-            onChange={(e) =>
-              setForm({
-                ...form,
-                durationMonths:
-                  e.target.value === "" ? "" : Number(e.target.value),
-              })
-            }
-          />
-          {durationHint && (
-            <span className="field-hint">
-              Typical {form.phase} trials run {durationHint} months
+          <label className={`field-block${fieldStatus[6].done ? " field-block--done" : ""}`}>
+            <span className="field-label">
+              Budget Tier
+              {fieldStatus[6].done && <span className="field-check-badge">✓</span>}
             </span>
-          )}
-        </label>
-
-        <label className={`field-block${fieldStatus[6].done ? " field-block--done" : ""}`}>
-          <span className="field-label">
-            Budget Tier
-            {fieldStatus[6].done && <span className="field-check-badge">✓</span>}
-          </span>
-          <Select
-            fullWidth
-            value={form.budgetTier}
-            onChange={(v) => setForm({ ...form, budgetTier: v })}
-            placeholder="Select budget tier…"
-            options={BUDGETS.map((b) => ({
-              value: b,
-              label: b === "All" ? "All (no budget constraint)" : b,
-            }))}
-          />
-        </label>
+            <Select
+              fullWidth
+              value={form.budgetTier}
+              onChange={(v) => setForm({ ...form, budgetTier: v })}
+              placeholder="Select budget tier…"
+              options={BUDGETS.map((b) => ({
+                value: b,
+                label: b === "All" ? "All (no budget constraint)" : b,
+              }))}
+            />
+          </label>
+        </div>
       </div>
 
       <div className="params-form-actions">
