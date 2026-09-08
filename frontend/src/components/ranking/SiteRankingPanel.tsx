@@ -532,7 +532,7 @@ export default function SiteRankingPanel() {
                         <table className="requirement-checklist">
                           <thead>
                             <tr>
-                              <th></th>
+                              <th>Criterion</th>
                               <th>Required</th>
                               <th>This site</th>
                             </tr>
