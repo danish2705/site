@@ -193,14 +193,6 @@ export default function RecommendationPanel() {
   const [draftLoading, setDraftLoading] = useState(false);
   const [draft, setDraft] = useState<OutreachDraft | null>(null);
   const [draftError, setDraftError] = useState<string | null>(null);
-  // Declared here — before the `if (!finalResult)` early return below —
-  // rather than after it. Every hook in a component must run on every
-  // render regardless of props/state (the Rules of Hooks); these two were
-  // previously declared after that early return, so a render that took
-  // the early-return branch (no result yet) called fewer hooks than one
-  // that reached the rest of the component, and React's hook-call-order
-  // bookkeeping threw "Rendered more hooks than during the previous
-  // render" the moment the page toggled between those two states.
   const [downloadMenuOpen, setDownloadMenuOpen] = useState(false);
   const downloadBtnRef = useRef<HTMLButtonElement>(null);
 

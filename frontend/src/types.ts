@@ -165,6 +165,10 @@ export interface RequirementCheck {
   required: string;
   actual: string;
   pass: boolean;
+  /** Whether the "Required" value came from real, disclosed data (e.g. a ClinicalTrials.gov benchmark) rather than user form input, an invented label, or a self-referential run average. */
+  requiredIsLive?: boolean;
+  /** Whether the "This site" (actual) value is real, disclosed data (ClinicalTrials.gov, etc.) rather than an LLM estimate. */
+  actualIsLive?: boolean;
 }
 
 export interface EnrollmentForecast {
@@ -351,6 +355,64 @@ export interface NctLookupResponse {
   siteCount: number;
   /** This study's own disclosed site/location list — when a caller opts into "scope everything to this one NCT" (see PipelineContext's runAnalysisFromNct), Ongoing Trials/Risk Assessment/Site Ranking/Site Map/Recommendation are all run against ONLY these facilities instead of the default broad indication-wide search. Empty when the study discloses no locations. */
   facilities: LiveFacilityRow[];
+}
+
+/* ---------------------------------------------------------------------- */
+/* Rare Disease feature — every field here is real, Orphanet/ClinicalTrials
+   .gov-sourced data (see backend's services/orphadata.client.ts). Nothing
+   in this feature is LLM-estimated; a section with nothing to show renders
+   empty with a warning instead of a filled-in guess. */
+/* ---------------------------------------------------------------------- */
+
+export interface RareDiseaseSearchResult {
+  orphaCode: string;
+  name: string;
+}
+
+export interface RareDiseasePrevalenceRow {
+  type: string | null;
+  qualification: string | null;
+  prevalenceClass: string | null;
+  value: string | null;
+  geographicArea: string | null;
+  validationStatus: string | null;
+  source: string | null;
+}
+
+export interface RareDiseaseCrossReference {
+  source: string;
+  reference: string;
+}
+
+export interface RareDiseaseTrialSite {
+  nctId: string;
+  briefTitle: string | null;
+  facility: string | null;
+  city: string | null;
+  state: string | null;
+  country: string | null;
+  status: string | null;
+}
+
+export interface RareDiseaseDetail {
+  orphaCode: string;
+  name: string;
+  definition: string | null;
+  typology: string | null;
+  synonyms: string[];
+  crossReferences: RareDiseaseCrossReference[];
+  inheritance: string[];
+  averageAgeOfOnset: string[];
+  averageAgeOfDeath: string[];
+  prevalence: RareDiseasePrevalenceRow[];
+  trialSites: RareDiseaseTrialSite[];
+  warnings: string[];
+  sources: {
+    nomenclature: string;
+    epidemiology: string;
+    naturalHistory: string;
+    trials: string;
+  };
 }
 
 /** One trial site plotted on the Site Map tab — see the backend's pipeline/liveMapData.ts for exactly what's live vs. synthetic vs. approximate in each field. */

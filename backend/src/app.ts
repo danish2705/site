@@ -16,6 +16,7 @@ import { siteAnalysisRoutes } from "./routes/siteAnalysis.routes.js";
 import { siteRecommendationRoutes } from "./routes/siteRecommendation.routes.js";
 import { eligibilityFiltersRoutes } from "./routes/eligibilityFilters.routes.js";
 import { indicationSearchRoutes } from "./routes/indicationSearch.routes.js";
+import { rareDiseaseRoutes } from "./routes/rareDisease.routes.js";
 
 export function createApp() {
   const app = express();
@@ -42,6 +43,7 @@ export function createApp() {
   app.use("/api", siteRecommendationRoutes);
   app.use("/api", eligibilityFiltersRoutes);
   app.use("/api", indicationSearchRoutes);
+  app.use("/api", rareDiseaseRoutes);
 
   app.use(notFound);
   app.use(errorHandler);

@@ -1,7 +1,8 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { usePipeline } from "../../hooks/usePipeline";
 import { fetchNctLookup } from "../../services/nctLookup.service";
-import type { NctLookupResponse, TrialForm } from "../../types";
+import { searchRareDiseases } from "../../services/rareDisease.service";
+import type { NctLookupResponse, RareDiseaseSearchResult, TrialForm } from "../../types";
 
 interface LandingScreenProps {
   /** Leaves the landing screen and shows the normal Dashboard (workflow +
@@ -14,9 +15,14 @@ interface LandingScreenProps {
       dashboard, since there's nothing to run yet until that form is
       submitted. */
   onStartManual: () => void;
+  /** Selecting a live Orphanet search result opens the Rare Disease page for
+      that ORPHAcode — see App.tsx's "rare-disease" entry mode. */
+  onOpenRareDisease: (orphaCode: string) => void;
 }
 
 const NCT_ID_PATTERN = /^NCT\d{6,9}$/i;
+const RARE_DISEASE_SEARCH_MIN_CHARS = 2;
+const RARE_DISEASE_SEARCH_DEBOUNCE_MS = 300;
 
 function SearchIcon() {
   return (
@@ -60,12 +66,87 @@ function LandingIllustration() {
   );
 }
 
-export default function LandingScreen({ onEnterDashboard, onStartManual }: LandingScreenProps) {
+export default function LandingScreen({
+  onEnterDashboard,
+  onStartManual,
+  onOpenRareDisease,
+}: LandingScreenProps) {
   const { runAnalysisFromNct } = usePipeline();
   const [nctInput, setNctInput] = useState("");
   const [searching, setSearching] = useState(false);
   const [searchError, setSearchError] = useState<string | null>(null);
   const [lookupResult, setLookupResult] = useState<NctLookupResponse | null>(null);
+
+  // Rare Disease live search-as-you-type — real Orphanet nomenclature only,
+  // no pre-loaded list (unlike the Indication field's SearchableSelect,
+  // there's nothing sensible to pre-load here).
+  const [rareQuery, setRareQuery] = useState("");
+  const [rareOpen, setRareOpen] = useState(false);
+  const [rareResults, setRareResults] = useState<RareDiseaseSearchResult[]>([]);
+  const [rareLoading, setRareLoading] = useState(false);
+  const [rareError, setRareError] = useState<string | null>(null);
+  // This is the last box on the page, so its dropdown often has nowhere to
+  // open downward into (see the flip logic RequirementChecklistPopover.tsx
+  // already uses for the same reason) — flips to open upward instead
+  // whenever there's more room above the input than below it.
+  const [rareMenuFlip, setRareMenuFlip] = useState(false);
+  const rareWrapRef = useRef<HTMLDivElement>(null);
+  const rareInputWrapRef = useRef<HTMLDivElement>(null);
+  const rareRequestIdRef = useRef(0);
+
+  useEffect(() => {
+    const el = rareInputWrapRef.current;
+    if (!el) return;
+    const rect = el.getBoundingClientRect();
+    const spaceBelow = window.innerHeight - rect.bottom;
+    const spaceAbove = rect.top;
+    setRareMenuFlip(spaceBelow < 260 && spaceAbove > spaceBelow);
+  }, [rareOpen]);
+
+  useEffect(() => {
+    const trimmed = rareQuery.trim();
+    if (trimmed.length < RARE_DISEASE_SEARCH_MIN_CHARS) {
+      setRareResults([]);
+      setRareLoading(false);
+      setRareError(null);
+      return;
+    }
+    setRareLoading(true);
+    setRareError(null);
+    const myRequestId = ++rareRequestIdRef.current;
+    const timer = setTimeout(() => {
+      searchRareDiseases(trimmed)
+        .then(({ results }) => {
+          if (rareRequestIdRef.current !== myRequestId) return;
+          setRareResults(results);
+          setRareLoading(false);
+        })
+        .catch((err) => {
+          if (rareRequestIdRef.current !== myRequestId) return;
+          setRareResults([]);
+          setRareLoading(false);
+          setRareError((err as Error).message);
+        });
+    }, RARE_DISEASE_SEARCH_DEBOUNCE_MS);
+    return () => clearTimeout(timer);
+  }, [rareQuery]);
+
+  useEffect(() => {
+    if (!rareOpen) return;
+    function handleClickOutside(e: MouseEvent) {
+      if (rareWrapRef.current && !rareWrapRef.current.contains(e.target as Node)) {
+        setRareOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [rareOpen]);
+
+  function handleSelectRareDisease(result: RareDiseaseSearchResult) {
+    setRareOpen(false);
+    setRareQuery("");
+    onOpenRareDisease(result.orphaCode);
+  }
 
   async function handleSearch() {
     const id = nctInput.trim();
@@ -174,6 +255,60 @@ export default function LandingScreen({ onEnterDashboard, onStartManual }: Landi
                 >
                   Start Analysis
                 </button>
+              </div>
+
+              <div className="landing-divider">
+                <span>OR</span>
+              </div>
+
+              <div className="landing-panel" ref={rareWrapRef}>
+                <h2 className="landing-panel-title">Rare Disease Lookup</h2>
+                <p className="landing-panel-hint">
+                  Real Orphanet data — prevalence, incidence, inheritance, age of onset
+                </p>
+                <label className="landing-field-label" htmlFor="rare-disease-input">
+                  Search a disease name
+                </label>
+                <div className="landing-rare-search-wrap" ref={rareInputWrapRef}>
+                  <input
+                    id="rare-disease-input"
+                    className="landing-input"
+                    type="text"
+                    placeholder="e.g. Marfan syndrome"
+                    value={rareQuery}
+                    onChange={(e) => {
+                      setRareQuery(e.target.value);
+                      setRareOpen(true);
+                    }}
+                    onFocus={() => setRareOpen(true)}
+                    autoComplete="off"
+                  />
+                  {rareOpen && rareQuery.trim().length >= RARE_DISEASE_SEARCH_MIN_CHARS && (
+                    <ul className={`landing-rare-menu${rareMenuFlip ? " landing-rare-menu--up" : ""}`}>
+                      {rareLoading && <li className="ui-select-status">Searching Orphanet…</li>}
+                      {!rareLoading && rareError && (
+                        <li className="ui-select-status">{rareError}</li>
+                      )}
+                      {!rareLoading && !rareError && rareResults.length === 0 && (
+                        <li className="ui-select-status">No matching rare disease found.</li>
+                      )}
+                      {!rareLoading &&
+                        !rareError &&
+                        rareResults.map((r) => (
+                          <li key={r.orphaCode}>
+                            <button
+                              type="button"
+                              className="ui-select-option"
+                              onClick={() => handleSelectRareDisease(r)}
+                            >
+                              {r.name}
+                              <span className="landing-rare-orphacode">ORPHA:{r.orphaCode}</span>
+                            </button>
+                          </li>
+                        ))}
+                    </ul>
+                  )}
+                </div>
               </div>
             </>
           ) : (

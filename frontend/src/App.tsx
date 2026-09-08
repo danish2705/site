@@ -19,6 +19,7 @@ import HistoryModal from "./components/runs/HistoryModal";
 import ErrorBoundary from "./components/ui/ErrorBoundary";
 import RunAnalysisOverlay from "./components/ui/RunAnalysisOverlay";
 import LandingScreen from "./components/landing/LandingScreen";
+import RareDiseasePage from "./components/rareDisease/RareDiseasePage";
 import { countriesFromRegionKeys } from "./utils/region";
  
 function Dashboard({ onGoToLanding }: { onGoToLanding: () => void }) {
@@ -136,15 +137,29 @@ function Dashboard({ onGoToLanding }: { onGoToLanding: () => void }) {
  *   full page — entryMode itself never needs to leave "dashboard" again.
  */
 function AppShell() {
-  const [entryMode, setEntryMode] = useState<"landing" | "form" | "dashboard">(
-    "landing",
-  );
+  const [entryMode, setEntryMode] = useState<
+    "landing" | "form" | "dashboard" | "rare-disease"
+  >("landing");
+  const [rareDiseaseOrphaCode, setRareDiseaseOrphaCode] = useState<string | null>(null);
 
   if (entryMode === "landing") {
     return (
       <LandingScreen
         onEnterDashboard={() => setEntryMode("dashboard")}
         onStartManual={() => setEntryMode("form")}
+        onOpenRareDisease={(orphaCode) => {
+          setRareDiseaseOrphaCode(orphaCode);
+          setEntryMode("rare-disease");
+        }}
+      />
+    );
+  }
+  if (entryMode === "rare-disease" && rareDiseaseOrphaCode) {
+    return (
+      <RareDiseasePage
+        orphaCode={rareDiseaseOrphaCode}
+        onBack={() => setEntryMode("landing")}
+        onRunAnalysis={() => setEntryMode("dashboard")}
       />
     );
   }

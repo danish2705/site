@@ -546,6 +546,12 @@ export default function SiteRankingPanel() {
                                   >
                                     {c.pass ? <CheckIcon /> : <XIcon />}
                                     {c.criterion}
+                                    {c.actualIsLive && (
+                                      <span
+                                        className="live-data-dot"
+                                        title="This site's own value is real, disclosed data (not an LLM estimate)"
+                                      />
+                                    )}
                                   </span>
                                 </td>
                                 <td>{c.required}</td>

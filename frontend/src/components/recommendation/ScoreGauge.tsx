@@ -1,5 +1,3 @@
-/** Same score-band thresholds ScoreBreakdownDetailed uses for its bars, so
-    the ring color always agrees with the bars underneath it. */
 export function scoreBand(value: number): "good" | "mid" | "bad" {
   if (value >= 80) return "good";
   if (value >= 60) return "mid";
@@ -12,12 +10,6 @@ const BAND_COLOR: Record<ReturnType<typeof scoreBand>, string> = {
   bad: "var(--danger)",
 };
 
-/**
- * Circular "N out of 100" gauge for the Final Recommendation page's Score
- * Breakdown card. Pure SVG (no chart library) — a background track ring
- * plus a foreground arc whose length encodes the score and whose color
- * follows the same green/amber/red bands as the component bars beside it.
- */
 export default function ScoreGauge({ score, size = 128 }: { score: number; size?: number }) {
   const stroke = 12;
   const radius = (size - stroke) / 2;

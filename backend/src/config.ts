@@ -85,4 +85,20 @@ export const config = {
     highThreshold: Number(process.env.SITE_WORKLOAD_HIGH_THRESHOLD) || 8,
     mediumThreshold: Number(process.env.SITE_WORKLOAD_MEDIUM_THRESHOLD) || 4,
   },
+
+  // Rare Disease feature — Orphanet/Orphadata integration.
+  // api.orphadata.com's rd-cross-referencing / rd-epidemiology /
+  // rd-natural_history endpoints are genuinely open (CC BY 4.0, no API key
+  // or registration — verified directly against the live API), so there is
+  // no key/config gate here, unlike this app's LLM or Google Maps
+  // integrations. See services/orphadata.client.ts.
+  rareDisease: {
+    timeoutMs: Number(process.env.ORPHADATA_TIMEOUT_MS) || 8000,
+    searchCacheTtlMs: Number(process.env.ORPHADATA_SEARCH_CACHE_TTL_MS) || 60 * 60 * 1000,
+    // TTL for the full ~11,600-disease name/ORPHAcode index used to power
+    // local search-as-you-type (see getDiseaseIndex) — one bulk fetch,
+    // refreshed on this schedule, rather than a live call per keystroke.
+    bulkFileCacheTtlMs:
+      Number(process.env.ORPHADATA_BULK_CACHE_TTL_MS) || 24 * 60 * 60 * 1000,
+  },
 } as const;

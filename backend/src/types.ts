@@ -13,6 +13,10 @@ export interface RegionRow {
   competingTrialsSource?: "live" | "excel";
   regionMetricsSource?: "live" | "llm-estimated" | "claims-synthetic" | "unavailable";
   metricsWarning?: string;
+  /** Where "Prevalence (per 100k)" specifically came from — tracked separately from regionMetricsSource because Regulatory Approval Time / Avg Cost per Patient have no Orphanet equivalent and keep using claims/LLM even on an "orphanet-live" row. */
+  prevalenceSource?: "orphanet-live" | "claims-synthetic" | "llm-estimated" | "unavailable";
+  /** e.g. "Orphanet ORPHA:558 — Point prevalence, Europe, Validated — 20.0 (class 1-5/10,000)" when prevalenceSource is "orphanet-live". */
+  prevalenceCitation?: string;
 }
 
 export interface LiveFacilityRow {
@@ -243,6 +247,10 @@ export interface RequirementCheck {
   required: string;
   actual: string;
   pass: boolean;
+  /** Whether the "Required" value came from real, disclosed data (e.g. a ClinicalTrials.gov benchmark) rather than user form input, an invented label, or a self-referential run average. */
+  requiredIsLive?: boolean;
+  /** Whether the "This site" (actual) value is real, disclosed data (ClinicalTrials.gov, etc.) rather than an LLM estimate. */
+  actualIsLive?: boolean;
 }
 
 export interface EnrollmentForecast {
@@ -568,4 +576,66 @@ export interface SavedRunSummary {
   risk_level: string | null;
   meets_requirements: boolean | null;
   ranked_site_count: number;
+}
+
+/* ---------------------------------------------------------------------- */
+/* Rare Disease feature — every field here is real, Orphanet/ClinicalTrials
+   .gov-sourced data (see backend's services/orphadata.client.ts). Nothing
+   in this feature is LLM-estimated, by design — see rareDiseaseWarnings for
+   which sections came back empty because a live source had nothing to say. */
+/* ---------------------------------------------------------------------- */
+
+export interface RareDiseaseSearchResult {
+  orphaCode: string;
+  name: string;
+}
+
+export interface RareDiseasePrevalenceRow {
+  type: string | null;
+  qualification: string | null;
+  prevalenceClass: string | null;
+  value: string | null;
+  geographicArea: string | null;
+  validationStatus: string | null;
+  source: string | null;
+}
+
+export interface RareDiseaseCrossReference {
+  source: string;
+  reference: string;
+}
+
+export interface RareDiseaseTrialSite {
+  nctId: string;
+  briefTitle: string | null;
+  facility: string | null;
+  city: string | null;
+  state: string | null;
+  country: string | null;
+  status: string | null;
+}
+
+export interface RareDiseaseDetail {
+  orphaCode: string;
+  name: string;
+  definition: string | null;
+  typology: string | null;
+  synonyms: string[];
+  /** ICD-10, ICD-11, OMIM, MONDO, MeSH, MedDRA, UMLS, GARD cross-references, as Orphanet discloses them. */
+  crossReferences: RareDiseaseCrossReference[];
+  inheritance: string[];
+  averageAgeOfOnset: string[];
+  /** Empty for most diseases — only populated by Orphanet when a published average age of death exists. */
+  averageAgeOfDeath: string[];
+  prevalence: RareDiseasePrevalenceRow[];
+  /** Real ClinicalTrials.gov locations found searching this disease's own preferred term / synonyms as the condition. */
+  trialSites: RareDiseaseTrialSite[];
+  /** e.g. "No epidemiology record published by Orphanet for this disease." */
+  warnings: string[];
+  sources: {
+    nomenclature: string;
+    epidemiology: string;
+    naturalHistory: string;
+    trials: string;
+  };
 }

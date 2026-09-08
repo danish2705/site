@@ -211,11 +211,20 @@ function checkRequirements(
     limit: number | null,
     cmp: "min" | "max",
     unit: string,
+    requiredIsLive = false,
+    actualIsLive = false,
   ) => {
     if (limit === null || limit === undefined) return;
     const required = `${cmp === "min" ? "≥" : "≤"} ${limit}${unit}`;
     if (actual === null || actual === undefined) {
-      checks.push({ criterion, required, actual: "no data", pass: false });
+      checks.push({
+        criterion,
+        required,
+        actual: "no data",
+        pass: false,
+        requiredIsLive,
+        actualIsLive: false,
+      });
       return;
     }
     checks.push({
@@ -223,15 +232,22 @@ function checkRequirements(
       required,
       actual: `${actual}${unit}`,
       pass: cmp === "min" ? actual >= limit : actual <= limit,
+      requiredIsLive,
+      actualIsLive,
     });
   };
- 
+
+  // Required thresholds for these two are real CT.gov benchmark medians
+  // (see liveRequirements.ts) whenever the check fires at all — the check is
+  // skipped entirely (numeric() returns early) if no benchmark was found.
   numeric(
     "Minimum recruitment",
     evalRow["Historical Enrollment Rate (pts/month)"],
     requirement["Min Enrollment Rate (pts/month)"],
     "min",
     " pts/mo",
+    true,
+    !!evalRow.liveKpiFields?.includes("Historical Enrollment Rate (pts/month)"),
   );
   numeric(
     "Dropout rate",
@@ -239,7 +255,14 @@ function checkRequirements(
     requirement["Max Acceptable Dropout (%)"],
     "max",
     "%",
+    true,
+    !!evalRow.liveKpiFields?.includes("Dropout Rate (%)"),
   );
+  // Data quality / Screen failure — required thresholds are always an LLM
+  // estimate (no public source discloses these) and the actual values are
+  // never overridden by live data either — see applyLiveKpiOverrides, which
+  // only ever overrides enrollment rate, dropout, diversity index, and
+  // competing-trials-at-site.
   numeric(
     "Data quality",
     evalRow["Data Quality Score (0-100)"],
@@ -288,6 +311,9 @@ function checkRequirements(
       required: requiredSpecialty,
       actual: actualSpecialty,
       pass: actualSpecialty.toLowerCase() === requiredSpecialty.toLowerCase(),
+      // Required side is this trial's own form input, not external data.
+      requiredIsLive: false,
+      actualIsLive: true,
     });
   }
 
@@ -314,6 +340,9 @@ function checkRequirements(
         ? `${site.eligibilityMinimumAge ?? "no min"} – ${site.eligibilityMaximumAge ?? "no max"} (this site's own trial)`
         : "Not disclosed by this site's source trial (treated as all ages)",
       pass: overlaps,
+      // Required side is the trial form's own Age Group selection, not external data.
+      requiredIsLive: false,
+      actualIsLive: hasSiteAgeData,
     });
   }
 
@@ -334,6 +363,9 @@ function checkRequirements(
       required: "Site activation complete (inferred from recruiting status)",
       actual: site.recruitingStatus ?? "Unknown",
       pass: status === "RECRUITING" || status === "ACTIVE_NOT_RECRUITING",
+      // Required side is an invented proxy label, not a real disclosed requirement.
+      requiredIsLive: false,
+      actualIsLive: !!site.recruitingStatus,
     });
   }
 
@@ -348,6 +380,9 @@ function checkRequirements(
     required: `≤ ${extra.maxAcceptableCompetingTrials} (this run's average across ${site.Region})`,
     actual: `${extra.nearbyCompetingTrials}`,
     pass: extra.nearbyCompetingTrials <= extra.maxAcceptableCompetingTrials,
+    // Required side is a self-referential run average, not a real external standard.
+    requiredIsLive: false,
+    actualIsLive: true,
   });
 
   return checks;

@@ -14,9 +14,6 @@ function isAllNoRisk(r: RiskAssessmentRow): boolean {
   );
 }
 
-// Same status label/color treatment as the Ongoing Trials page (see
-// CompetingTrialsPanel.tsx) — kept as a local copy rather than a shared
-// import, matching this codebase's existing per-component convention.
 function statusLabel(status: string | null): string {
   if (!status) return "Unknown";
   if (status.toUpperCase() === "NOT_YET_RECRUITING") {
@@ -108,7 +105,17 @@ export default function RiskAssessmentAccordion({
 
   if (orderedRows.length === 0) {
     return (
-      <EmptyState title="No matching sites" detail="No sites match the selected status filter." />
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          flex: 1,
+          minHeight: 200,
+        }}
+      >
+        <EmptyState title="No matching sites" detail="No sites match the selected status filter." />
+      </div>
     );
   }
 

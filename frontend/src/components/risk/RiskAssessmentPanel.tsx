@@ -18,11 +18,6 @@ type LiveStatusFilter =
   | "WITHDRAWN"
   | "SUSPENDED";
 
-// "All statuses" plus every non-"live" status too (COMPLETED etc.) — an
-// NCT-scoped analysis (see PipelineContext's nctScope) is auditing this
-// trial's own disclosed site(s), which may well not be "live" (an older
-// trial's site is COMPLETED), so restricting to only 3 live statuses would
-// hide it entirely by default.
 const STATUS_OPTIONS: { value: LiveStatusFilter; label: string }[] = [
   { value: "ALL", label: "All statuses" },
   { value: "RECRUITING", label: "Recruiting" },
@@ -43,32 +38,18 @@ export default function RiskAssessmentPanel() {
     regionOptions,
     prefetchingCountries,
     countryErrors,
-    // Shared across Risk Register/Ranking/Final Recommendation — picking a
-    // country here keeps the other two pages in sync, and (crucially) this
-    // state lives in the provider, not in this component, so navigating away
-    // from this tab and back does NOT reset it. Each panel previously kept
-    // its own local `pageCountry` state, which reset to "" on every remount
-    // and briefly rendered the empty/loading state again even for a country
-    // that was already fully analyzed — that remount-reset was the flicker.
     analysisCountry: pageCountry,
     setAnalysisCountry: setPageCountry,
     riskAssessment,
     finalResult,
     nctScope,
   } = usePipeline();
-  // When the trial form has no region/country pre-selected (the NCT-lookup
-  // flow deliberately leaves this empty to search every region globally),
-  // fall back to every country this app is configured to search at all,
-  // rather than leaving the picker with nothing to show.
+
   const countryOptions =
     selectedCountries.length > 0
       ? selectedCountries
       : allConfiguredCountries(regionOptions);
-  // Default to Recruiting per request — the strongest, currently-live signal
-  // — EXCEPT for an NCT-scoped analysis (auditing one specific trial's own
-  // disclosed site(s), which may not be "live" at all), which defaults to
-  // "All statuses" instead so its site isn't hidden just because it isn't
-  // currently recruiting.
+
   const [statusFilter, setStatusFilter] = useState<LiveStatusFilter>(() =>
     nctScope ? "ALL" : "RECRUITING",
   );
@@ -106,7 +87,10 @@ export default function RiskAssessmentPanel() {
           <div className="predict-head">
             <div className="predict-head-top map-controls map-controls--flush">
               {countryPicker}
-              <div className="predict-head-actions" style={{ marginLeft: "auto" }}>
+              <div
+                className="predict-head-actions"
+                style={{ marginLeft: "auto" }}
+              >
                 <Select
                   className="status-filter-select"
                   value={statusFilter}
@@ -122,7 +106,11 @@ export default function RiskAssessmentPanel() {
           </div>
           <div
             className="card-scroll-body"
-            style={{ display: "flex", alignItems: "center", justifyContent: "center" }}
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+            }}
           >
             <StageLoader label="Loading risk register…" />
           </div>
@@ -133,7 +121,9 @@ export default function RiskAssessmentPanel() {
     return (
       <div className="card">
         {countryPicker && (
-          <div className="map-controls map-controls--flush">{countryPicker}</div>
+          <div className="map-controls map-controls--flush">
+            {countryPicker}
+          </div>
         )}
         <div
           style={{
@@ -145,7 +135,11 @@ export default function RiskAssessmentPanel() {
           }}
         >
           <EmptyState
-            title={countryErrors[pageCountry] ? "No live sites found" : "No risk data yet"}
+            title={
+              countryErrors[pageCountry]
+                ? "No live sites found"
+                : "No risk data yet"
+            }
             detail={
               countryErrors[pageCountry]
                 ? countryErrors[pageCountry]

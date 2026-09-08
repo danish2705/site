@@ -19,15 +19,6 @@ const LIVE_FIELDS_FOR_COMPONENT: Partial<Record<keyof ComponentScores, string[]>
   diversity: ["Diversity Index (0-100)"],
 };
 
-/**
- * Full "Score Breakdown" card for the Final Recommendation page — a
- * circular overall-score gauge alongside every weighted component as a
- * labeled, color-banded bar with its live/estimated status and exact value
- * spelled out (rather than ScoreBreakdown.tsx's compact 4-letter/no-number
- * bars, which stay unchanged for the Ranking table and cards). Also derives
- * "Main strength" / "Main concern" chips from whichever component scored
- * highest/lowest, same green/amber/red bands as the bars.
- */
 export default function ScoreBreakdownDetailed({
   score,
   components,
