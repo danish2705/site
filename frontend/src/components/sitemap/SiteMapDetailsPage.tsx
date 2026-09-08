@@ -144,10 +144,20 @@ export default function SiteMapDetailsPage() {
         )}
 
         {!data && !loading && !error && (
-          <EmptyState
-            title="No search yet"
-            detail="Run a search from the Site Map (Global) page to populate this table."
-          />
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              flex: 1,
+              minHeight: 200,
+            }}
+          >
+            <EmptyState
+              title="No search yet"
+              detail="Run a search from the Site Map (Global) page to populate this table."
+            />
+          </div>
         )}
 
         {data && allSites.length > 0 && (
@@ -225,15 +235,7 @@ export default function SiteMapDetailsPage() {
                     <th className="sortable" onClick={() => toggleSort("gross")}>
                       Gross Eligible{sortArrow("gross")}
                     </th>
-                    <Tooltip
-                      as="th"
-                      elementRef={filterHeaderRef}
-                      text={
-                        excludeEnrolled
-                          ? "Eligible patients minus an estimated already-enrolled-elsewhere share"
-                          : "Eligible patients including those already enrolled in another trial elsewhere"
-                      }
-                    >
+                    <Tooltip as="th" elementRef={filterHeaderRef}>
                       {excludeEnrolled ? "Available" : "Available + Enrolled"}{" "}
                       <Tooltip
                         as="button"
@@ -419,20 +421,12 @@ export default function SiteMapDetailsPage() {
                         document.body,
                       )}
                     </Tooltip>
-                    <Tooltip
-                      as="th"
-                      text="Available x this site's own synthetic consent/conversion rate — 100 eligible patients doesn't mean 100 enrolled"
-                      style={{ whiteSpace: "normal", lineHeight: 1.3 }}
-                    >
+                    <th style={{ whiteSpace: "normal", lineHeight: 1.3 }}>
                       Expected Recruitment
-                    </Tooltip>
-                    <Tooltip
-                      as="th"
-                      text="Illustrative split of Net Available — not real claims data"
-                      style={{ whiteSpace: "normal", lineHeight: 1.3 }}
-                    >
+                    </th>
+                    <th style={{ whiteSpace: "normal", lineHeight: 1.3 }}>
                       Segments (illustrative)
-                    </Tooltip>
+                    </th>
                     <th
                       className="sortable"
                       onClick={() => toggleSort("risk")}
@@ -492,12 +486,26 @@ export default function SiteMapDetailsPage() {
                           text={
                             s.populationInRadius === 0
                               ? "No population data available for this site's catchment area — not a real zero"
-                              : undefined
+                              : s.populationSource === "worldpop-live"
+                                ? (s.populationCitation ??
+                                  "Catchment population is real, live data from WorldPop.")
+                                : undefined
                           }
                         >
                           {s.populationInRadius === 0
                             ? "No data found"
-                            : s.grossEligiblePatients.toLocaleString()}
+                            : (
+                              <>
+                                {s.populationSource === "worldpop-live" && (
+                                  <span
+                                    className="live-data-dot"
+                                    title="Catchment population is real, live data from WorldPop (not synthetic)"
+                                    style={{ marginRight: 5 }}
+                                  />
+                                )}
+                                {s.grossEligiblePatients.toLocaleString()}
+                              </>
+                            )}
                         </Tooltip>
                         <td>
                           {s.populationInRadius === 0 ? (
@@ -646,8 +654,18 @@ export default function SiteMapDetailsPage() {
           </>
         )}
 
-        {data && allSites.length === 0 && !error && (
-          <EmptyState icon="🔍" title="No live sites found" detail="Try a different country or clear the eligibility filters." />
+        {data && !loading && allSites.length === 0 && !error && (
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              flex: 1,
+              minHeight: 200,
+            }}
+          >
+            <EmptyState icon="🔍" title="No live sites found" detail="Try a different country or clear the eligibility filters." />
+          </div>
         )}
       </div>
       <WizardNextLink />

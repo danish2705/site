@@ -101,4 +101,27 @@ export const config = {
     bulkFileCacheTtlMs:
       Number(process.env.ORPHADATA_BULK_CACHE_TTL_MS) || 24 * 60 * 60 * 1000,
   },
+
+  // Real population denominators — WorldPop Global Project
+  // (api.worldpop.org/v1/services/stats, "wpgppop" dataset). Genuinely open:
+  // no API key required for normal use (an optional key only raises rate
+  // limits for very large/bulk queries — see services/worldpop.client.ts).
+  // Replaces the per-site "populationInRadius" number that previously came
+  // entirely from data/syntheticPopulation.ts's seeded-random dataset.
+  worldPop: {
+    apiKey: optional("WORLDPOP_API_KEY"),
+    // WorldPop's "Global per country 2000-2020" dataset only covers up to
+    // 2020 — that's the most recent year available, not a stale default.
+    datasetYear: Number(process.env.WORLDPOP_DATASET_YEAR) || 2020,
+    // Per-attempt timeout for a synchronous (runasync=false) stats query.
+    // WorldPop itself caps synchronous execution at 30s and auto-falls back
+    // to an async task id past that, so this stays just under that ceiling.
+    timeoutMs: Number(process.env.WORLDPOP_TIMEOUT_MS) || 28000,
+    // If a query is too large to finish synchronously, WorldPop returns a
+    // taskid to poll instead — these control that polling loop.
+    pollIntervalMs: Number(process.env.WORLDPOP_POLL_INTERVAL_MS) || 2000,
+    maxPollAttempts: Number(process.env.WORLDPOP_MAX_POLL_ATTEMPTS) || 10,
+    cacheTtlMs:
+      Number(process.env.WORLDPOP_CACHE_TTL_MS) || 30 * 24 * 60 * 60 * 1000,
+  },
 } as const;
