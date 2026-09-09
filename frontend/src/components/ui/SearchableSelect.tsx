@@ -137,10 +137,15 @@ export default function SearchableSelect({
   const selected = options.find((o) => o.value === value);
   const trimmedQuery = query.trim().toLowerCase();
 
+  // Robust case-insensitive and partial matching across all available dropdown options[cite: 1]
   const localMatches =
     trimmedQuery.length === 0
       ? options
-      : options.filter((o) => o.label.toLowerCase().includes(trimmedQuery));
+      : options.filter((o) => {
+          const labelMatch = o.label.toLowerCase().includes(trimmedQuery);
+          const valueMatch = o.value.toLowerCase().includes(trimmedQuery);
+          return labelMatch || valueMatch;
+        });
 
   // Merge local (pre-loaded) matches with live ones, deduped
   // case-insensitively, local first so already-known indications don't
