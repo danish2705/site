@@ -17,16 +17,9 @@ export default function Tooltip({
   as?: TooltipTag;
   className?: string;
   style?: CSSProperties;
-  /** Optional external ref to the rendered element — for the rare caller
-      that also needs direct DOM access to this same node for something
-      else (e.g. positioning an unrelated floating panel off of it) in
-      addition to this component's own tooltip positioning. */
   elementRef?:
     | { current: HTMLElement | null }
     | ((node: HTMLElement | null) => void);
-  // Any other native attribute/handler (onClick, disabled, href, type,
-  // aria-*, etc.) — forwarded as-is so this component can be dropped in
-  // place of the original tag without losing its existing behavior.
   [key: string]: any;
 }) {
   const [open, setOpen] = useState(false);

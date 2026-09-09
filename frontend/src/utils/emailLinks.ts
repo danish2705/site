@@ -1,10 +1,3 @@
-/**
- * Compose-link builders for the outreach drafts (RecommendationPanel,
- * SiteRankingPanel). This app never sends anything itself — these just hand
- * the already-drafted To/Subject/Body off to the user's own Gmail, Outlook,
- * or default mail app so they can review, fix up the (synthetic) contact
- * address, and send it themselves.
- */
 export interface EmailDraftFields {
   to: string;
   subject: string;

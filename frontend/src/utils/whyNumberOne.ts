@@ -8,9 +8,6 @@ const COMPONENT_LABELS: Record<keyof ComponentScores, string> = {
   cost: "Cost efficiency",
 };
 
-// Order mirrors ScoreBreakdown's weighting (recruitment 35%, quality 25%,
-// retention 20%, diversity 10%, cost 10%) so strengths/watch-outs surface
-// the components that most influenced the overall score first.
 const COMPONENT_ORDER: (keyof ComponentScores)[] = [
   "recruitment",
   "quality",
@@ -25,21 +22,9 @@ const WEAK_THRESHOLD = 60;
 export interface WhyNumberOne {
   strengths: string[];
   watchOuts: string[];
-  /** The existing free-text AI narrative (FinalResult.text) — kept verbatim
-      as its own labeled section rather than folded into strengths/watch-outs,
-      since it's model-generated prose, not a discrete, structured fact. */
   conclusion: string;
 }
 
-/**
- * Derives the "Why #1?" Strengths / Watch-outs / AI conclusion breakdown
- * (redesign spec item 9) from data the backend already returns on
- * FinalResult — no new API surface needed. Strengths/watch-outs are picked
- * from the same 5 weighted component scores ScoreBreakdown.tsx already
- * renders as bars, plus the pass/fail requirement checklist and the overall
- * risk/confidence ratings, so this stays in sync with whatever those
- * numbers already say elsewhere on the page.
- */
 export function deriveWhyNumberOne(site: FinalResult): WhyNumberOne {
   const strengths: string[] = [];
   const watchOuts: string[] = [];

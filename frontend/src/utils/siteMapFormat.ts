@@ -1,12 +1,5 @@
 import type { MapSiteRow } from "../types";
 
-/**
- * Formatting/labeling helpers shared between the Site Map (Global) page's
- * map popups and the Site Map Details page's table — moved verbatim out of
- * the old single-file SiteMapView.tsx so both pages can use the exact same
- * labels/CSV export without duplicating logic.
- */
-
 export function escapeHtml(input: string): string {
   return input
     .replace(/&/g, "&amp;")
@@ -48,12 +41,6 @@ export function segmentsLine(s: MapSiteRow): string {
   );
 }
 
-// Derives the badge color band directly from the numeric score, instead of
-// trusting the LLM's separately-estimated riskLevel label — the model
-// doesn't enforce a strict number-to-label mapping, so two sites can get
-// the identical score with different labels (e.g. two "35/100" sites, one
-// tagged Low and the other Medium). This guarantees the same number always
-// renders the same color. Used by both the map popups and the Details table.
 export function riskBand(
   score: number | null,
 ): "low" | "medium" | "high" | "unknown" {
@@ -127,7 +114,6 @@ export function downloadCsv(csv: string, filename: string) {
   URL.revokeObjectURL(url);
 }
 
-/** Fixed values — previously user-adjustable controls, kept as constants now that those controls are removed from the UI (see original SiteMapView.tsx). */
 export const SITE_MAP_RADIUS_MILES = 50;
 export const SITE_MAP_METRIC: "gross" | "net" = "net";
 export const MILES_TO_METERS = 1609.34;

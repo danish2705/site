@@ -10,18 +10,8 @@ export default function TopBar({
   onGoToLanding,
 }: {
   onOpenHistory: () => void;
-  /** Opens EditParametersModal — the only way back into the Analysis
-      Parameters form now that it's no longer a permanent sidebar. Disabled
-      while a run is in flight since editing params mid-run has nothing to
-      apply to until the next run. */
   onEditParameters: () => void;
-  /** Hide the "Edit Parameters" button — used on ParametersFormPage itself,
-      where the user is already editing parameters and there's nothing yet
-      to jump back to. */
   showEditParameters?: boolean;
-  /** Clicking the "Clinical Trial Site Selection" brand/logo returns to the
-      landing/start screen. Optional so TopBar can still render (brand as
-      plain, non-interactive text) anywhere this handler isn't wired up. */
   onGoToLanding?: () => void;
 }) {
   const { savedRuns, running, nctScope } = usePipeline();

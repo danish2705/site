@@ -6,22 +6,6 @@ const LIVE_SEARCH_MIN_CHARS = 2;
 const LIVE_SEARCH_DEBOUNCE_MS = 300;
 const MAX_VISIBLE_OPTIONS = 40;
 
-/**
- * Search-as-you-type variant of Select, purpose-built for the Indication
- * field. The pre-loaded `options` list (from /api/meta) is capped at the top
- * 250 most common ClinicalTrials.gov conditions — real, but not exhaustive.
- * Typing 2+ characters here additionally queries `onSearch` (live
- * ClinicalTrials.gov condition search — see
- * services/indicationSearch.service.ts) so a less-common real indication
- * that isn't in the pre-loaded 250 can still be found and selected. Local
- * filtering of the pre-loaded list happens instantly on every keystroke;
- * live results are merged in once they arrive, deduped case-insensitively.
- *
- * Selection-only, like Select — there is deliberately no way to submit
- * arbitrary typed text that doesn't match a real, returned option, so the
- * Indication field always holds a genuine ClinicalTrials.gov condition
- * string, not free text.
- */
 export default function SearchableSelect({
   value,
   onChange,
@@ -35,7 +19,6 @@ export default function SearchableSelect({
   value: string;
   onChange: (value: string) => void;
   options: SelectOption[];
-  /** Live search — resolves to real ClinicalTrials.gov condition strings matching `query`. Only called for queries of LIVE_SEARCH_MIN_CHARS+ characters. */
   onSearch: (query: string) => Promise<string[]>;
   placeholder?: string;
   disabled?: boolean;
@@ -54,8 +37,6 @@ export default function SearchableSelect({
   const controlRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const menuRef = useRef<HTMLUListElement>(null);
-  // Guards against a slow, stale live-search response landing after a
-  // newer one (or after the query changed again) and clobbering it.
   const requestIdRef = useRef(0);
 
   const updateMenuRect = () => {
@@ -69,7 +50,6 @@ export default function SearchableSelect({
     if (!open) return;
     updateMenuRect();
     inputRef.current?.focus();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
   useEffect(() => {
@@ -103,8 +83,6 @@ export default function SearchableSelect({
     };
   }, [open]);
 
-  // Debounced live search — only for queries long enough to be worth a
-  // real ClinicalTrials.gov round-trip.
   useEffect(() => {
     if (!open) return;
     const trimmed = query.trim();
@@ -137,7 +115,6 @@ export default function SearchableSelect({
   const selected = options.find((o) => o.value === value);
   const trimmedQuery = query.trim().toLowerCase();
 
-  // Robust case-insensitive and partial matching across all available dropdown options[cite: 1]
   const localMatches =
     trimmedQuery.length === 0
       ? options
@@ -147,9 +124,6 @@ export default function SearchableSelect({
           return labelMatch || valueMatch;
         });
 
-  // Merge local (pre-loaded) matches with live ones, deduped
-  // case-insensitively, local first so already-known indications don't
-  // reshuffle position once live results land.
   const seen = new Set(localMatches.map((o) => o.label.toLowerCase()));
   const mergedOptions: SelectOption[] = [
     ...localMatches,

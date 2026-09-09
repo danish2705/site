@@ -28,11 +28,7 @@ import { fetchLiveTrialLandscape } from "../services/liveTrials.service";
 import { createRun, getRun, listRuns } from "../services/runs.service";
 import { useRoute } from "./RouteContext";
 import { countriesFromRegionKeys, countryMatches } from "../utils/region";
- 
-/** Same last-3-years recency window CompetingTrialsPanel applies to its own
- * table — reused here so a country picked directly from Risk Register goes
- * through the identical "not too much stale history" filter instead of a
- * second, looser definition of "recent." */
+
 function filterRecentFacilities(facilities: LiveFacilityRow[]): LiveFacilityRow[] {
   const RECENT_YEARS = 3;
   const cutoff = new Date();
@@ -43,13 +39,7 @@ function filterRecentFacilities(facilities: LiveFacilityRow[]): LiveFacilityRow[
     return !isNaN(d.getTime()) && d >= cutoff;
   });
 }
- 
-/** Backend's POST /api/site-analysis requires every facility row to carry a
- * usable name (see siteAnalysis.controller.ts's parseFacilities) — some
- * ClinicalTrials.gov records legitimately omit it. Drop those here so a
- * country whose live data happens to include one of these blank-name rows
- * doesn't 400 the whole analysis; only the unusable rows are dropped, not
- * the whole batch. */
+
 function filterAnalyzableFacilities(
   facilities: LiveFacilityRow[],
 ): LiveFacilityRow[] {
@@ -57,35 +47,21 @@ function filterAnalyzableFacilities(
     (f) => typeof f.facility === "string" && f.facility.trim().length > 0,
   );
 }
- 
-/** The top-scoring region/country Stage 2 resolved — just enough to call
- * /api/site-analysis later (see analyzeOngoingTrialSites below). */
+
 interface TopRegionInfo {
   region: string;
   country: string;
 }
- 
-/** Everything a completed analyzeForCountry() run for one country produces —
- * cached so Risk Register/Ranking/Final Recommendation can switch back to an
- * already-analyzed country instantly instead of re-running Stages 4-8. */
+
 interface CountryAnalysis {
   riskAssessment: RiskAssessmentRow[];
   ranking: RankingRow[];
   finalResult: FinalResult;
   ongoingTrialSites: LiveFacilityRow[];
   topRegion: TopRegionInfo;
-  /** finalResult.analysisId, hoisted up so RecommendationPanel does not need
-   * to reach into finalResult for it — null when this analysis predates the
-   * status-dropdown feature or the backend omitted it. */
   analysisId: string | null;
 }
- 
-/**
- * Shared SSE "stage"/"error" event reader for both the initial /api/run
- * stream and the later /api/site-analysis stream — both endpoints emit the
- * identical event format (see backend's postRun/postSiteAnalysis). Calls
- * `onStage` for every "stage" event and `onError` for an "error" event.
- */
+
 async function consumeStageStream(
   res: Response,
   onStage: (payload: StageEventPayload) => void,
@@ -141,93 +117,44 @@ export interface PipelineState {
   ranking: RankingRow[] | null;
   riskAssessment: RiskAssessmentRow[] | null;
   error: string | null;
-  /** Non-blocking informational notice (e.g. a data-source fallback) —
-   *  shown as a dismissible Toast rather than the red error banner, since
-   *  it doesn't affect what the user can do next. */
   notice: string | null;
   dismissNotice: () => void;
  
-  /** The live ClinicalTrials.gov rows currently loaded on the Ongoing Trials tab — set by CompetingTrialsPanel after each search, consumed by analyzeOngoingTrialSites. */
   ongoingTrialSites: LiveFacilityRow[] | null;
   setOngoingTrialSites: (sites: LiveFacilityRow[]) => void;
-  /** True while Stages 4-8 are running against ongoingTrialSites (POST /api/site-analysis) — distinct from `running`, which covers the initial Stages 1-3 run. */
   analyzing: boolean;
-  /** Sends ongoingTrialSites to Risk Register/Ranking for analysis — see services/pipeline.service.ts's streamSiteAnalysis. */
   analyzeOngoingTrialSites: () => Promise<void>;
-  /** True once Stage 2 of Run Analysis has resolved a region/country — analyzeOngoingTrialSites needs this, so CompetingTrialsPanel uses it to keep "Send to Risk Assessment & Ranking" disabled (and to explain why) until Run Analysis has actually run. */
   hasTopRegion: boolean;
-  /** The actual region/country Stage 2 resolved (not just whether it exists) — Risk Register/Ranking/Final Recommendation each use this to default their own (independent) country picker to it. */
   topRegion: TopRegionInfo | null;
-  /** Risk Register's own Country picker: fetches a fresh live facility list for `country` itself (same live-trials call Ongoing Trials makes), then sends it straight to Stages 4-8 — the whole "search + analyze" round-trip in one action, so Risk Register/Ranking can be re-run for any country in the trial's selected regions without going through the Ongoing Trials tab at all. */
-  /** Runs Stages 4-8 for one country and returns its top recommended site (or null on failure/no-sites) — used by the single-country picker on Risk Register/Ranking/Final Recommendation. Pass `background: true` to run it as a silent prefetch (see analysisCache below) — it won't touch the error banner, the shared loading flags, or the currently-displayed riskAssessment/ranking/finalResult. */
   analyzeForCountry: (
     country: string,
     opts?: { background?: boolean },
   ) => Promise<FinalResult | null>;
- 
-  /** De-duplicated countries behind the trial form's selected region(s) —
-   * the "set" of countries Risk Register/Ranking/Final Recommendation can
-   * each be pointed at. Computed once here instead of separately in each of
-   * those three components. */
+
   selectedCountries: string[];
-  /** The country Risk Register/Ranking/Final Recommendation are currently
-   * showing. Setting it (via setAnalysisCountry) is what actually resolves
-   * data for it — either instantly from analysisCache if it's already been
-   * analyzed, or by kicking off analyzeForCountry if not. Shared across all
-   * three pages so picking a country on one keeps the others in sync. */
   analysisCountry: string;
-  /** Switches the shown country. Looks up analysisCache first: a hit swaps
-   * riskAssessment/ranking/finalResult in immediately with no network call;
-   * a miss calls analyzeForCountry(country) to fetch it (same as picking it
-   * from the dropdown always did). This replaces the old per-page "display
-   * only" default effect that never actually triggered analysis. */
   setAnalysisCountry: (country: string) => void;
-  /** Every country analyzeForCountry has completed for this session, so the
-   * three pages above can show data instantly when the user switches back
-   * to one. Cleared when the indication changes (a fresh set of countries
-   * needs fresh analysis). */
   analysisCache: Record<string, CountryAnalysis>;
-  /** Countries currently being analyzed in the background (queued via the
-   * auto-prefetch effect below) — exposed so a picker can show which
-   * not-yet-viewed countries are still being worked on. */
   prefetchingCountries: Set<string>;
-  /** Why analyzeForCountry came back empty for a given country (e.g. zero
-   * live ClinicalTrials.gov sites in the last 3 years) — background
-   * prefetches don't raise the shared error banner (see analyzeForCountry),
-   * so without this a country that's simply never going to have data would
-   * show the same generic "No risk data yet" as one that just hasn't been
-   * analyzed yet, with no way to tell the two apart. Cleared for a country
-   * the moment it's successfully analyzed. */
   countryErrors: Record<string, string>;
  
   completedCount: number;
   progressPct: number;
   pipelineDone: boolean;
-  /** Human-readable "Stage N of 8: <label>" for whichever stage is currently running — drives the full-screen loading overlay shown while `running` is true. null when not running. */
   runningStageLabel: string | null;
- 
-  /** Availability guard for the guided workflow nav (WorkflowNav) and WizardNextLink — same rules the old 5-step wizardStepAvailable used, just extended to cover the 3 Site Map pages (always available, same as before when they were an always-reachable tab). "Predict Region with AI" is no longer a workflow step — it's a modal opened from the sidebar, not gated by this function. */
-  workflowStepAvailable: (step: WorkflowStep) => boolean;
-
-  /** Set once an analysis was started from the landing page's NCT-lookup flow via runAnalysisFromNct — the NCT id being scoped to. When set, Ongoing Trials/Risk Assessment/Site Ranking/Site Map/Recommendation all run against ONLY this trial's own disclosed sites (nctScopeFacilities) instead of the default broad indication-wide ClinicalTrials.gov search. null for a normal (manual or indication-only) run. */
+   workflowStepAvailable: (step: WorkflowStep) => boolean;
   nctScope: string | null;
-  /** This trial's own disclosed site/location list (every country) — the source analyzeForCountry filters by country from while nctScope is set. */
   nctScopeFacilities: LiveFacilityRow[];
 
   handleSubmit: (e: FormEvent<HTMLFormElement>) => Promise<void>;
-  /** Runs Stages 1-8 for an explicit form (no submit event needed) — used by the full-page/modal Analysis Parameters forms (ParametersFormPage, EditParametersModal) to run the analysis with no native form submit needed. Call setForm with the same values first so the UI (parameters form, saved-run metadata) reflects what's actually running. Clears nctScope, if any — this is the broad, indication-wide analysis, not a single-trial audit. */
   runAnalysis: (formToUse: TrialForm) => Promise<void>;
-  /** The landing page's "Search by NCT Number" flow calls this instead of runAnalysis — scopes Ongoing Trials/Risk Assessment/Site Ranking/Site Map/Recommendation to ONLY the looked-up trial's own disclosed sites (lookup.facilities), rather than running the full Stage 1-3 broad indication-wide prediction. Sets nctScope so every downstream panel knows to stay scoped. Errors (via the shared `error` state) if the study discloses no usable site locations to scope to. */
   runAnalysisFromNct: (
     lookup: NctLookupResponse,
     formToUse: TrialForm,
   ) => Promise<void>;
-  /** Aborts the in-flight Run Analysis stream — see RunAnalysisOverlay's Cancel button. No-op if nothing is running. */
   cancelRun: () => void;
-  /** Increments every time cancelRun() actually cancels an in-flight run — App.tsx watches this to re-expand the Analysis Parameters sidebar, which auto-collapses once a run starts (the sidebar has no other reason to reopen on its own after a cancel, unlike a normal completed/failed run where the user can just use the collapse toggle). */
   cancelSignal: number;
  
-  // Saved runs
   saveLabel: string;
   setSaveLabel: (label: string) => void;
   saving: boolean;
@@ -257,14 +184,7 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
     regions: [],
     ageGroups: [],
   });
-  // Mirrors `form`, updated synchronously (inside the setFormState updater,
-  // so it's current the instant setForm returns) — analyzeForCountry reads
-  // this instead of the `form` closure because runAnalysisFromNct calls
-  // setForm(formToUse) and then immediately (same tick, before React
-  // re-renders) awaits analyzeForCountry(...): without this ref,
-  // analyzeForCountry would still see whatever `form` was at the START of
-  // this render (e.g. the empty initial form on the very first NCT-lookup
-  // run) and wrongly bail out with "Select an indication...".
+
   const formRef = useRef<TrialForm>(form);
   function setForm(updater: TrialForm | ((f: TrialForm) => TrialForm)): void {
     setFormState((prev) => {
@@ -290,10 +210,6 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
     LiveFacilityRow[] | null
   >(null);
   const [analyzing, setAnalyzing] = useState(false);
-  // nctScope: set by runAnalysisFromNct, cleared by runAnalysis. Mirrored
-  // into refs so analyzeForCountry (which may be invoked synchronously
-  // right after runAnalysisFromNct sets this state, before React re-renders)
-  // always reads the up-to-date value instead of a stale closure.
   const [nctScope, setNctScopeState] = useState<string | null>(null);
   const [nctScopeFacilities, setNctScopeFacilitiesState] = useState<
     LiveFacilityRow[]
@@ -317,14 +233,9 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
   const [countryErrors, setCountryErrors] = useState<Record<string, string>>(
     {},
   );
-  // Sequential background-prefetch queue — see the auto-prefetch effect
-  // below. A ref (not state) for the "currently processing" guard so the
-  // queue-draining effect doesn't need itself as a dependency.
   const [prefetchQueue, setPrefetchQueue] = useState<string[]>([]);
   const prefetchInFlightRef = useRef(false);
   const { setRoute } = useRoute();
-  // Holds the AbortController for whichever Run Analysis stream is
-  // currently in flight, so cancelRun() can stop it — see handleSubmit.
   const runAbortRef = useRef<AbortController | null>(null);
  
   const [saveLabel, setSaveLabel] = useState("");
@@ -340,12 +251,6 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
   const canSave = !running && !!ranking && ranking.length > 0;
  
   function workflowStepAvailable(step: WorkflowStep): boolean {
-    // Every numbered step (1-7) needs Run Analysis to have actually been
-    // clicked — only "Predict Region with AI" (not gated by this function
-    // at all, see WorkflowNav) is reachable beforehand. The 3 Site Map
-    // pages plot/plan around the region Run Analysis resolves at Stage 2,
-    // same dependency as Ongoing Trials below, so picking an Indication
-    // alone is no longer enough to unlock them.
     if (
       step === "site-map-global" ||
       step === "site-map-details" ||
@@ -353,24 +258,7 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
     ) {
       return !!topRegion || running || analyzing;
     }
-    // Ongoing Trials feeds Risk Register/Ranking now (see
-    // analyzeOngoingTrialSites), which needs the region/country Run
-    // Analysis resolves at Stage 2 — so this step (and its "Send to Risk
-    // Assessment & Ranking" action) isn't reachable just from picking an
-    // indication anymore; Run Analysis has to have actually been run.
     if (step === "competing") return !!topRegion || running || analyzing;
-    // Reachable as soon as the pipeline is running (not only once its data
-    // has arrived) so the nav can be clicked mid-run — the page itself
-    // shows a loading state for whichever of these 3 stages hasn't
-    // completed yet, rather than being unreachable until it has. Also
-    // stays unlocked once `topRegion` exists (Run Analysis has completed
-    // at least once) — otherwise re-analyzing a different country from
-    // Risk Register's own country picker (analyzeForCountry) would
-    // temporarily clear riskAssessment/ranking/finalResult to null, and if
-    // that country turns out to have no live sites the request bails out
-    // with `analyzing` back to false too, re-locking this whole step and
-    // hiding the error message behind the generic "not available" screen
-    // instead of showing it.
     if (step === "risk") return !!riskAssessment || running || analyzing || !!topRegion;
     if (step === "ranking") return !!ranking || running || analyzing || !!topRegion;
     return !!finalResult || running || analyzing || !!topRegion;
@@ -449,11 +337,6 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
     fetchMeta()
       .then((data) => {
         setMeta(data);
-        // metaWarning means indications fell back to a static list because
-        // the live ClinicalTrials.gov vocabulary lookup returned nothing —
-        // the fallback list is used silently, with no visible banner at
-        // all, per explicit request. Details remain available in the
-        // Data Transparency modal for anyone who wants them.
       })
       .catch((err: Error) =>
         setError(`Could not reach backend: ${err.message}`),
@@ -473,31 +356,13 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
     if (nextPending) return `Stage ${nextPending.n} of ${STAGE_LIST.length}: ${nextPending.label}`;
     return "Finalizing recommendation…";
   })();
-  // Region options are no longer indication-specific — every region/country
-  // in data/regionMap.ts (backend) applies to every indication now, so the
-  // old indication-equality filter (which relied on Region_Data being
-  // per-indication) is removed. `meta.regionOptions` entries carry a "*"
-  // wildcard `indication` field for backward compatibility with the
-  // RegionOption type, but nothing filters on it anymore.
   const regionOptions = useMemo(() => meta?.regionOptions ?? [], [meta]);
- 
-  /**
-   * The actual "Run Analysis" logic (Stages 1-8), split out of handleSubmit
-   * so it can be triggered without a real form submit event — the landing
-   * page's NCT-lookup flow auto-fills TrialForm fields and calls this
-   * directly, with zero manual form interaction. Takes the form to run
-   * explicitly (rather than reading the `form` state) since a caller that
-   * just called setForm(...) can't rely on that state update having landed
-   * yet by the time this runs.
-   */
+
   async function runAnalysis(formToUse: TrialForm) {
     if (!formToUse.indication) {
       setError("Please select an indication before running the analysis.");
       return;
     }
-    // A manual/full run is the broad, indication-wide analysis — not a
-    // single-trial audit, so any NCT scope from a previous landing-page
-    // lookup no longer applies.
     applyNctScope(null, []);
     setStages(emptyStages());
     setFinalResult(null);
@@ -506,19 +371,10 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
     setLlmInfo(null);
     setError(null);
     setRunning(true);
-    // Re-running can change phase/sampleSize/budgetTier/ageGroups, all of
-    // which feed Stages 4-8 — any previously cached per-country analysis
-    // (and anything still queued to be prefetched under the old params) is
-    // stale the moment a new run starts.
     setAnalysisCache({});
     setPrefetchQueue([]);
     setPrefetchingCountries(new Set());
     setCountryErrors({});
-    // No auto-navigate here anymore — a full-screen loading overlay (see
-    // RunAnalysisOverlay, rendered in App.tsx while `running` is true) now
-    // covers the screen instead, so there's nothing to navigate away from
-    // until the whole pipeline finishes (see the navigate-to-Ongoing-Trials
-    // call after the stream completes below).
     let streamFailed = false;
     const abortController = new AbortController();
     runAbortRef.current = abortController;
@@ -540,10 +396,6 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
             },
           }));
           if (payload.stage === 2 && payload.status === "complete") {
-            // First entry of Stage 2's ranked-regions list is the one Stage 3
-            // onward actually used (topRegion in runPipeline.ts) — stashed
-            // here so analyzeOngoingTrialSites() can send the same
-            // region/country to /api/site-analysis later.
             const top = (payload.data as { region: string; country: string }[])?.[0];
             if (top) {
               runTopRegion = { region: top.region, country: top.country };
@@ -554,11 +406,6 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
           if (payload.stage === 6 && payload.status === "complete") {
             runRisk = payload.data as RiskAssessmentRow[];
             setRiskAssessment(runRisk);
-            // No forced navigation to the Risk Register page here — the
-            // user lands on Site Map (Global) when the run starts and
-            // stays wherever they are; the nav bar's "complete" badge and
-            // WizardNextLink both surface that this step is now ready
-            // without yanking them off whatever page they're looking at.
           }
           if (payload.stage === 7 && payload.status === "complete") {
             runRanking = payload.data as RankingRow[];
@@ -567,10 +414,6 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
           if (payload.stage === 8 && payload.status === "complete") {
             const finalRes = payload.data as FinalResult;
             setFinalResult(finalRes);
-            // Seeds analysisCache for the auto-picked top region with this
-            // run's own result — since it's already been fully analyzed,
-            // there's no reason for the background-prefetch effect (or a
-            // later setAnalysisCountry call) to re-run Stages 4-8 for it.
             if (runTopRegion && runRisk && runRanking) {
               setAnalysisCountryState(runTopRegion.country);
               setAnalysisCache((prev) => ({
@@ -594,38 +437,15 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
       );
     } catch (err) {
       streamFailed = true;
-      // A user-initiated cancelRun() aborts the fetch, which rejects with
-      // an AbortError here — that's expected, not a real failure, so it
-      // shouldn't surface as an error banner the way a genuine stream
-      // failure does.
       if ((err as Error).name !== "AbortError") {
         setError((err as Error).message);
       }
     } finally {
       setRunning(false);
       runAbortRef.current = null;
-      // On success, land the user on Ongoing Trials once the whole pipeline
-      // (Stages 1-8) has actually finished — replaces the old
-      // navigate-immediately-to-Site-Map-(Global) behavior now that a
-      // full-screen loading overlay covers the run instead. On failure (or
-      // cancellation), stay put so the error banner (if any) is visible
-      // against whatever page the user was already on.
       if (!streamFailed) setRoute("competing");
     }
   }
- 
-  /**
-   * The landing page's "Search by NCT Number" flow calls this instead of
-   * runAnalysis(). Rather than running the full Stage 1-3 broad
-   * indication-wide prediction (which would surface every OTHER trial for
-   * the same indication — the "why am I seeing other NCT codes" behavior
-   * this whole flow exists to avoid), this scopes Ongoing Trials/Risk
-   * Assessment/Site Ranking/Site Map/Recommendation to ONLY the looked-up
-   * trial's own disclosed sites (lookup.facilities), reusing the same
-   * per-country /api/site-analysis pipeline analyzeForCountry already
-   * drives (Stages 4-8) — just sourced from this one trial's own site list
-   * instead of a fresh broad ClinicalTrials.gov search.
-   */
   async function runAnalysisFromNct(
     lookup: NctLookupResponse,
     formToUse: TrialForm,
@@ -670,11 +490,6 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
     setCountryErrors({});
     applyNctScope(lookup.nctId, scopedFacilities);
 
-    // Default/foreground view: whichever disclosed country has the most of
-    // this trial's own sites. The rest of its countries are picked up
-    // automatically by the existing auto-prefetch effects below (they queue
-    // every entry in `selectedCountries` once `topRegion` is set, which
-    // analyzeForCountry does as soon as this first call succeeds).
     const primaryCountry = [...countryCounts.entries()].sort(
       (a, b) => b[1] - a[1],
     )[0][0];
@@ -683,7 +498,6 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
     setRoute("competing");
   }
 
-  /** Kept only for any leftover native <form onSubmit> usage — thin wrapper around runAnalysis(). ParametersFormPage/EditParametersModal call runAnalysis directly instead so they can control the transition (dashboard handoff / modal close) around it. */
   async function handleSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     await runAnalysis(form);
@@ -694,15 +508,7 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
     runAbortRef.current.abort();
     setCancelSignal((n) => n + 1);
   }
- 
-  /**
-   * Sends whatever's currently loaded on the Ongoing Trials tab
-   * (ongoingTrialSites) to the backend to run Stages 4-8 against — see
-   * services/pipeline.service.ts's streamSiteAnalysis. Overwrites
-   * riskAssessment/ranking/finalResult with the result, same as Stage
-   * 6/7/8 of the initial run do, so Risk Register/Ranking always reflect
-   * whichever site set was analyzed most recently.
-   */
+
   async function analyzeOngoingTrialSites(): Promise<void> {
     if (!ongoingTrialSites || ongoingTrialSites.length === 0) {
       setError("Search Ongoing Trials first — there are no live sites to analyze yet.");
@@ -768,12 +574,6 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
         },
         (message) => setError(message),
       );
-      // Also refresh this country's entry in the shared per-country cache —
-      // each of Risk Register/Ranking/Final Recommendation now reads from
-      // analysisCache for whichever country THEY have selected (they no
-      // longer share one "current country" across pages), so a re-analysis
-      // triggered from Ongoing Trials needs to land there too, not just in
-      // these shared display slots.
       if (localRisk && localRanking && localResult && localTopRegion) {
         setAnalysisCache((prev) => ({
           ...prev,
@@ -1058,7 +858,6 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
     setPrefetchQueue([]);
     setPrefetchingCountries(new Set());
     setCountryErrors({});
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [form.indication]);
  
   const value: PipelineState = {

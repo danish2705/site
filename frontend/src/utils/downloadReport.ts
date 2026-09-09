@@ -16,15 +16,6 @@ function componentRow(label: string, value: number | null): string {
   return `<tr><td>${label}</td><td>${value.toFixed(0)}/100</td></tr>`;
 }
 
-/**
- * Builds a self-contained, printable HTML report for the final recommended
- * site — redesign spec item 20 ("Add a Polished Final 'Next Steps'") calls
- * for a working "Download Report" action on the completion screen. No
- * backend report-generation endpoint exists yet, so this composes the
- * report from data the page already has (FinalResult + the trial form) and
- * downloads it client-side; opening the file and printing to PDF from the
- * browser produces a shareable PDF without a server round-trip.
- */
 export function buildFinalRecommendationReportHtml(
   site: FinalResult,
   form: TrialForm,
@@ -102,24 +93,6 @@ function safeFileSlug(site: FinalResult): string {
   );
 }
 
-/**
- * "Download Report" now asks the user to pick PDF or Excel (see
- * DownloadFormatMenu.tsx) rather than always producing the same file, so
- * the single combined HTML-download helper that used to back that button
- * has been split into the two format-specific functions below.
- */
-
-/**
- * Opens the same report markup `buildFinalRecommendationReportHtml`
- * produces in a new browser tab and immediately invokes the browser's own
- * print dialog on it — every modern browser offers "Save as PDF" as a
- * print destination, so this produces a real PDF without needing a PDF
- * library or a server round-trip (there is no backend report-generation
- * endpoint). `document.write` + `onload` is used instead of a Blob/data
- * URL because some browsers don't reliably fire `load` on those for a
- * freshly `window.open`-ed document; a short timeout is a fallback for
- * browsers that don't fire `onload` here either.
- */
 export function downloadFinalRecommendationReportPdf(
   site: FinalResult,
   form: TrialForm,
@@ -128,7 +101,6 @@ export function downloadFinalRecommendationReportPdf(
   const html = buildFinalRecommendationReportHtml(site, form, why);
   const printWindow = window.open("", "_blank");
   if (!printWindow) {
-    // Popup blocked — nothing silently failed, let the user know why nothing happened.
     window.alert(
       "Your browser blocked the print/PDF window. Please allow pop-ups for this site and try again.",
     );
@@ -163,14 +135,6 @@ function componentCsvValue(value: number | null): string {
   return value === null || value === undefined ? "No data" : `${value.toFixed(0)}/100`;
 }
 
-/**
- * Builds the report as CSV — opens directly in Excel (and every other
- * spreadsheet app) with zero extra dependencies, unlike a true .xlsx
- * binary which would need a bundled library this app doesn't currently
- * have. Plain CSV also avoids the "file format and extension don't match"
- * warning Excel shows when opening an HTML table saved with an .xls
- * extension.
- */
 export function buildFinalRecommendationReportCsv(
   site: FinalResult,
   form: TrialForm,

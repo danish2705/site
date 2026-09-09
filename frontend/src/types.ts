@@ -5,7 +5,6 @@ export interface TrialForm {
   durationMonths: number | "";
   budgetTier: string;
   regions: string[];
-  /** Eligible patient age group(s) for this trial (e.g. "Adult (18-64)"). Optional — empty means all ages. */
   ageGroups: string[];
 }
 
@@ -22,14 +21,11 @@ export interface LiveFieldValue {
 
 export interface MetaResponse {
   indications: string[];
-  /** "fallback" means the live ClinicalTrials.gov vocabulary lookup failed and `indications` is a static safety-net list, not live data. */
   indicationsSource?: "live" | "fallback";
-  /** Set when indicationsSource is "fallback" — explains why and what's still live. */
   metaWarning?: string;
   regions: string[];
   regionOptions: RegionOption[];
   specialties: Record<string, string>;
-  /** Live, ranked vocabulary from ClinicalTrials.gov (supplementary — may be empty on API outage). */
   liveConditions?: LiveFieldValue[];
   liveCountries?: LiveFieldValue[];
 }
@@ -145,10 +141,8 @@ export interface RiskAssessmentRow {
   overallRisk: "Low" | "Medium" | "High";
   highRiskCount: number;
   mediumRiskCount: number;
-  /** True when this site has no real or estimated risk data at all — show "No Data" instead of trusting overallRisk's "Low". */
   riskDataUnavailable: boolean;
   riskRecords: RiskRecord[];
-  /** Real, raw ClinicalTrials.gov status for this site (e.g. "RECRUITING", "NOT_YET_RECRUITING", "COMPLETED"...) — null if the source facility had no disclosed status. Every real status is included (no server-side filtering); use the Status filter dropdown to narrow the view. */
   status: string | null;
 }
 
@@ -165,24 +159,17 @@ export interface RequirementCheck {
   required: string;
   actual: string;
   pass: boolean;
-  /** Whether the "Required" value came from real, disclosed data (e.g. a ClinicalTrials.gov benchmark) rather than user form input, an invented label, or a self-referential run average. */
   requiredIsLive?: boolean;
-  /** Whether the "This site" (actual) value is real, disclosed data (ClinicalTrials.gov, etc.) rather than an LLM estimate. */
   actualIsLive?: boolean;
 }
 
 export interface EnrollmentForecast {
   targetSampleSize: number;
   durationMonths: number;
-  /** pts/month used for this projection. */
   rate: number;
-  /** Whether `rate` is real (this facility's own ClinicalTrials.gov enrollment history) or an LLM estimate. */
   rateSource: "real" | "llm-estimated";
-  /** Projected cumulative enrollment at this site over the full trial duration, at `rate`. */
   expectedEnrollment: number;
-  /** How many months this site alone would need, at `rate`, to reach targetSampleSize. */
   estimatedMonthsToTarget: number;
-  /** 0-100, or null when this site doesn't have enough of its own real completed-trial history to bootstrap a genuine estimate — see probabilityBasis. Never borrowed from indication-wide data. */
   probability: number | null;
   probabilityBasis: "site-history" | "insufficient-data";
 }
@@ -198,22 +185,15 @@ export interface RankingRow {
   caveats: string[];
   meetsRequirements: boolean;
   failedCriteria: string[];
-  /** Full per-criterion requirement checklist for this site (required specialty, patient age, required procedure, minimum recruitment, competing trials nearby) — see backend's runPipeline.ts checkRequirements(). */
   requirementChecks: RequirementCheck[];
-  /** Real-arithmetic enrollment projection + (when supported by this site's own real historical data) a bootstrap probability of hitting the trial's target — see backend's pipeline/enrollmentForecast.ts. null when no rate/target/duration was available to project from at all. */
   enrollmentForecast: EnrollmentForecast | null;
   suitabilityScore: number | null;
   riskLevel: "Low" | "Medium" | "High";
   highRiskCount: number;
-  /** "llm-estimated" = this site's KPIs came from an LLM estimate on a live ClinicalTrials.gov facility, not Site_Evaluation. */
   dataSource?: "excel" | "llm-estimated";
-  /** Raw KPI field names (e.g. "Historical Enrollment Rate (pts/month)") overridden with real ClinicalTrials.gov data instead of the LLM estimate. Empty when every field is still estimated. */
   liveKpiFields?: string[];
-  /** The NCTId Dropout Rate/Diversity Index (if real) were sourced from — trial-wide, not this site alone. null when neither is real. */
   liveKpiSourceNctId?: string | null;
-  /** Real race/ethnicity category breakdown behind the Diversity component, when it's real (not LLM-estimated) — e.g. [{category:"White",percent:61.2},...]. null otherwise. */
   raceBreakdown?: { category: string; percent: number }[] | null;
-  /** Real, raw ClinicalTrials.gov status for this site (e.g. "RECRUITING", "NOT_YET_RECRUITING", "COMPLETED"...) — null if the source facility had no disclosed status. Every real status is included (no server-side filtering); use the Status filter dropdown to narrow the view. */
   status: string | null;
 }
 
@@ -236,9 +216,7 @@ export interface FinalResult {
   dataSource?: "excel" | "llm-estimated";
   liveKpiFields?: string[];
   text: string;
-  /** Real, live ClinicalTrials.gov status of the recommended site (e.g. "RECRUITING", "NOT_YET_RECRUITING", "ACTIVE_NOT_RECRUITING") — null if unknown. Used by the status dropdown on the Final Recommendation page to know which slot this result belongs to. */
   status?: string | null;
-  /** Id of the cached, fully-scored candidate pool this result came from — pass back to fetchRecommendationForStatus() to get the best site for a different live status without re-running Stages 4-6. Absent for older/edge-case results. */
   analysisId?: string;
 }
 
@@ -249,7 +227,6 @@ export interface StageEventPayload {
   detail?: string;
   data?: unknown;
   llm?: string;
-  /** Explicit per-item issues (e.g. a live site that couldn't be scored) — sibling to `data`, not nested in it. */
   warnings?: string[];
 }
 
@@ -310,7 +287,6 @@ export interface LiveFacilityRow {
   state: string | null;
   country: string | null;
   status: string | null;
-  /** When the sponsor last updated this trial's record on ClinicalTrials.gov. */
   lastUpdatePostDate: string | null;
 }
 

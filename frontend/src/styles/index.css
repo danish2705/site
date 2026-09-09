@@ -1,7 +1,3 @@
-/* Shared color palette/design tokens — see the design spec for the
-   Purpose/Hex/Example mapping. Every color used anywhere in this app should
-   reference one of these variables rather than a hardcoded hex value, so the
-   palette can be changed in exactly one place. */
 :root {
   --primary: #4342d1;
   --primary-dark: #021848;
