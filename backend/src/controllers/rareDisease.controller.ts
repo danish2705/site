@@ -11,38 +11,16 @@ import type { RareDiseaseDetail, RareDiseaseTrialSite } from "../types.js";
 
 const TRIAL_SITE_PAGE_SIZE = 30;
 
-/**
- * GET /api/rare-disease/status
- * api.orphadata.com's rd-cross-referencing / rd-epidemiology /
- * rd-natural_history endpoints are open (no API key), so this is always
- * available — kept as an endpoint mainly so the frontend has something to
- * probe on load rather than assuming.
- */
 export function getRareDiseaseStatus(_req: Request, res: Response): void {
   res.json({ available: true, source: "https://api.orphadata.com (no key required)" });
 }
 
-/**
- * GET /api/rare-disease/search?q=...
- * Live, real disease-name search over Orphanet's own full nomenclature list
- * (fetched once, cached — see orphadata.client.ts's getDiseaseIndex) —
- * backs the Rare Disease box's search-as-you-type dropdown.
- */
 export async function searchRareDiseases(req: Request, res: Response): Promise<void> {
   const q = String(req.query.q ?? "").trim();
   const results = q.length >= 2 ? await searchRareDiseasesByName(q) : [];
   res.json({ query: q, results });
 }
 
-/**
- * GET /api/rare-disease/:orphaCode
- * Assembles the single live-data page: real Orphanet nomenclature +
- * epidemiology + natural history, plus a real ClinicalTrials.gov cross-check
- * for whether any trials/sites currently exist for this disease. Every field
- * here is real, disclosed data — nothing LLM-estimated — so a section with
- * nothing to show renders empty with a warning rather than being backfilled
- * with a guess.
- */
 export async function getRareDiseaseDetail(req: Request, res: Response): Promise<void> {
   const orphaCode = String(req.params.orphaCode || "").trim();
   if (!orphaCode || !/^\d+$/.test(orphaCode)) {
@@ -74,7 +52,7 @@ export async function getRareDiseaseDetail(req: Request, res: Response): Promise
   let trialSites: RareDiseaseTrialSite[] = [];
   const searchNames = [nomenclature.name, ...nomenclature.synonyms].filter(Boolean);
   for (const name of searchNames) {
-    if (trialSites.length > 0) break; // first name with any real hits wins — avoids double-counting the same trials under a synonym
+    if (trialSites.length > 0) break; 
     try {
       const facilities = await getFacilitiesForCondition(name, {
         pageSize: TRIAL_SITE_PAGE_SIZE,
@@ -89,8 +67,6 @@ export async function getRareDiseaseDetail(req: Request, res: Response): Promise
         status: f.status,
       }));
     } catch {
-      // getFacilitiesForCondition already warns internally and returns [] on
-      // failure — nothing extra to do here, just try the next synonym.
     }
   }
   if (trialSites.length === 0) {

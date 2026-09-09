@@ -13,9 +13,7 @@ export interface RegionRow {
   competingTrialsSource?: "live" | "excel";
   regionMetricsSource?: "live" | "llm-estimated" | "claims-synthetic" | "unavailable";
   metricsWarning?: string;
-  /** Where "Prevalence (per 100k)" specifically came from — tracked separately from regionMetricsSource because Regulatory Approval Time / Avg Cost per Patient have no Orphanet equivalent and keep using claims/LLM even on an "orphanet-live" row. */
   prevalenceSource?: "orphanet-live" | "claims-synthetic" | "llm-estimated" | "unavailable";
-  /** e.g. "Orphanet ORPHA:558 — Point prevalence, Europe, Validated — 20.0 (class 1-5/10,000)" when prevalenceSource is "orphanet-live". */
   prevalenceCitation?: string;
 }
 
@@ -28,7 +26,6 @@ export interface LiveFacilityRow {
   country: string | null;
   status: string | null;
   lastUpdatePostDate: string | null;
-  /** Real, disclosed eligibility age bounds of the study this facility belongs to — see services/ctgov.client.ts's LiveFacility. */
   minimumAge?: string | null;
   maximumAge?: string | null;
 }
@@ -52,37 +49,22 @@ export interface LiveTrialLandscapeResponse {
   warnings: string[];
 }
 
-/**
- * Normalized response for GET /api/nct-lookup/:nctId — the landing page's
- * "Search by NCT Number" auto-fill. Maps ClinicalTrials.gov's own vocabulary
- * (raw Phase values, StdAge buckets) onto this app's own form field values
- * (Sidebar's PHASES/AGE_GROUPS labels) so the frontend can drop these straight
- * into TrialForm with no further translation.
- */
 export interface NctLookupResponse {
   nctId: string;
   briefTitle: string | null;
   officialTitle: string | null;
-  /** Raw disclosed condition text — dropped straight into TrialForm.indication even when it doesn't exactly match this app's static indication list (resolveSpecialty() already falls back to an LLM for indications outside that list, so no manual reconciliation is needed here). */
   indication: string | null;
   overallStatus: string | null;
-  /** Mapped to this app's "Phase I".."Phase IV" labels — null if the study's disclosed phase(s) don't map to exactly one of those (e.g. no phase disclosed, or an ambiguous multi-phase study), in which case the frontend leaves Phase unset for the user/pipeline default to handle. */
   phase: string | null;
-  /** This app's Age Group label(s) (Sidebar's AGE_GROUPS) the study's disclosed eligibility age range overlaps — same bucketing ctgov.client.ts already applies when filtering live facilities by age. */
   ageGroups: string[];
   enrollmentCount: number | null;
-  /** "ACTUAL" (post-completion, reliable) or "ESTIMATED" (a target). */
   enrollmentType: string | null;
-  /** start -> primary-completion, in whole months — null if either date is missing/unparseable. */
   durationMonths: number | null;
-  /** De-duplicated disclosed site countries — informational context only; NOT applied as a region/country filter (see NctStudyLookup.countries in ctgov.client.ts for why). */
   countries: string[];
   siteCount: number;
-  /** This study's own disclosed site/location list — lets the frontend optionally run Risk Assessment/Site Ranking/Site Map/Recommendation against ONLY this trial's own sites instead of the default broad indication-wide search. Empty when the study discloses no locations. */
   facilities: LiveFacilityRow[];
 }
 
-/** One trial site plotted on the Site Map tab — see pipeline/liveMapData.ts for exactly what's live vs. synthetic vs. approximate in each field. */
 export interface MapSiteRow {
   siteId: string;
   siteName: string;
@@ -96,7 +78,6 @@ export interface MapSiteRow {
   radiusMiles: number;
   populationInRadius: number;
   populationSource: "synthetic" | "worldpop-live";
-  /** Only set when populationSource is "worldpop-live" — a short citation string for the WorldPop dataset used. */
   populationCitation?: string;
   prevalencePer100k: number;
   grossEligiblePatients: number;
@@ -249,31 +230,17 @@ export interface RequirementCheck {
   required: string;
   actual: string;
   pass: boolean;
-  /** Whether the "Required" value came from real, disclosed data (e.g. a ClinicalTrials.gov benchmark) rather than user form input, an invented label, or a self-referential run average. */
   requiredIsLive?: boolean;
-  /** Whether the "This site" (actual) value is real, disclosed data (ClinicalTrials.gov, etc.) rather than an LLM estimate. */
   actualIsLive?: boolean;
 }
 
 export interface EnrollmentForecast {
   targetSampleSize: number;
   durationMonths: number;
-  /** pts/month used for this projection. */
   rate: number;
-  /** Whether `rate` came from this facility's own real ClinicalTrials.gov enrollment history, or an LLM estimate. */
   rateSource: "real" | "llm-estimated";
-  /** Projected cumulative enrollment at this site over the full trial duration, at `rate` — real arithmetic (rate * durationMonths), no more/less certain than `rate` itself. */
   expectedEnrollment: number;
-  /** How many months this site alone would need, at `rate`, to reach targetSampleSize. */
   estimatedMonthsToTarget: number;
-  /**
-   * 0-100 probability of this site reaching targetSampleSize within
-   * durationMonths, from bootstrap-resampling this site's OWN real
-   * historical per-trial enrollment rates (see
-   * pipeline/enrollmentForecast.ts) — never borrowed from a broader,
-   * less-specific distribution. null when probabilityBasis is
-   * "insufficient-data".
-   */
   probability: number | null;
   probabilityBasis: "site-history" | "insufficient-data";
 }
@@ -289,15 +256,6 @@ export interface SiteRow {
   Accreditation: string;
   dataSource?: "excel" | "live";
   recruitingStatus?: string | null;
-  /**
-   * Real, disclosed eligibilityModule.minimumAge/maximumAge of the SPECIFIC
-   * trial this candidate site was sourced from (see
-   * services/ctgov.client.ts's LiveFacility) — used to build a genuine
-   * per-site "Patient age" requirement check. Age eligibility is a
-   * protocol-wide setting, not something ClinicalTrials.gov tracks per
-   * physical location, but different candidate sites here usually come from
-   * different trials, so this genuinely varies site to site in practice.
-   */
   eligibilityMinimumAge?: string | null;
   eligibilityMaximumAge?: string | null;
 }
@@ -580,13 +538,6 @@ export interface SavedRunSummary {
   ranked_site_count: number;
 }
 
-/* ---------------------------------------------------------------------- */
-/* Rare Disease feature — every field here is real, Orphanet/ClinicalTrials
-   .gov-sourced data (see backend's services/orphadata.client.ts). Nothing
-   in this feature is LLM-estimated, by design — see rareDiseaseWarnings for
-   which sections came back empty because a live source had nothing to say. */
-/* ---------------------------------------------------------------------- */
-
 export interface RareDiseaseSearchResult {
   orphaCode: string;
   name: string;
@@ -623,16 +574,12 @@ export interface RareDiseaseDetail {
   definition: string | null;
   typology: string | null;
   synonyms: string[];
-  /** ICD-10, ICD-11, OMIM, MONDO, MeSH, MedDRA, UMLS, GARD cross-references, as Orphanet discloses them. */
   crossReferences: RareDiseaseCrossReference[];
   inheritance: string[];
   averageAgeOfOnset: string[];
-  /** Empty for most diseases — only populated by Orphanet when a published average age of death exists. */
   averageAgeOfDeath: string[];
   prevalence: RareDiseasePrevalenceRow[];
-  /** Real ClinicalTrials.gov locations found searching this disease's own preferred term / synonyms as the condition. */
   trialSites: RareDiseaseTrialSite[];
-  /** e.g. "No epidemiology record published by Orphanet for this disease." */
   warnings: string[];
   sources: {
     nomenclature: string;

@@ -143,7 +143,6 @@ export interface BuildLiveSiteMapParams {
   radiusMiles?: number;
   maxSites?: number;
   ageGroups?: string[];
-  /** When supplied (non-empty), skips the broad getFacilitiesForCondition search entirely and plots ONLY these facilities instead — used to scope the Site Map to one specific trial's own disclosed sites (see liveMap.controller.ts's optional ?nctId= param and NctStudyLookup.facilities), rather than every trial for the indication. Still narrowed to `country` when one is given. */
   facilitiesOverride?: LiveFacility[];
 }
 
@@ -258,10 +257,6 @@ export async function buildLiveSiteMapData(
         postalRegions,
         radiusMiles,
       );
-      // Prefer WorldPop's real gridded population count for this catchment
-      // circle over the synthetic estimate. computeCatchment()'s own
-      // distanceSource/coveredRegions are still used as-is (WorldPop returns
-      // one total, not a per-region breakdown, so it can't replace those).
       let populationInRadius = catchment.populationInRadius;
       let populationSource: MapSiteRow["populationSource"] = "synthetic";
       let populationCitation: string | undefined;

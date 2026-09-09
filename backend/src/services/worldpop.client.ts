@@ -1,31 +1,5 @@
 import { config } from "../config.js";
 import type { LatLng } from "./geo.service.js";
-
-/**
- * WorldPop integration — real population-in-radius, replacing the
- * seeded-random numbers from data/syntheticPopulation.ts.
- *
- * WorldPop's REST API (https://www.worldpop.org/sdi/introapi) only exposes
- * dataset metadata / GeoTIFF download links — it has no "population within
- * X miles of a point" endpoint. The actual population-within-a-shape query
- * lives on a separate service, the WorldPop "Advanced" stats API
- * (https://www.worldpop.org/sdi/advancedapi):
- *
- *   GET https://api.worldpop.org/v1/services/stats
- *       ?dataset=wpgppop&year={year}&geojson={GeoJSON}&runasync=false
- *
- * It takes a GeoJSON polygon (not a point+radius), so this client builds a
- * circular polygon approximating the site's catchment circle and sends
- * that. No API key is required for normal use — an optional key only
- * raises rate limits for large/bulk queries (verified against the public
- * docs: "key" is listed as an optional parameter, not required).
- *
- * The query can be answered synchronously (runasync=false, "finished"
- * status returned directly) or, if WorldPop's servers judge it too slow,
- * asynchronously (status "created" + a taskid to poll at
- * /v1/tasks/{taskid}) — this client handles both.
- */
-
 const STATS_URL = "https://api.worldpop.org/v1/services/stats";
 const TASK_URL = "https://api.worldpop.org/v1/tasks";
 const DATASET = "wpgppop";
@@ -53,7 +27,6 @@ function warn(label: string, err: unknown): void {
   console.warn(`[worldpop] ${label}:`, (err as Error)?.message ?? err);
 }
 
-/** Builds a GeoJSON Polygon approximating a circle of `radiusMiles` around `origin`. */
 function circlePolygon(origin: LatLng, radiusMiles: number, points = 32) {
   const earthRadiusMiles = 3958.8;
   const latRad = (origin.lat * Math.PI) / 180;
@@ -132,7 +105,6 @@ async function pollTask(taskid: string): Promise<number | null> {
         ? result.data.total_population
         : null;
     }
-    // status "started"/"created" — keep polling.
   }
   warn(`task ${taskid} did not finish within poll budget`, null);
   return null;
@@ -144,12 +116,6 @@ export interface WorldPopPopulationResult {
   citation: string;
 }
 
-/**
- * Real population count within `radiusMiles` of `origin`, from WorldPop's
- * gridded population data. Returns null (never throws) on any failure —
- * callers should fall back to the synthetic estimate, same pattern as
- * Orphanet prevalence falling back to the LLM/synthetic chain.
- */
 export async function getPopulationInRadius(
   origin: LatLng,
   radiusMiles: number,

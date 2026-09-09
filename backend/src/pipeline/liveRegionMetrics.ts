@@ -32,13 +32,6 @@ export async function buildLiveRegionRow(
   );
   const competingTrials = competingCountRaw ?? 0;
 
-  // Real Orphanet prevalence takes priority over both the synthetic claims
-  // dataset and the LLM guess below — but only replaces the Prevalence
-  // number specifically. Regulatory Approval Time / Avg Cost per Patient
-  // have no Orphanet equivalent, so they still come from claims/LLM even on
-  // a row with orphanet-live prevalence. Returns null for almost every
-  // indication (only real, exact-match rare diseases with a geographically
-  // scoped prevalence record qualify) — see orphadata.client.ts.
   let orphanetPrevalence: Awaited<ReturnType<typeof getOrphanetPrevalencePer100k>> = null;
   try {
     orphanetPrevalence = await getOrphanetPrevalencePer100k(params.indication, params.country);
