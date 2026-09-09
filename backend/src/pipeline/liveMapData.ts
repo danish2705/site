@@ -20,6 +20,7 @@ import {
   getSyntheticPostalRegionsForCountry,
   type SyntheticPostalRegion,
 } from "../data/syntheticPopulation.js";
+import { getPopulationInRadius } from "../services/worldpop.client.js";
 import { buildLiveRegionRow } from "./liveRegionMetrics.js";
 import { estimateSiteGeoRisk, llmStatus } from "../llm/client.js";
 import { REGION_DEFINITIONS } from "../data/regionMap.js";
@@ -257,7 +258,29 @@ export async function buildLiveSiteMapData(
         postalRegions,
         radiusMiles,
       );
-      const populationInRadius = catchment.populationInRadius;
+      // Prefer WorldPop's real gridded population count for this catchment
+      // circle over the synthetic estimate. computeCatchment()'s own
+      // distanceSource/coveredRegions are still used as-is (WorldPop returns
+      // one total, not a per-region breakdown, so it can't replace those).
+      let populationInRadius = catchment.populationInRadius;
+      let populationSource: MapSiteRow["populationSource"] = "synthetic";
+      let populationCitation: string | undefined;
+      try {
+        const worldPop = await getPopulationInRadius(
+          geocode.point,
+          radiusMiles,
+        );
+        if (worldPop) {
+          populationInRadius = worldPop.populationInRadius;
+          populationSource = worldPop.source;
+          populationCitation = worldPop.citation;
+        }
+      } catch (err) {
+        console.warn(
+          `[liveMapData] WorldPop population lookup failed for ${f.facility ?? country}:`,
+          (err as Error).message,
+        );
+      }
 
       const regionRow = regionRowByCountry.get(country);
       const prevalencePer100k = regionRow?.["Prevalence (per 100k)"] ?? 0;
@@ -336,7 +359,8 @@ export async function buildLiveSiteMapData(
         coordsSource: geocode.source,
         radiusMiles,
         populationInRadius,
-        populationSource: "synthetic",
+        populationSource,
+        populationCitation,
         prevalencePer100k,
         grossEligiblePatients,
         netAvailablePatients,
@@ -367,6 +391,15 @@ export async function buildLiveSiteMapData(
   if (approxDistanceCount > 0) {
     warnings.push(
       `${approxDistanceCount} of ${sites.length} site(s) had some or all of their catchment radius decided by straight-line distance rather than real driving distance (Google Distance Matrix / OSRM lookup unavailable for those points) — their patient counts are a rougher approximation than the others.`,
+    );
+  }
+
+  const syntheticPopulationCount = sites.filter(
+    (s) => s.populationSource === "synthetic",
+  ).length;
+  if (syntheticPopulationCount > 0) {
+    warnings.push(
+      `${syntheticPopulationCount} of ${sites.length} site(s) could not get a real population count from WorldPop (request failed, timed out, or the catchment area is unsupported) — their "Population in Radius" figure falls back to a synthetic estimate.`,
     );
   }
 

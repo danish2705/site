@@ -429,7 +429,8 @@ export interface MapSiteRow {
   coordsSource: "live-google" | "live-nominatim" | "approximate";
   radiusMiles: number;
   populationInRadius: number;
-  populationSource: "synthetic";
+  populationSource: "synthetic" | "worldpop-live";
+  populationCitation?: string;
   prevalencePer100k: number;
   grossEligiblePatients: number;
   netAvailablePatients: number;

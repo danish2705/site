@@ -214,7 +214,26 @@ function checkRequirements(
     requiredIsLive = false,
     actualIsLive = false,
   ) => {
-    if (limit === null || limit === undefined) return;
+    if (limit === null || limit === undefined) {
+      // No live CT.gov benchmark exists for this indication — still show the
+      // row (rather than silently vanishing) so it's clear this criterion
+      // was checked and simply has no data, but never show the live-data dot
+      // here: with no real threshold to compare against, this row isn't a
+      // genuine live comparison regardless of whether the actual side alone
+      // would otherwise qualify.
+      checks.push({
+        criterion,
+        required: "No live benchmark found for this indication",
+        actual:
+          actual === null || actual === undefined
+            ? "no data"
+            : `${actual}${unit}`,
+        pass: true,
+        requiredIsLive: false,
+        actualIsLive: false,
+      });
+      return;
+    }
     const required = `${cmp === "min" ? "≥" : "≤"} ${limit}${unit}`;
     if (actual === null || actual === undefined) {
       checks.push({
@@ -237,18 +256,18 @@ function checkRequirements(
     });
   };
 
-  // Required thresholds for these two are real CT.gov benchmark medians
-  // (see liveRequirements.ts) whenever the check fires at all — the check is
+  // Required threshold for this one is a real CT.gov benchmark median (see
+  // liveRequirements.ts) whenever the check fires at all — the check is
   // skipped entirely (numeric() returns early) if no benchmark was found.
-  numeric(
-    "Minimum recruitment",
-    evalRow["Historical Enrollment Rate (pts/month)"],
-    requirement["Min Enrollment Rate (pts/month)"],
-    "min",
-    " pts/mo",
-    true,
-    !!evalRow.liveKpiFields?.includes("Historical Enrollment Rate (pts/month)"),
-  );
+  //
+  // "Minimum recruitment" was removed from this checklist (previously
+  // computed as EnrollmentCount / months-between-StartDate-and-
+  // PrimaryCompletionDate) — that denominator is the whole study duration
+  // (screening + enrollment + treatment + follow-up), not the actual
+  // recruitment window, which ClinicalTrials.gov does not disclose as a
+  // distinct field for any trial. The resulting "pts/mo" rate understated
+  // true enrollment pace enough to be misleading, so the check was dropped
+  // rather than left showing a number that looked precise but wasn't.
   numeric(
     "Dropout rate",
     evalRow["Dropout Rate (%)"],
@@ -258,26 +277,13 @@ function checkRequirements(
     true,
     !!evalRow.liveKpiFields?.includes("Dropout Rate (%)"),
   );
-  // Data quality / Screen failure — required thresholds are always an LLM
-  // estimate (no public source discloses these) and the actual values are
-  // never overridden by live data either — see applyLiveKpiOverrides, which
-  // only ever overrides enrollment rate, dropout, diversity index, and
-  // competing-trials-at-site.
-  numeric(
-    "Data quality",
-    evalRow["Data Quality Score (0-100)"],
-    requirement["Min Data Quality Score"],
-    "min",
-    "",
-  );
-  numeric(
-    "Screen failure rate",
-    evalRow["Screen Failure Rate (%)"],
-    requirement["Max Acceptable Screen Failure (%)"],
-    "max",
-    "%",
-  );
- 
+  // "Data quality" and "Screen failure rate" were removed from this
+  // checklist — both their required thresholds and actual values are always
+  // an LLM estimate (no public source discloses either), never overridden by
+  // live data (see applyLiveKpiOverrides, which only ever overrides
+  // enrollment rate, dropout, diversity index, and competing-trials-at-site)
+  // — so neither side of either row was ever real.
+
   if (requirement["Accreditation Required"] === "Yes") {
     const actual =
       site.Accreditation === "Yes"
@@ -359,8 +365,8 @@ function checkRequirements(
   {
     const status = (site.recruitingStatus ?? "").toUpperCase();
     checks.push({
-      criterion: "Required procedure",
-      required: "Site activation complete (inferred from recruiting status)",
+      criterion: "Recruiting Status",
+      required: "Site must be recruiting or active",
       actual: site.recruitingStatus ?? "Unknown",
       pass: status === "RECRUITING" || status === "ACTIVE_NOT_RECRUITING",
       // Required side is an invented proxy label, not a real disclosed requirement.
@@ -369,21 +375,15 @@ function checkRequirements(
     });
   }
 
-  // Competing trials nearby — real per-site count (same city, other
-  // actively-recruiting/not-yet-recruiting trial locations). No externally
-  // published "max acceptable" threshold exists for this, so rather than
-  // invent an arbitrary constant, the cutoff is this run's own average
-  // nearby-competing-trials count across every candidate site found — a site
-  // is flagged only when it's more crowded than its peers in this same run.
-  checks.push({
-    criterion: "Competing trials nearby",
-    required: `≤ ${extra.maxAcceptableCompetingTrials} (this run's average across ${site.Region})`,
-    actual: `${extra.nearbyCompetingTrials}`,
-    pass: extra.nearbyCompetingTrials <= extra.maxAcceptableCompetingTrials,
-    // Required side is a self-referential run average, not a real external standard.
-    requiredIsLive: false,
-    actualIsLive: true,
-  });
+  // "Competing trials nearby" was removed from this checklist. Its "nearby
+  // competitor" count came from a second pull of this run's own
+  // condition+country ClinicalTrials.gov query (same source as this run's
+  // candidate site list, just a different page size/status filter) and did
+  // not exclude other candidate sites in this same run — so in practice it
+  // largely counted this run's own shortlisted sites against each other in
+  // shared cities, rather than measuring real, independent competition from
+  // other sponsors' trials. Removed rather than left showing a number that
+  // looked like a real competitive signal but wasn't one.
 
   return checks;
 }
