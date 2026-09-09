@@ -215,12 +215,6 @@ function checkRequirements(
     actualIsLive = false,
   ) => {
     if (limit === null || limit === undefined) {
-      // No live CT.gov benchmark exists for this indication — still show the
-      // row (rather than silently vanishing) so it's clear this criterion
-      // was checked and simply has no data, but never show the live-data dot
-      // here: with no real threshold to compare against, this row isn't a
-      // genuine live comparison regardless of whether the actual side alone
-      // would otherwise qualify.
       checks.push({
         criterion,
         required: "No live benchmark found for this indication",
@@ -256,18 +250,6 @@ function checkRequirements(
     });
   };
 
-  // Required threshold for this one is a real CT.gov benchmark median (see
-  // liveRequirements.ts) whenever the check fires at all — the check is
-  // skipped entirely (numeric() returns early) if no benchmark was found.
-  //
-  // "Minimum recruitment" was removed from this checklist (previously
-  // computed as EnrollmentCount / months-between-StartDate-and-
-  // PrimaryCompletionDate) — that denominator is the whole study duration
-  // (screening + enrollment + treatment + follow-up), not the actual
-  // recruitment window, which ClinicalTrials.gov does not disclose as a
-  // distinct field for any trial. The resulting "pts/mo" rate understated
-  // true enrollment pace enough to be misleading, so the check was dropped
-  // rather than left showing a number that looked precise but wasn't.
   numeric(
     "Dropout rate",
     evalRow["Dropout Rate (%)"],
@@ -277,12 +259,6 @@ function checkRequirements(
     true,
     !!evalRow.liveKpiFields?.includes("Dropout Rate (%)"),
   );
-  // "Data quality" and "Screen failure rate" were removed from this
-  // checklist — both their required thresholds and actual values are always
-  // an LLM estimate (no public source discloses either), never overridden by
-  // live data (see applyLiveKpiOverrides, which only ever overrides
-  // enrollment rate, dropout, diversity index, and competing-trials-at-site)
-  // — so neither side of either row was ever real.
 
   if (requirement["Accreditation Required"] === "Yes") {
     const actual =
@@ -299,16 +275,6 @@ function checkRequirements(
     });
   }
 
-  // Required specialty — real, disclosed fact (site["Therapeutic Area"] vs
-  // the trial's required specialty), but NOT a differentiating check today:
-  // every candidate site is discovered via a live search already scoped to
-  // this exact indication (buildLiveCandidateSites -> getFacilitiesForCondition),
-  // so this passes for effectively every site by construction. Kept as a
-  // genuine equality comparison (not a hardcoded pass) so it stays honest
-  // about what it's actually comparing, even though it isn't yet a source
-  // of real per-site variation — see runPipeline.ts conversation history /
-  // product notes for why (no live source discloses a hospital's general
-  // specialties independent of which trial surfaced it).
   const requiredSpecialty = requirement["Required Specialty"]?.trim();
   if (requiredSpecialty) {
     const actualSpecialty = site["Therapeutic Area"]?.trim() || "Unknown";
@@ -323,14 +289,6 @@ function checkRequirements(
     });
   }
 
-  // Patient age — required side is the trial form's selected Age Group(s);
-  // actual side is THIS site's own source trial's real, disclosed
-  // MinimumAge/MaximumAge (see ctgov.client.ts's getFacilitiesForCondition).
-  // Age eligibility is set once per protocol, not per physical location, but
-  // different candidate sites here usually come from different trials, so
-  // this genuinely varies site to site. Missing age data on the source trial
-  // is treated as "all ages" (matches studyAgeGroups' own convention) rather
-  // than excluded, since an undisclosed range isn't evidence of exclusion.
   if (extra.ageGroups && extra.ageGroups.length > 0) {
     const requiredGroups = selectedStdAgeValues(extra.ageGroups);
     const siteGroups = studyAgeGroups(
@@ -346,22 +304,11 @@ function checkRequirements(
         ? `${site.eligibilityMinimumAge ?? "no min"} – ${site.eligibilityMaximumAge ?? "no max"} (this site's own trial)`
         : "Not disclosed by this site's source trial (treated as all ages)",
       pass: overlaps,
-      // Required side is the trial form's own Age Group selection, not external data.
       requiredIsLive: false,
       actualIsLive: hasSiteAgeData,
     });
   }
 
-  // Required procedure — ClinicalTrials.gov has no field disclosing what
-  // specific procedure/equipment/infrastructure a site has, and this app has
-  // no real "required procedure" value for the hypothetical new trial either
-  // (there's no registered protocol to read one from). This instead uses the
-  // site's real, disclosed recruiting status as a proxy for trial-activation
-  // readiness (site visits/contracts/equipment setup generally complete by
-  // the time a site is Recruiting or Active, Not Recruiting) — NOT a
-  // confirmed check of the specific procedure this protocol needs. "Not Yet
-  // Recruiting" is treated as not-yet-passed, matching that this status is
-  // itself a grey area (activation may still be in progress).
   {
     const status = (site.recruitingStatus ?? "").toUpperCase();
     checks.push({
@@ -369,22 +316,10 @@ function checkRequirements(
       required: "Site must be recruiting or active",
       actual: site.recruitingStatus ?? "Unknown",
       pass: status === "RECRUITING" || status === "ACTIVE_NOT_RECRUITING",
-      // Required side is an invented proxy label, not a real disclosed requirement.
       requiredIsLive: false,
       actualIsLive: !!site.recruitingStatus,
     });
   }
-
-  // "Competing trials nearby" was removed from this checklist. Its "nearby
-  // competitor" count came from a second pull of this run's own
-  // condition+country ClinicalTrials.gov query (same source as this run's
-  // candidate site list, just a different page size/status filter) and did
-  // not exclude other candidate sites in this same run — so in practice it
-  // largely counted this run's own shortlisted sites against each other in
-  // shared cities, rather than measuring real, independent competition from
-  // other sponsors' trials. Removed rather than left showing a number that
-  // looked like a real competitive signal but wasn't one.
-
   return checks;
 }
  
@@ -410,21 +345,11 @@ export interface Stage1to3Result {
   ageGroups?: string[];
 }
 
-/**
- * Stages 1-3: parse the trial's requirements, pick the best region/country,
- * and estimate the eligible patient population there. Split out from the
- * original single runPipeline() so a caller can review/replace what happens
- * next (Stage 4's candidate-site list) before continuing — see
- * runSiteAnalysis() below, which picks up exactly where this leaves off.
- */
 export async function runPipelineStages1to3(
   input: PipelineInput,
   send: SendFn,
 ): Promise<Stage1to3Result> {
   const { indication, phase, ageGroups } = input;
-  // Sanitize once at the entry — see toPositiveNumberOrUndefined above —
-  // so a blank form field ("") never reaches the requirement builder or the
-  // saved-run values as a literal empty string.
   const sampleSize = toPositiveNumberOrUndefined(input.sampleSize);
   const durationMonths = toPositiveNumberOrUndefined(input.durationMonths);
  
@@ -493,18 +418,7 @@ export async function runPipelineStages1to3(
     userSelectedRegions.length > 0
       ? userSelectedRegions.map((r) => ({ region: r.region, country: r.country }))
       : REGION_DEFINITIONS;
- 
-  // Every defined region/country is now considered for every indication —
-  // there is no more per-indication Region_Data to filter against. Live
-  // data (competing trials) and LLM estimates (prevalence/regulatory/cost)
-  // determine each region's fit, fetched per region.
-  //
-  // Bounded concurrency, not Promise.all — when no region/country is
-  // pre-selected, regionDefs is every REGION_DEFINITIONS entry (~39), each
-  // making a ClinicalTrials.gov call plus an LLM call. Unbounded, that's the
-  // same request-burst pattern that was flooding clinicaltrials.gov/the LLM
-  // provider with 429s in llm/regionPredictor.ts — same fix, same knob
-  // (config.ctgov.regionConcurrency), just applied here too.
+
   const regionRows = await mapWithConcurrency(
     regionDefs,
     config.ctgov.regionConcurrency,
@@ -534,11 +448,6 @@ export async function runPipelineStages1to3(
     return scoreOf(b) - scoreOf(a);
   });
 
-  // Live candidate sites are discovered AFTER a region is picked (Stage 4,
-  // below) — there is no more Excel Candidate_Sites list to pre-filter
-  // eligible regions against, so the top-scoring region by the formula
-  // above is simply selected. If Stage 4 then finds zero live candidates
-  // there, the existing empty-candidate check below throws a clear error.
   const topRegion = rankedRegions[0];
   await sleep(STEP_DELAY_MS);
   send("stage", {
@@ -596,22 +505,9 @@ export interface RunSiteAnalysisParams {
   topRegion: RegionRow;
   estimatedPatients: number;
   ageGroups?: string[];
-  /**
-   * Real ClinicalTrials.gov facility rows to analyze — when provided (e.g.
-   * exactly what the user reviewed on the Ongoing Trials tab), Stage 4 uses
-   * this list instead of re-querying ClinicalTrials.gov itself. See
-   * buildLiveCandidateSites's `facilities` param.
-   */
   facilities?: LiveFacility[];
 }
 
-/**
- * Stages 4-8: build/score candidate sites, assess risk, rank, and recommend.
- * Picks up from runPipelineStages1to3()'s result. Kept as a separate
- * function (rather than inlined in runPipeline()) so /api/site-analysis can
- * call it directly with a caller-supplied `facilities` list — see
- * controllers/siteAnalysis.controller.ts.
- */
 export async function runSiteAnalysis(
   params: RunSiteAnalysisParams,
   send: SendFn,
@@ -641,13 +537,6 @@ export async function runSiteAnalysis(
       regionCompetingTrials: topRegion["Active Competing Trials"],
       avgCostPerPatient: topRegion["Avg Cost per Patient (USD)"],
       facilities,
-      // Real fix: this used to only affect Stage 1's text label (see the
-      // requirement["Age Group"] detail string above) — the actual
-      // candidate sites feeding Stages 4-7 (Ongoing Trials, Risk Register,
-      // Ranking, Final Recommendation) never filtered on it at all. Now
-      // the same live StdAge filter used by the Site Map tab applies here
-      // too, so every stage after this one is working from the same
-      // age-eligible site list, not two different unrelated lists.
       ageGroups,
     });
   } catch (err) {
@@ -695,9 +584,6 @@ export async function runSiteAnalysis(
  
   send("stage", { stage: 5, name: STAGE_NAMES[5], status: "in-progress" });
 
-  // Candidate sites are 100% live-sourced at this point (buildLiveCandidateSites
-  // above), so every eval row is looked up from liveEvalById only — there is
-  // no Excel-backed fallback map to fall through to anymore.
   const getEvalRow = (siteId: string): ExtendedEvaluationRow | undefined =>
     liveEvalById.get(siteId);
  
@@ -709,9 +595,6 @@ export async function runSiteAnalysis(
     scoredRaw.map((s, i) => [s.siteId, capConfidenceForEstimate(s, evalRows[i])]),
   );
 
-  // Real, data-derived cutoff for the Competing trials nearby check — see
-  // checkRequirements' doc comment on why this is an average across this
-  // run's own candidate pool rather than an arbitrary constant.
   const competingCounts = candidateSites.map(
     (s) => liveCandidateBySiteId.get(s["Site ID"])?.nearbyCompetingTrials ?? 0,
   );
@@ -788,19 +671,11 @@ export async function runSiteAnalysis(
     })),
   });
 
-  // Risk Register and Ranking show sites of every real recruiting status
-  // (Recruiting, Not Yet Recruiting, Completed, Terminated, etc.) — no
-  // status is excluded server-side. Each site carries its real status
-  // (site.recruitingStatus, surfaced below as `status`) so the UI can offer
-  // its own status filter instead.
   send("stage", { stage: 6, name: STAGE_NAMES[6], status: "in-progress" });
   const riskWarnings: string[] = [];
   const withRisk: RankedSite[] = await Promise.all(
     evaluated.map(async (site) => {
       const siteId = site["Site ID"];
-      // candidateSites is 100% live-sourced (buildLiveCandidateSites, Stage 4
-      // above), so every siteId is present in liveCandidateBySiteId — there
-      // is no Excel-backed risk list to fall through to anymore.
       const live = liveCandidateBySiteId.get(siteId);
       if (!live) {
         throw new Error(
@@ -831,11 +706,6 @@ export async function runSiteAnalysis(
       ).length;
       const overallRisk: RiskLevel =
         highCount > 0 ? "High" : medCount > 0 ? "Medium" : "Low";
-      // True only when the ENTIRE risk list for this site is the single
-      // "no data available" placeholder (see liveRiskAssessment.ts) — not
-      // when a site genuinely has one real Low-rated record. Used so the UI
-      // can show "No Data" instead of a "Low Risk" badge that would look
-      // identical to a site that was actually assessed and found clean.
       const riskDataUnavailable =
         risks.length === 1 && risks[0]["Risk Category"] === "Data Availability";
       return {
@@ -869,20 +739,12 @@ export async function runSiteAnalysis(
       riskDataUnavailable: s.riskDataUnavailable,
       riskRecords: s.risks.map(toRiskRecord),
       dataSource: s.evalRow.dataSource ?? "llm-estimated",
-      // Real, raw ClinicalTrials.gov status (e.g. "RECRUITING",
-      // "NOT_YET_RECRUITING", "COMPLETED"...) — the UI derives its own
-      // display label/color and offers its own status filter from this.
       status: s.recruitingStatus ?? null,
     })),
     warnings: riskWarnings,
   });
  
   send("stage", { stage: 7, name: STAGE_NAMES[7], status: "in-progress" });
-  // Every scored candidate is ranked and returned — no top-N cap. The
-  // Ranking page shows "X of Y site(s)" against the full candidate pool
-  // (see runPipeline Stage 6's data), so silently dropping everyone past
-  // rank 10 would make that count misleading and hide real candidates the
-  // user asked to see.
   const ranked = [...withRisk].sort((a, b) => {
     const aOk = a.requirementChecks.every((c) => c.pass);
     const bOk = b.requirementChecks.every((c) => c.pass);
@@ -944,11 +806,6 @@ export async function runSiteAnalysis(
     top,
     riskExplanation: top.riskExplanation,
   });
-  // Cache the full scored pool so the Final Recommendation page's status
-  // dropdown (best of Recruiting / Not Yet Recruiting / Active, Not
-  // Recruiting — see RecommendationPanel.tsx) can ask for a different
-  // status's top site later without re-running Stages 4-6. See
-  // analysisCache.ts / siteRecommendation.controller.ts.
   const analysisId = storeAnalysis({ input, topRegion, estimatedPatients, ranked });
   send("stage", {
     stage: 8,
@@ -965,15 +822,7 @@ export async function runSiteAnalysis(
   });
 }
 
-/**
- * One-shot entry point used by POST /api/run: runs Stages 1-3 then
- * immediately continues into Stages 4-8 with a self-fetched candidate-site
- * list (no `facilities` override) — this is the original, unchanged
- * end-to-end behavior. A caller that wants Stage 4 to analyze a specific,
- * already-reviewed set of live sites (e.g. from the Ongoing Trials tab)
- * should call runPipelineStages1to3() and runSiteAnalysis() directly instead
- * — see controllers/siteAnalysis.controller.ts.
- */
+
 export async function runPipeline(
   input: PipelineInput,
   send: SendFn,

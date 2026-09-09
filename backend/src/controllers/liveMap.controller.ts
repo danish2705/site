@@ -20,9 +20,6 @@ export async function getLiveSiteMap(
   const radiusMiles = req.query.radiusMiles
     ? Number(req.query.radiusMiles)
     : undefined;
-  // Accepts either repeated ?ageGroups=A&ageGroups=B (Express gives an
-  // array) or a single comma-separated ?ageGroups=A,B — either way ends up
-  // as a clean string[], empty when not provided (all ages).
   const ageGroupsRaw = req.query.ageGroups;
   const ageGroups = (
     Array.isArray(ageGroupsRaw)
@@ -41,11 +38,6 @@ export async function getLiveSiteMap(
     throw badRequest((err as Error).message);
   }
 
-  // Optional "scope to one trial's own disclosed sites" mode — see
-  // NctStudyLookup.facilities / frontend PipelineContext's
-  // runAnalysisFromNct. Best-effort: an unknown/unresolvable nctId just
-  // falls back to the normal broad indication-wide search rather than
-  // failing the whole map load.
   const nctId = req.query.nctId ? String(req.query.nctId).trim() : "";
   const facilitiesOverride = nctId
     ? (await getStudyByNctId(nctId))?.facilities
@@ -63,16 +55,6 @@ export async function getLiveSiteMap(
   res.json(response);
 }
 
-/**
- * POST /api/live-map/combined-catchment
- * Body: { indication, country, radiusMiles?, sites: [{ siteId, lat, lng, netAvailablePatients }] }
- *
- * Answers "if I pick these sites together, how many UNIQUE patients can I
- * actually reach?" — de-duplicating any catchment overlap between nearby
- * selected sites instead of just summing each site's own (independently
- * computed) number, which double-counts patients reachable by more than one
- * site. See pipeline/liveMapData.ts's buildCombinedCatchment.
- */
 export async function getCombinedCatchment(
   req: Request,
   res: Response,

@@ -1,37 +1,4 @@
 import { config } from "../config.js";
-
-/**
- * Orphanet / Orphadata integration for the Rare Disease feature.
- *
- * Corrected from an earlier version of this file: api.orphadata.com's public
- * "Rare diseases aligned with terminologies and databases" / "Epidemiology
- * of rare diseases" / "Natural history of rare diseases" endpoints are
- * genuinely open — CC BY 4.0, NO API key or registration required (verified
- * directly against the live API, e.g. GET
- * https://api.orphadata.com/rd-epidemiology/orphacodes/558). The earlier
- * version of this client mistakenly routed through api.orphacode.org, which
- * DOES require a registered key — that was wrong for this use case and has
- * been replaced.
- *
- * Two data paths:
- *
- * 1. Search-by-name: GET /rd-cross-referencing/orphacodes/names/{name} only
- *    does an EXACT preferred-term match (confirmed — "marf" returns nothing,
- *    "Marfan syndrome" returns exactly one result), so it can't power a
- *    type-ahead dropdown on its own. Instead this fetches the full disease
- *    list once — GET /rd-cross-referencing/orphacodes (~11,600 diseases,
- *    ORPHAcode + preferred term only) — caches it in memory, and does local
- *    substring matching against it. Still entirely real Orphanet data, just
- *    refreshed periodically rather than re-fetched per keystroke.
- *
- * 2. Detail, live per ORPHAcode, no key required:
- *    - GET /rd-cross-referencing/orphacodes/{orphacode}  (name, definition,
- *      typology, synonyms, ICD-10/ICD-11/OMIM/MONDO/MeSH/UMLS/GARD mappings)
- *    - GET /rd-epidemiology/orphacodes/{orphacode}        (prevalence/incidence)
- *    - GET /rd-natural_history/orphacodes/{orphacode}     (inheritance,
- *      average age of onset, average age of death when Orphanet has it)
- */
-
 const BASE_URL = "https://api.orphadata.com";
 
 interface CacheEntry<T> {
@@ -75,11 +42,6 @@ async function orphadataGet<T>(path: string): Promise<T | null> {
     clearTimeout(timer);
   }
 }
-
-/* ---------------------------------------------------------------------- */
-/* 1. Search — bulk list fetched once, cached, searched locally            */
-/* ---------------------------------------------------------------------- */
-
 export interface RareDiseaseSearchResult {
   orphaCode: string;
   name: string;
@@ -104,7 +66,6 @@ async function getDiseaseIndex(): Promise<RareDiseaseSearchResult[]> {
   return list;
 }
 
-/** Local, real-data substring search over Orphanet's full disease list — see getDiseaseIndex. */
 export async function searchRareDiseasesByName(
   query: string,
 ): Promise<RareDiseaseSearchResult[]> {
@@ -114,8 +75,6 @@ export async function searchRareDiseasesByName(
     const index = await getDiseaseIndex();
     return index
       .filter((d) => d.name.toLowerCase().includes(trimmed))
-      // Shorter/closer matches first, then alphabetical — same relevance
-      // proxy already used by indicationSearch's live ClinicalTrials.gov search.
       .sort((a, b) => a.name.length - b.name.length || a.name.localeCompare(b.name))
       .slice(0, 40);
   } catch (err) {
@@ -124,17 +83,12 @@ export async function searchRareDiseasesByName(
   }
 }
 
-/* ---------------------------------------------------------------------- */
-/* 2. Detail — live per-ORPHAcode, no key required                        */
-/* ---------------------------------------------------------------------- */
-
 export interface RareDiseaseNomenclature {
   orphaCode: string;
   name: string;
   definition: string | null;
   typology: string | null;
   synonyms: string[];
-  /** e.g. [{source:"ICD-10", reference:"Q87.4"}, {source:"OMIM", reference:"154700"}, ...] */
   crossReferences: { source: string; reference: string }[];
 }
 
@@ -283,26 +237,12 @@ export async function getRareDiseaseNaturalHistory(
     return empty;
   }
 }
-
-/* ---------------------------------------------------------------------- */
-/* 3. Region-metrics integration — real Orphanet prevalence, when it       */
-/*    exists, in place of liveRegionMetrics.ts's claims-synthetic/LLM      */
-/*    fallback. See buildLiveRegionRow in pipeline/liveRegionMetrics.ts.   */
-/* ---------------------------------------------------------------------- */
-
 interface ExactNameResponse {
   data?: {
     results?: { ORPHAcode?: number } | { ORPHAcode?: number }[];
   };
 }
 
-/**
- * GET /rd-cross-referencing/orphacodes/names/{name} — EXACT preferred-term
- * match only (confirmed: "marf" returns nothing, "Marfan syndrome" returns
- * exactly one hit). That's exactly what's needed here: the trial form's
- * Indication string either is a real Orphanet preferred term or it isn't —
- * there's no fuzzy-matching ambiguity to resolve.
- */
 async function findOrphaCodeByExactName(name: string): Promise<string | null> {
   const trimmed = name.trim();
   if (!trimmed) return null;
@@ -325,25 +265,8 @@ async function findOrphaCodeByExactName(name: string): Promise<string | null> {
   return orphaCode;
 }
 
-// Only these three types describe a standing prevalence (a snapshot of how
-// many people currently have the disease) — "Annual incidence" is a rate of
-// NEW cases per year, not a population snapshot, and "Cases/families" is an
-// absolute headcount with no denominator, so neither converts to a per-100k
-// rate. Ordered by how directly each represents current disease burden.
 const PREVALENCE_TYPE_PRIORITY = ["Point prevalence", "Prevalence at birth", "Lifelong prevalence"];
 
-/**
- * Orphanet's PrevalenceClass is a documented, stable six-tier scale (e.g.
- * "1-5 / 10 000", "1-9 / 100 000", "<1 / 1 000 000") — unlike the numeric
- * ValMoy field, whose exact unit isn't confirmed from any public Orphanet
- * documentation this integration could access, so ValMoy is deliberately
- * NOT used here to avoid silently asserting a possibly-wrong number. This
- * parses the class string itself and returns the class's own midpoint
- * (or, for an open-ended "<"/">" class, a rough single-sided estimate) as a
- * per-100,000 rate. This is a real approximation of Orphanet's own
- * published category, not a precise point estimate — callers should treat
- * it accordingly (e.g. still label it as an estimate in any UI).
- */
 function parsePrevalenceClassPer100k(prevalenceClass: string): number | null {
   const s = prevalenceClass.replace(/[,\s]/g, "");
   const m = /^([<>]?)(\d+(?:\.\d+)?)(?:-(\d+(?:\.\d+)?))?\/(\d+(?:\.\d+)?)$/.exec(s);
@@ -372,20 +295,6 @@ export interface OrphanetPrevalenceMatch {
   citation: string;
 }
 
-/**
- * Real, live Orphanet prevalence for one indication + country, for use as a
- * higher-priority replacement of liveRegionMetrics.ts's claims-synthetic/
- * LLM-estimated "Prevalence (per 100k)" — but ONLY when the trial form's
- * Indication string is an exact Orphanet preferred term (a real rare
- * disease) AND Orphanet has a prevalence record geographically specific to
- * this exact country, or at worst "Worldwide". A record scoped to some
- * OTHER named region (e.g. "Europe" when the target country is "Ukraine")
- * is deliberately NOT used — applying a continent-wide figure to one named
- * country without a documented sub-breakdown would be a guess dressed up as
- * real data, which defeats the point of replacing an LLM guess with one.
- * Returns null whenever no confidently-scoped real match exists, so the
- * caller can fall back to claims/LLM exactly as before.
- */
 export async function getOrphanetPrevalencePer100k(
   indication: string,
   country: string,

@@ -13,9 +13,7 @@ export interface RegionRow {
   competingTrialsSource?: "live" | "excel";
   regionMetricsSource?: "live" | "llm-estimated" | "claims-synthetic" | "unavailable";
   metricsWarning?: string;
-  /** Where "Prevalence (per 100k)" specifically came from — tracked separately from regionMetricsSource because Regulatory Approval Time / Avg Cost per Patient have no Orphanet equivalent and keep using claims/LLM even on an "orphanet-live" row. */
   prevalenceSource?: "orphanet-live" | "claims-synthetic" | "llm-estimated" | "unavailable";
-  /** e.g. "Orphanet ORPHA:558 — Point prevalence, Europe, Validated — 20.0 (class 1-5/10,000)" when prevalenceSource is "orphanet-live". */
   prevalenceCitation?: string;
 }
 
@@ -28,7 +26,6 @@ export interface LiveFacilityRow {
   country: string | null;
   status: string | null;
   lastUpdatePostDate: string | null;
-  /** Real, disclosed eligibility age bounds of the study this facility belongs to — see services/ctgov.client.ts's LiveFacility. */
   minimumAge?: string | null;
   maximumAge?: string | null;
 }
@@ -52,37 +49,22 @@ export interface LiveTrialLandscapeResponse {
   warnings: string[];
 }
 
-/**
- * Normalized response for GET /api/nct-lookup/:nctId — the landing page's
- * "Search by NCT Number" auto-fill. Maps ClinicalTrials.gov's own vocabulary
- * (raw Phase values, StdAge buckets) onto this app's own form field values
- * (Sidebar's PHASES/AGE_GROUPS labels) so the frontend can drop these straight
- * into TrialForm with no further translation.
- */
 export interface NctLookupResponse {
   nctId: string;
   briefTitle: string | null;
   officialTitle: string | null;
-  /** Raw disclosed condition text — dropped straight into TrialForm.indication even when it doesn't exactly match this app's static indication list (resolveSpecialty() already falls back to an LLM for indications outside that list, so no manual reconciliation is needed here). */
   indication: string | null;
   overallStatus: string | null;
-  /** Mapped to this app's "Phase I".."Phase IV" labels — null if the study's disclosed phase(s) don't map to exactly one of those (e.g. no phase disclosed, or an ambiguous multi-phase study), in which case the frontend leaves Phase unset for the user/pipeline default to handle. */
   phase: string | null;
-  /** This app's Age Group label(s) (Sidebar's AGE_GROUPS) the study's disclosed eligibility age range overlaps — same bucketing ctgov.client.ts already applies when filtering live facilities by age. */
   ageGroups: string[];
   enrollmentCount: number | null;
-  /** "ACTUAL" (post-completion, reliable) or "ESTIMATED" (a target). */
   enrollmentType: string | null;
-  /** start -> primary-completion, in whole months — null if either date is missing/unparseable. */
   durationMonths: number | null;
-  /** De-duplicated disclosed site countries — informational context only; NOT applied as a region/country filter (see NctStudyLookup.countries in ctgov.client.ts for why). */
   countries: string[];
   siteCount: number;
-  /** This study's own disclosed site/location list — lets the frontend optionally run Risk Assessment/Site Ranking/Site Map/Recommendation against ONLY this trial's own sites instead of the default broad indication-wide search. Empty when the study discloses no locations. */
   facilities: LiveFacilityRow[];
 }
 
-/** One trial site plotted on the Site Map tab — see pipeline/liveMapData.ts for exactly what's live vs. synthetic vs. approximate in each field. */
 export interface MapSiteRow {
   siteId: string;
   siteName: string;
@@ -96,7 +78,6 @@ export interface MapSiteRow {
   radiusMiles: number;
   populationInRadius: number;
   populationSource: "synthetic" | "worldpop-live";
-  /** Only set when populationSource is "worldpop-live" — a short citation string for the WorldPop dataset used. */
   populationCitation?: string;
   prevalencePer100k: number;
   grossEligiblePatients: number;

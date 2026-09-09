@@ -86,20 +86,13 @@ function warn(label: string, err: unknown): void {
   }
 }
 
-/* ---------------------------------------------------------------------- */
-/* 0. Single study lookup by NCT ID (landing-page "Search by NCT Number")  */
-/* ---------------------------------------------------------------------- */
-
 export interface NctStudyLookup {
   nctId: string;
   briefTitle: string | null;
   officialTitle: string | null;
-  /** First disclosed condition — used as the auto-filled Indication. */
   condition: string | null;
-  /** Every disclosed condition (a study can list more than one). */
   conditions: string[];
   overallStatus: string | null;
-  /** Raw ClinicalTrials.gov phase value(s), e.g. "PHASE2" — mapped to the app's "Phase II" label by the caller/controller. */
   phases: string[];
   enrollmentCount: number | null;
   enrollmentType: string | null;
@@ -109,11 +102,8 @@ export interface NctStudyLookup {
   healthyVolunteers: boolean | null;
   startDate: string | null;
   primaryCompletionDate: string | null;
-  /** De-duplicated, disclosed location countries — shown as context only; NOT used to restrict the region/country search (this app's site-selection engine deliberately searches every configured region globally rather than assuming the best NEW site is wherever the original trial happened to run). */
   countries: string[];
-  /** Total disclosed locations (all countries) on this study's record. */
   siteCount: number;
-  /** This study's own disclosed site/location list, in the same shape as getFacilitiesForCondition's rows — powers the optional "scope everything to this one NCT's own sites" flow (see nctLookup.controller.ts and frontend PipelineContext's runAnalysisFromNct) instead of the default broad indication-wide search. */
   facilities: LiveFacility[];
 }
 
@@ -176,13 +166,6 @@ const NCT_LOOKUP_FIELDS = [
   "LocationStatus",
 ].join(",");
 
-/**
- * GET /studies/{nctId}?fields=... — a single study by its NCT number, for the
- * landing page's "Search by NCT Number" auto-fill. Returns null when the ID
- * isn't found (ClinicalTrials.gov 404s unknown/malformed NCT numbers) or on
- * any fetch failure — callers show a "not found, try manual entry" message
- * rather than a raw error either way, so the two cases are collapsed here.
- */
 export async function getStudyByNctId(
   nctId: string,
 ): Promise<NctStudyLookup | null> {
@@ -261,23 +244,6 @@ export async function getStudyByNctId(
   }
 }
 
-/* ---------------------------------------------------------------------- */
-/* 1. Active competing trials count                                       */
-/* ---------------------------------------------------------------------- */
-
-/**
- * Live replacement for RegionRow["Active Competing Trials"].
- * GET /studies?query.cond={condition}&query.locn={country}
- *     &filter.overallStatus={config.competingTrials.statuses.join(",")}&countTotal=true&pageSize=1
- *
- * Which statuses count as "ongoing/competing" is a business definition, not
- * a ClinicalTrials.gov constant — see config.ts's competingTrials.statuses
- * doc comment. Defaults to RECRUITING, NOT_YET_RECRUITING,
- * ACTIVE_NOT_RECRUITING, and ENROLLING_BY_INVITATION (i.e. anything still
- * actively running), excluding terminal statuses like COMPLETED/TERMINATED/
- * WITHDRAWN/SUSPENDED — adjustable via the COMPETING_TRIAL_STATUSES env var
- * without touching this query-building code.
- */
 export async function getActiveCompetingTrialsCount(
   condition: string,
   country: string,
@@ -407,17 +373,6 @@ export interface LiveFacility {
   country: string | null;
   status: string | null;
   lastUpdatePostDate: string | null;
-  /**
-   * Real, disclosed protocolSection.eligibilityModule.minimumAge/maximumAge
-   * for the STUDY this facility location belongs to. NOT a per-location
-   * field ClinicalTrials.gov itself tracks — age eligibility is set once for
-   * the whole protocol, so every location within the SAME study shares this
-   * same value. It still varies genuinely across the facility list as a
-   * whole, though, because different facilities here usually come from
-   * different studies with different eligibility windows — used to build a
-   * real per-site "Patient age" requirement check (see
-   * pipeline/runPipeline.ts's checkRequirements).
-   */
   minimumAge: string | null;
   maximumAge: string | null;
 }
@@ -448,25 +403,6 @@ interface StudiesResponse {
   totalCount?: number;
 }
 
-/**
- * Live cross-check for SiteRow — real facilities ClinicalTrials.gov has
- * on record as running (or having run) trials for this condition.
- * GET /studies?query.cond={condition}[&query.locn={country}]
- *     &fields=NCTId,BriefTitle,OverallStatus,LastUpdatePostDate,LocationFacility,LocationCity,LocationState,LocationCountry,LocationStatus
- *
- * Per-location recruitment status (LocationStatus) is only disclosed by
- * ClinicalTrials.gov for a subset of trials (mainly ones that actively
- * report site-level recruitment) — many trials, especially older/completed
- * ones, leave it blank even though the study itself always has an overall
- * status. Rather than show every such row as "Unknown," this falls back to
- * the study's own OverallStatus when the location-specific one is missing,
- * so a row still shows a real, disclosed status rather than nothing.
- */
-/**
- * Turns the trial form's selected Age Group label(s) into the standardized
- * CHILD / ADULT / OLDER_ADULT values ClinicalTrials.gov itself classifies
- * studies into (the same buckets its own site's age filter uses).
- */
 export function selectedStdAgeValues(ageGroups: string[] | undefined): Set<string> {
   const values = new Set<string>();
   for (const g of ageGroups ?? []) {
@@ -497,20 +433,6 @@ function parseAgeYears(age: string | null | undefined): number | null {
   }
 }
 
-/**
- * Derives which StdAge bucket(s) a study's real, disclosed MinimumAge/
- * MaximumAge eligibility range overlaps — computed locally from the same
- * two fields ClinicalTrials.gov's own StdAge classification is itself
- * derived from, rather than trusting an Essie `query.term=AREA[StdAge]...`
- * filter sent to the live API (whose exact syntax/behavior this sandbox has
- * no live network access to verify — see the old version of this comment,
- * kept for history in git). Computing the bucket ourselves from two already-
- * fetched, already-used-elsewhere-in-this-file fields is fully testable and
- * doesn't depend on unverifiable server-side query behavior. A study with no
- * age fields disclosed is treated as "all ages" (matches every group) rather
- * than excluded, since an unknown eligibility range is not evidence the
- * study excludes anyone.
- */
 export function studyAgeGroups(
   minimumAge: string | null | undefined,
   maximumAge: string | null | undefined,
@@ -1291,23 +1213,6 @@ interface ConditionSearchResponse {
 
 const CONDITION_SEARCH_PAGE_SIZE = 50;
 const CONDITION_SEARCH_RESULT_LIMIT = 20;
-
-/**
- * Live, real search for condition/indication names matching partial user
- * input — the ONLY way to reach ClinicalTrials.gov's full condition
- * vocabulary from this app. getFieldTopValues (above) is capped at the top
- * 250 most common values by ClinicalTrials.gov's own /stats/field/values
- * endpoint, no matter what; it can never surface a less-common real
- * indication. This instead searches actual studies
- * (GET /studies?query.cond={query}, the same documented, already-used-
- * elsewhere search this app relies on for candidate sites) and extracts the
- * real, disclosed Condition values from whatever matches — essie's own
- * text/synonym matching means the query doesn't need to be an exact
- * substring of the returned condition, but results are then filtered down to
- * ones that do contain the query text, so this behaves as a clean
- * autocomplete rather than a loose relevance list. Real data throughout, no
- * LLM involved — this is a search, not an inference.
- */
 export async function searchConditions(query: string): Promise<string[]> {
   if (!config.ctgov.enabled) return [];
   const trimmed = query.trim();
@@ -1338,9 +1243,6 @@ export async function searchConditions(query: string): Promise<string[]> {
       }
     }
     const values = [...seen.values()]
-      // Shorter, closer matches first (e.g. "Depression" before "Major
-      // Depressive Disorder with Psychotic Features") — a reasonable
-      // relevance proxy without a real ranking signal to sort by.
       .sort((a, b) => a.length - b.length || a.localeCompare(b))
       .slice(0, CONDITION_SEARCH_RESULT_LIMIT);
 

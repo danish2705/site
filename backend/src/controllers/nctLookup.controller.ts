@@ -3,11 +3,6 @@ import { getStudyByNctId, studyAgeGroups } from "../services/ctgov.client.js";
 import { badRequest, notFoundError } from "../utils/httpError.js";
 import type { NctLookupResponse } from "../types.js";
 
-// ClinicalTrials.gov's own PHASE1-4 values (plus EARLY_PHASE1) mapped onto
-// this app's Sidebar PHASES labels. A study can disclose more than one phase
-// (e.g. a combined Phase II/III trial) — this app's form only supports a
-// single discrete Phase, so the most ADVANCED phase present is used as the
-// best single-value stand-in rather than leaving the field blank.
 const PHASE_RANK: Record<string, number> = {
   EARLY_PHASE1: 1,
   PHASE1: 1,
@@ -59,21 +54,8 @@ function monthsBetween(start: string | null, end: string | null): number | null 
   return months > 0 ? months : null;
 }
 
-// Loose sanity check only — the real validation is ClinicalTrials.gov itself
-// 404ing anything it doesn't recognize. This just avoids sending an obviously
-// empty/garbage id to the live API and gives a clearer 400 instead.
 const NCT_ID_PATTERN = /^NCT\d{6,9}$/i;
 
-/**
- * GET /api/nct-lookup/:nctId
- *
- * Landing page's "Search by NCT Number" — looks up one real, disclosed
- * ClinicalTrials.gov study and normalizes it onto this app's own TrialForm
- * field values (Indication, Phase, Age Group, Target Enrollment, Duration),
- * so the frontend can auto-fill and run the analysis with zero manual form
- * interaction. Region/Country is deliberately NOT derived from the trial's
- * own disclosed sites — see NctLookupResponse.countries.
- */
 export async function getNctLookup(req: Request, res: Response): Promise<void> {
   const nctId = String(req.params.nctId || "").trim();
   if (!nctId) {
