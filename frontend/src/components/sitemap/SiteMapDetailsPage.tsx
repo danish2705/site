@@ -55,7 +55,10 @@ export default function SiteMapDetailsPage() {
   } = useSiteMap();
 
   const filterHeaderRef = useRef<HTMLTableCellElement>(null);
-  const [filterPanelRect, setFilterPanelRect] = useState<{ top: number; left: number } | null>(null);
+  const [filterPanelRect, setFilterPanelRect] = useState<{
+    top: number;
+    left: number;
+  } | null>(null);
 
   useLayoutEffect(() => {
     if (!filterPanelOpen) return;
@@ -91,9 +94,6 @@ export default function SiteMapDetailsPage() {
   return (
     <div className="card">
       <div className="map-controls map-controls--flush">
-        {/* No tooltip here — this label sits at the very top of the card,
-            so a hover bubble that opens upward has nowhere to render and
-            just shows up as a box clipped above the viewport. */}
         <label className="map-field">
           {selectedCountries.length > 0 ? (
             <Select
@@ -104,7 +104,12 @@ export default function SiteMapDetailsPage() {
             />
           ) : (
             <>
-              <Select value="" onChange={() => {}} disabled options={[{ value: "", label: "All countries" }]} />
+              <Select
+                value=""
+                onChange={() => {}}
+                disabled
+                options={[{ value: "", label: "All countries" }]}
+              />
               <span className="map-field-note">
                 No region selected yet — pick one in Step 1 (or apply an AI
                 prediction) to narrow this.
@@ -112,12 +117,7 @@ export default function SiteMapDetailsPage() {
             </>
           )}
         </label>
-        {/* Kept in the same row as the Country control above (instead of a
-            separate toolbar row further down) so "pick a country -> search
-            -> export" reads as one continuous bar. Only shown once there's
-            a table to export. The site-name search box and the "N of N
-            site(s)" count that used to sit here were removed per request —
-            the table just lists every site now, with no text filter. */}
+
         {data && allSites.length > 0 && (
           <button
             type="button"
@@ -132,11 +132,6 @@ export default function SiteMapDetailsPage() {
 
       <div className="card-scroll-body" style={{ position: "relative" }}>
         {error && <p className="error-text">{error}</p>}
-
-        {/* Overlays the (possibly still-showing stale) table below instead
-            of squeezing into its own slot above it, so the spinner sits
-            centered in the middle of the visible panel rather than in a
-            small empty gap near the top. */}
         {loading && (
           <div className="table-loading-overlay">
             <StageLoader label="Loading site map details…" />
@@ -162,7 +157,6 @@ export default function SiteMapDetailsPage() {
 
         {data && allSites.length > 0 && (
           <>
-
             <Tooltip
               as="label"
               text="Uncheck to compare against the total eligible population, including patients already enrolled in another trial for this indication"
@@ -191,13 +185,19 @@ export default function SiteMapDetailsPage() {
                 );
                 return (
                   <>
-                    <span style={{ color: "var(--text-secondary)", fontWeight: 600 }}>
+                    <span
+                      style={{
+                        color: "var(--text-secondary)",
+                        fontWeight: 600,
+                      }}
+                    >
                       {excludeEnrolled
                         ? `Available patients: ${totalAvailable.toLocaleString()}`
                         : `Available + enrolled: ${totalAvailable.toLocaleString()}`}
                     </span>
                     <span style={{ color: "var(--text-secondary)" }}>
-                      (already enrolled elsewhere: {totalEnrolled.toLocaleString()})
+                      (already enrolled elsewhere:{" "}
+                      {totalEnrolled.toLocaleString()})
                     </span>
                   </>
                 );
@@ -229,10 +229,16 @@ export default function SiteMapDetailsPage() {
                     <th className="sortable" onClick={() => toggleSort("site")}>
                       Site{sortArrow("site")}
                     </th>
-                    <th className="sortable" onClick={() => toggleSort("location")}>
+                    <th
+                      className="sortable"
+                      onClick={() => toggleSort("location")}
+                    >
                       Location{sortArrow("location")}
                     </th>
-                    <th className="sortable" onClick={() => toggleSort("gross")}>
+                    <th
+                      className="sortable"
+                      onClick={() => toggleSort("gross")}
+                    >
                       Gross Eligible{sortArrow("gross")}
                     </th>
                     <Tooltip as="th" elementRef={filterHeaderRef}>
@@ -248,178 +254,194 @@ export default function SiteMapDetailsPage() {
                         }}
                         style={{
                           border: "none",
-                          background: activeEligFilters.length > 0 ? "var(--success)" : "var(--border)",
-                          color: activeEligFilters.length > 0 ? "var(--card)" : "var(--text-primary)",
+                          background:
+                            activeEligFilters.length > 0
+                              ? "var(--success)"
+                              : "var(--border)",
+                          color:
+                            activeEligFilters.length > 0
+                              ? "var(--card)"
+                              : "var(--text-primary)",
                           borderRadius: 4,
                           padding: "1px 6px",
                           fontSize: 11,
                           cursor: "pointer",
                         }}
                       >
-                        ▾{activeEligFilters.length > 0 ? ` ${activeEligFilters.length}` : ""}
+                        ▾
+                        {activeEligFilters.length > 0
+                          ? ` ${activeEligFilters.length}`
+                          : ""}
                       </Tooltip>
-
                       {filterPanelOpen &&
                         filterPanelRect &&
                         createPortal(
-                        <div
-                          onClick={(e) => e.stopPropagation()}
-                          style={{
-                            position: "fixed",
-                            top: filterPanelRect.top,
-                            left: filterPanelRect.left,
-                            zIndex: 3000,
+                          <div
+                            onClick={(e) => e.stopPropagation()}
+                            style={{
+                              position: "fixed",
+                              top: filterPanelRect.top,
+                              left: filterPanelRect.left,
+                              zIndex: 3000,
 
-                            width: 380,
-                            maxHeight: 380,
-                            overflowY: "auto",
-                            overflowX: "hidden",
-                            background: "var(--card)",
-                            border: "1px solid var(--border)",
-                            borderRadius: 6,
-                            boxShadow: "0 6px 20px rgba(0,0,0,0.15)",
-                            padding: 8,
-                            textAlign: "left",
-                            fontWeight: 400,
-                            textTransform: "none",
-                          }}
-                        >
-                          {eligFiltersLoading && (
-                            <div style={{ fontSize: 12, padding: 4 }}>Loading…</div>
-                          )}
-                          {eligFiltersError && (
-                            <div style={{ fontSize: 12, padding: 4, color: "var(--danger)" }}>
-                              {eligFiltersError}
-                            </div>
-                          )}
-                          {eligFilters?.warning && (
-                            <div style={{ fontSize: 11.5, padding: 4, color: "color-mix(in srgb, var(--warning) 70%, black)" }}>
-                              {eligFilters.warning}
-                            </div>
-                          )}
-
-                          {eligFilters && eligFilters.filters.length > 0 && (
-                            <>
-                              {/* Sticky at the top of the scrollable panel
-                                  (negative margin + matching padding to
-                                  extend under the panel's own 8px padding)
-                                  so it stays visible while the filter list
-                                  below it scrolls. */}
-                              <label
+                              width: 380,
+                              maxHeight: 380,
+                              overflowY: "auto",
+                              overflowX: "hidden",
+                              background: "var(--card)",
+                              border: "1px solid var(--border)",
+                              borderRadius: 6,
+                              boxShadow: "0 6px 20px rgba(0,0,0,0.15)",
+                              padding: 8,
+                              textAlign: "left",
+                              fontWeight: 400,
+                              textTransform: "none",
+                            }}
+                          >
+                            {eligFiltersLoading && (
+                              <div style={{ fontSize: 12, padding: 4 }}>
+                                Loading…
+                              </div>
+                            )}
+                            {eligFiltersError && (
+                              <div
                                 style={{
-                                  display: "flex",
-                                  alignItems: "center",
-                                  gap: 8,
-                                  fontSize: 12.5,
-                                  position: "sticky",
-                                  top: -8,
-                                  zIndex: 2,
-                                  background: "var(--card)",
-                                  margin: "-8px -8px 4px",
-                                  padding: "8px 8px 4px",
-                                  borderBottom: "1px solid var(--border)",
+                                  fontSize: 12,
+                                  padding: 4,
+                                  color: "var(--danger)",
                                 }}
                               >
-                                <input
-                                  type="checkbox"
-                                  checked={allFiltersSelected}
-                                  onChange={toggleSelectAllFilters}
-                                />
-                                <strong>(Select All)</strong>
-                              </label>
+                                {eligFiltersError}
+                              </div>
+                            )}
+                            {eligFilters?.warning && (
+                              <div
+                                style={{
+                                  fontSize: 11.5,
+                                  padding: 4,
+                                  color:
+                                    "color-mix(in srgb, var(--warning) 70%, black)",
+                                }}
+                              >
+                                {eligFilters.warning}
+                              </div>
+                            )}
 
-                              {eligFilters.filters.map((f) => (
-                                <Tooltip
-                                  as="label"
-                                  key={f.id}
-                                  text={`${f.detail}\n\n(${f.type} — ~${f.estimatedExcludedPercent}% of the general population excluded, AI-estimated)`}
+                            {eligFilters && eligFilters.filters.length > 0 && (
+                              <>
+                                <label
                                   style={{
                                     display: "flex",
-                                    alignItems: "flex-start",
+                                    alignItems: "center",
                                     gap: 8,
                                     fontSize: 12.5,
-                                    padding: "4px 4px",
+                                    position: "sticky",
+                                    top: -8,
+                                    zIndex: 2,
+                                    background: "var(--card)",
+                                    margin: "-8px -8px 4px",
+                                    padding: "8px 8px 4px",
+                                    borderBottom: "1px solid var(--border)",
                                   }}
                                 >
                                   <input
                                     type="checkbox"
-                                    checked={selectedFilterIds.has(f.id)}
-                                    onChange={() => toggleEligFilter(f.id)}
-                                    style={{ marginTop: 2 }}
+                                    checked={allFiltersSelected}
+                                    onChange={toggleSelectAllFilters}
                                   />
-                                  {/* Labels are capped at 45 chars server-side,
-                                      so this wraps onto at most two short
-                                      lines instead of being cut off or forcing
-                                      a horizontal scrollbar — the fuller
-                                      clinical wording is in the title tooltip
-                                      above, not squeezed into this line. */}
-                                  <span
+                                  <strong>(Select All)</strong>
+                                </label>
+
+                                {eligFilters.filters.map((f) => (
+                                  <Tooltip
+                                    as="label"
+                                    key={f.id}
+                                    text={`${f.detail}\n\n(${f.type} — ~${f.estimatedExcludedPercent}% of the general population excluded, AI-estimated)`}
                                     style={{
-                                      flex: 1,
-                                      whiteSpace: "normal",
-                                      wordBreak: "break-word",
-                                      lineHeight: 1.35,
+                                      display: "flex",
+                                      alignItems: "flex-start",
+                                      gap: 8,
+                                      fontSize: 12.5,
+                                      padding: "4px 4px",
                                     }}
                                   >
-                                    {f.label}
-                                  </span>
-                                  <span
-                                    style={{
-                                      color: "var(--text-secondary)",
-                                      fontSize: 11,
-                                      flexShrink: 0,
-                                      paddingTop: 1,
-                                    }}
+                                    <input
+                                      type="checkbox"
+                                      checked={selectedFilterIds.has(f.id)}
+                                      onChange={() => toggleEligFilter(f.id)}
+                                      style={{ marginTop: 2 }}
+                                    />
+                                    <span
+                                      style={{
+                                        flex: 1,
+                                        whiteSpace: "normal",
+                                        wordBreak: "break-word",
+                                        lineHeight: 1.35,
+                                      }}
+                                    >
+                                      {f.label}
+                                    </span>
+                                    <span
+                                      style={{
+                                        color: "var(--text-secondary)",
+                                        fontSize: 11,
+                                        flexShrink: 0,
+                                        paddingTop: 1,
+                                      }}
+                                    >
+                                      ~{f.estimatedExcludedPercent}%
+                                    </span>
+                                  </Tooltip>
+                                ))}
+                                <div
+                                  style={{
+                                    display: "flex",
+                                    justifyContent: "space-between",
+                                    position: "sticky",
+                                    bottom: -8,
+                                    zIndex: 2,
+                                    background: "var(--card)",
+                                    margin: "8px -8px -8px",
+                                    padding: "6px 8px 8px",
+                                    borderTop: "1px solid var(--border)",
+                                  }}
+                                >
+                                  <button
+                                    type="button"
+                                    className="map-csv-btn"
+                                    onClick={clearEligFilters}
+                                    disabled={activeEligFilters.length === 0}
                                   >
-                                    ~{f.estimatedExcludedPercent}%
-                                  </span>
-                                </Tooltip>
-                              ))}
+                                    Clear
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className="predict-btn"
+                                    onClick={() => setFilterPanelOpen(false)}
+                                  >
+                                    Done
+                                  </button>
+                                </div>
+                              </>
+                            )}
 
-                              {/* Sticky at the bottom, same trick as the
-                                  header above, so Clear/Done stay reachable
-                                  without scrolling all the way down. */}
-                              <div
-                                style={{
-                                  display: "flex",
-                                  justifyContent: "space-between",
-                                  position: "sticky",
-                                  bottom: -8,
-                                  zIndex: 2,
-                                  background: "var(--card)",
-                                  margin: "8px -8px -8px",
-                                  padding: "6px 8px 8px",
-                                  borderTop: "1px solid var(--border)",
-                                }}
-                              >
-                                <button
-                                  type="button"
-                                  className="map-csv-btn"
-                                  onClick={clearEligFilters}
-                                  disabled={activeEligFilters.length === 0}
+                            {eligFilters &&
+                              eligFilters.filters.length === 0 &&
+                              !eligFiltersLoading && (
+                                <div
+                                  style={{
+                                    fontSize: 12,
+                                    padding: 4,
+                                    color: "var(--text-secondary)",
+                                  }}
                                 >
-                                  Clear
-                                </button>
-                                <button
-                                  type="button"
-                                  className="predict-btn"
-                                  onClick={() => setFilterPanelOpen(false)}
-                                >
-                                  Done
-                                </button>
-                              </div>
-
-                            </>
-                          )}
-
-                          {eligFilters && eligFilters.filters.length === 0 && !eligFiltersLoading && (
-                            <div style={{ fontSize: 12, padding: 4, color: "var(--text-secondary)" }}>
-                              No filterable criteria available for this indication.
-                            </div>
-                          )}
-                        </div>,
-                        document.body,
-                      )}
+                                  No filterable criteria available for this
+                                  indication.
+                                </div>
+                              )}
+                          </div>,
+                          document.body,
+                        )}
                     </Tooltip>
                     <th style={{ whiteSpace: "normal", lineHeight: 1.3 }}>
                       Expected Recruitment
@@ -444,7 +466,9 @@ export default function SiteMapDetailsPage() {
                     return (
                       <tr
                         key={s.siteId}
-                        className={selectedSiteId === s.siteId ? "pinned-row" : ""}
+                        className={
+                          selectedSiteId === s.siteId ? "pinned-row" : ""
+                        }
                         onClick={() => setSelectedSiteId(s.siteId)}
                       >
                         <td
@@ -492,20 +516,20 @@ export default function SiteMapDetailsPage() {
                                 : undefined
                           }
                         >
-                          {s.populationInRadius === 0
-                            ? "No data found"
-                            : (
-                              <>
-                                {s.populationSource === "worldpop-live" && (
-                                  <span
-                                    className="live-data-dot"
-                                    title="Catchment population is real, live data from WorldPop (not synthetic)"
-                                    style={{ marginRight: 5 }}
-                                  />
-                                )}
-                                {s.grossEligiblePatients.toLocaleString()}
-                              </>
-                            )}
+                          {s.populationInRadius === 0 ? (
+                            "No data found"
+                          ) : (
+                            <>
+                              {s.populationSource === "worldpop-live" && (
+                                <span
+                                  className="live-data-dot"
+                                  title="Catchment population is real, live data from WorldPop (not synthetic)"
+                                  style={{ marginRight: 5 }}
+                                />
+                              )}
+                              {s.grossEligiblePatients.toLocaleString()}
+                            </>
+                          )}
                         </Tooltip>
                         <td>
                           {s.populationInRadius === 0 ? (
@@ -541,8 +565,17 @@ export default function SiteMapDetailsPage() {
                           ) : (
                             <>
                               {expectedRecruitment(s).toLocaleString()}
-                              <span style={{ display: "block", fontSize: 11, color: "var(--text-secondary)" }}>
-                                {(Math.round(s.assumedConsentRate * 1000) / 10).toFixed(1)}% consent rate
+                              <span
+                                style={{
+                                  display: "block",
+                                  fontSize: 11,
+                                  color: "var(--text-secondary)",
+                                }}
+                              >
+                                {(
+                                  Math.round(s.assumedConsentRate * 1000) / 10
+                                ).toFixed(1)}
+                                % consent rate
                               </span>
                             </>
                           )}
@@ -574,7 +607,9 @@ export default function SiteMapDetailsPage() {
                             className={`badge ${riskBand(s.riskScore)}`}
                             text={`${s.riskLevel} risk (AI-labeled) — ${s.riskRationale}`}
                           >
-                            {s.riskScore !== null ? `${s.riskScore}/100` : "N/A"}
+                            {s.riskScore !== null
+                              ? `${s.riskScore}/100`
+                              : "N/A"}
                           </Tooltip>
                         </td>
                       </tr>
@@ -619,7 +654,9 @@ export default function SiteMapDetailsPage() {
                   </button>
                 </div>
                 {combineIds.size < 2 && (
-                  <p className="section-hint">Select at least one more site to compare.</p>
+                  <p className="section-hint">
+                    Select at least one more site to compare.
+                  </p>
                 )}
                 {combineError && <p className="error-text">{combineError}</p>}
                 {combineResult && (
@@ -637,11 +674,16 @@ export default function SiteMapDetailsPage() {
                       </div>
                     </div>
                     <div className="item">
-                      <div className="k">Overlap (double-counted if summed)</div>
+                      <div className="k">
+                        Overlap (double-counted if summed)
+                      </div>
                       <div className="v">
                         {combineResult.overlapPatients.toLocaleString()}
                         {combineResult.overlapPatients > 0 && (
-                          <span className="badge medium" style={{ marginLeft: 6 }}>
+                          <span
+                            className="badge medium"
+                            style={{ marginLeft: 6 }}
+                          >
                             overlap found
                           </span>
                         )}
@@ -664,7 +706,11 @@ export default function SiteMapDetailsPage() {
               minHeight: 200,
             }}
           >
-            <EmptyState icon="🔍" title="No live sites found" detail="Try a different country or clear the eligibility filters." />
+            <EmptyState
+              icon="🔍"
+              title="No live sites found"
+              detail="Try a different country or clear the eligibility filters."
+            />
           </div>
         )}
       </div>

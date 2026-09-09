@@ -26,11 +26,6 @@ type LiveStatusFilter =
   | "WITHDRAWN"
   | "SUSPENDED";
 
-// "All statuses" plus every non-"live" status too (COMPLETED etc.) — an
-// NCT-scoped analysis (see PipelineContext's nctScope) is auditing this
-// trial's own disclosed site(s), which may well not be "live" (an older
-// trial's site is COMPLETED), so restricting to only 3 live statuses would
-// hide it entirely by default.
 const STATUS_OPTIONS: { value: LiveStatusFilter; label: string }[] = [
   { value: "ALL", label: "All statuses" },
   { value: "RECRUITING", label: "Recruiting" },
@@ -92,10 +87,6 @@ export default function SiteRankingPanel() {
     selectedCountries.length > 0
       ? selectedCountries
       : allConfiguredCountries(regionOptions);
-  // Default to Recruiting per request — EXCEPT for an NCT-scoped analysis
-  // (auditing one specific trial's own disclosed site(s), which may not be
-  // "live" at all), which defaults to "All statuses" instead so its site
-  // isn't hidden just because it isn't currently recruiting.
   const [statusFilter, setStatusFilter] = useState<LiveStatusFilter>(() =>
     nctScope ? "ALL" : "RECRUITING",
   );
@@ -117,13 +108,6 @@ export default function SiteRankingPanel() {
       .map((r, i) => ({ ...r, rank: i + 1 }));
   }, [ranking, statusFilter]);
 
-  // Per-site outreach draft state — see backend pipeline/outreachDraft.ts.
-  // IMPORTANT: this only ever generates draft text; it never sends an email.
-  // ClinicalTrials.gov does not reliably disclose a real per-facility
-  // contact, so there is no live email address to send to — the contact
-  // shown is a clearly-labeled SYNTHETIC placeholder, not a real inbox.
-  // Which site's Protocol fit checklist is currently expanded — one at a
-  // time, toggled by clicking its badge (see the "Protocol fit" cell below).
   const [expandedChecklistSiteId, setExpandedChecklistSiteId] = useState<
     string | null
   >(null);

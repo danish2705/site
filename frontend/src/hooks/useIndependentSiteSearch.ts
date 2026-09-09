@@ -14,10 +14,6 @@ export interface IndependentSiteSearchState {
   error: string | null;
   runSearch: () => Promise<void>;
   allSites: MapSiteRow[];
-  /** Catchment radius (miles) used both for the backend's population lookup
-      and for the ring drawn around a selected site — see the Site Map's
-      "Catchment" filter (redesign spec item 10). Defaults to
-      SITE_MAP_RADIUS_MILES; changing it re-runs the search. */
   radiusMiles: number;
   setRadiusMiles: (radiusMiles: number) => void;
 }
@@ -50,8 +46,6 @@ export function useIndependentSiteSearch(): IndependentSiteSearchState {
         country: country || undefined,
         radiusMiles,
         ageGroups: form.ageGroups,
-        // Scoped mode: plot ONLY this trial's own disclosed sites — see
-        // PipelineContext's nctScope/runAnalysisFromNct.
         nctId: nctScope || undefined,
       });
       setData(res);

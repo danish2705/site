@@ -5,16 +5,6 @@ import Tooltip from "../ui/Tooltip";
 import { MailIcon, ChevronDownIcon } from "../ui/Icons";
 import type { RankingRow } from "../../types";
 
-/**
- * One site's card in the Ranking page's Cards view (redesign refresh) — the
- * #1 site renders this with `hero` for a larger, highlighted treatment, and
- * every other ranked site renders the same card at compact size in the grid
- * below it. Mirrors exactly what the existing Table view's row already
- * shows (score breakdown, protocol-fit checklist toggle, risk/status
- * badges, draft-email action) so nothing is lost by picking Cards over
- * Table — see SiteRankingPanel.tsx, which still renders the untouched
- * table for Table mode.
- */
 export default function RankingSiteCard({
   row,
   hero = false,

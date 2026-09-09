@@ -6,7 +6,6 @@ export interface LiveSiteMapParams {
   country?: string;
   radiusMiles?: number;
   ageGroups?: string[];
-  /** When set, the backend plots ONLY this trial's own disclosed sites instead of every trial for the indication — see PipelineContext's nctScope. */
   nctId?: string;
 }
 

@@ -3,11 +3,6 @@ import { createPortal } from "react-dom";
 import { CheckIcon, XIcon } from "../ui/Icons";
 import type { RequirementCheck } from "../../types";
 
-/**
- * Floating "Protocol fit" checklist popover — rendered via a portal into
- * document.body with `position: fixed`, exactly like ui/Tooltip.tsx already
- * does elsewhere in this app.
- */
 export default function RequirementChecklistPopover({
   anchorRef,
   open,
@@ -44,20 +39,6 @@ export default function RequirementChecklistPopover({
     setPos({ top: flip ? rect.top - 8 : rect.bottom + 8, left, width, flip });
   }, [open, anchorRef]);
 
-  // Closes on outside click, Escape, or the underlying page scrolling
-  // (e.g. a nested scrollable ancestor like .ranking-scroll-body —
-  // capture:true catches those even though "scroll" doesn't bubble)
-  // rather than trying to keep re-tracking the anchor's position, which is
-  // simpler and avoids a stale/misaligned popover.
-  //
-  // The checklist itself now scrolls internally (.protocol-fit-popover has
-  // overflow-y: auto so a long list doesn't run off-screen) — a scroll
-  // *inside* the popover also reaches this window-level capture listener
-  // (capture fires on the way down through every ancestor, including
-  // window, even though the scroll event itself doesn't bubble back up),
-  // so without the popoverRef containment check below, scrolling the
-  // checklist immediately closed the very popover being scrolled. Only a
-  // scroll whose target is outside this popover should dismiss it.
   useEffect(() => {
     if (!open) return;
     function handlePointerDown(e: MouseEvent) {

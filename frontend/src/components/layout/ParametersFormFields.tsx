@@ -14,10 +14,6 @@ async function searchIndicationValues(query: string): Promise<string[]> {
 const PHASES = ["Phase I", "Phase II", "Phase III", "Phase IV"];
 const BUDGETS = ["Low", "Mid", "High", "All"];
 const AGE_GROUPS = ["Child (0–17)", "Adult (18–64)", "Older Adult (65+)"];
-
-// Illustrative typical-duration ranges shown as a live hint once a phase is
-// picked — not derived from any live/LLM source, just a rough rule of thumb
-// to help the user judge whether their entered duration is in a sane range.
 const PHASE_DURATION_HINT: Record<string, string> = {
   "Phase I": "12–24",
   "Phase II": "18–30",
@@ -25,19 +21,6 @@ const PHASE_DURATION_HINT: Record<string, string> = {
   "Phase IV": "12–36",
 };
 
-/**
- * The Analysis Parameters form fields — every input from Indication through
- * Budget Tier, plus the progress bar and submit button. Used to live only in
- * Sidebar.tsx as a permanent collapsible sidebar; now shared between two
- * hosts instead: a full-page form (ParametersFormPage, shown once up front)
- * and a modal (EditParametersModal, opened from TopBar's "Edit Parameters"
- * button). Neither host owns any field logic — this component still reads
- * and writes form state directly via usePipeline(), exactly like the old
- * Sidebar did; only the submit behavior (what happens once "Start Analysis"
- * is clicked) is left to the caller via onSubmit, since that differs by host
- * (one transitions from the form screen to the dashboard, the other closes
- * the modal) but both then kick off the same runAnalysis(form).
- */
 export default function ParametersFormFields({
   onSubmit,
   title = "Analysis Parameters",
@@ -47,11 +30,6 @@ export default function ParametersFormFields({
   onSubmit: (e: FormEvent) => void;
   title?: string;
   submitLabel?: string;
-  /** Renders a close (X) button inline on the same row as the title,
-      right-aligned — used by EditParametersModal so the heading and its
-      close button sit together instead of the button floating in its own
-      separate bar above. Omitted entirely (no button, plain title row) on
-      the full-page host, which has no "close" concept. */
   onClose?: () => void;
 }) {
   const { meta, form, setForm, regionOptions, running } = usePipeline();
@@ -79,13 +57,6 @@ export default function ParametersFormFields({
 
   return (
     <form className="card params-form" onSubmit={onSubmit}>
-      {/* .sidebar-form-title-row carries the space below the whole header
-          (title + close button together) — see EditParametersModal, whose
-          close (X) button used to float in its own separate sticky bar
-          above this title, both reserving extra top padding for it AND
-          leaving it visually disconnected from the heading it belongs to.
-          Passing onClose renders it right here instead, same row as the
-          title, right-aligned. */}
       <div className="sidebar-form-title-row">
         <div className="sidebar-form-title">
           <span className="sidebar-form-icon" aria-hidden="true">
@@ -127,12 +98,6 @@ export default function ParametersFormFields({
           {doneCount} of {totalCount} set
         </span>
       </div>
-
-      {/* Two independent column stacks (not a single interleaved grid) so
-          each field lands in the specific left/right column requested,
-          regardless of how many fields end up in each — Left: Indication,
-          Age Group, Region/Country. Right: Phase, Target Enrollment,
-          Duration, Budget Tier. */}
       <div className="params-form-grid">
         <div className="params-form-col-group">
           <label className={`field-block${fieldStatus[0].done ? " field-block--done" : ""}`}>

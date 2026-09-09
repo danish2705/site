@@ -794,22 +794,6 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
     }
   }
  
-  /**
-   * Risk Register's Country dropdown: fetches a fresh live facility list for
-   * this specific country (the same /api/live-trials call Ongoing Trials
-   * makes) and immediately sends it on to Stages 4-8, all in one action —
-   * so picking a different country directly on Risk Register re-runs the
-   * whole "find sites -> analyze them" round-trip for that country, without
-   * needing to visit Ongoing Trials first. Also updates ongoingTrialSites/
-   * topRegion so the two stay in sync if the user does visit that tab next.
-   *
-   * `opts.background` runs this as a silent prefetch (see the auto-prefetch
-   * effect below): it still fills analysisCache for `country`, but never
-   * touches the error banner, `analyzing`, or the currently-displayed
-   * riskAssessment/ranking/finalResult — those stay whatever the
-   * currently-selected country's data is until the user actually switches
-   * to this one (at which point analysisCache already has it ready).
-   */
   async function analyzeForCountry(
     country: string,
     opts?: { background?: boolean },
@@ -819,10 +803,6 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
       if (!background) setError("Select an indication before analyzing a country.");
       return null;
     }
-    // Best-effort region label: reuse whichever region the sidebar's own
-    // Region/Country list already associates with this country (falls back
-    // to the country name itself — the backend only uses this for
-    // display/prevalence lookups, not as a strict key).
     const regionMatch = regionOptions.find((r) => r.country === country);
     const region = regionMatch?.region ?? country;
  
@@ -843,11 +823,6 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
     try {
       let facilities: LiveFacilityRow[];
       if (nctScopeRef.current) {
-        // Scoped mode: source facilities from this trial's own disclosed
-        // site list instead of fetching every trial for the indication —
-        // see runAnalysisFromNct. No 3-year recency filter here: these are
-        // the same trial's own current locations, not a staleness heuristic
-        // for filtering out OTHER trials.
         const ownSitesInCountry = nctScopeFacilitiesRef.current.filter((f) =>
           countryMatches(f.country, country),
         );
@@ -926,11 +901,6 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
           if (!background) setError(message);
         },
       );
-      // Cache the full result regardless of foreground/background — this is
-      // what lets switching back to this country later (or a background
-      // prefetch that finishes after the fact) show data instantly with no
-      // re-fetch. Only cache complete results — a stream that errored out
-      // partway shouldn't be remembered as "analyzed."
       if (localRisk && localRanking && result) {
         setAnalysisCache((prev) => ({
           ...prev,
@@ -970,9 +940,6 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
   }
  
   const selectedCountries = useMemo(() => {
-    // Scoped mode: the relevant "selected countries" are wherever this
-    // trial actually discloses sites, not the (deliberately empty, see
-    // LandingScreen) form.regions selection.
     if (nctScope) {
       return [
         ...new Set(
@@ -985,13 +952,6 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
     return countriesFromRegionKeys(form.regions);
   }, [form.regions, nctScope, nctScopeFacilities]);
  
-  /**
-   * Switches which country Risk Register/Ranking/Final Recommendation show.
-   * A cache hit swaps the active riskAssessment/ranking/finalResult in with
-   * no network call; a miss falls through to analyzeForCountry (unless a
-   * background prefetch for it is already in flight, in which case the
-   * cache-sync effect below picks the result up as soon as that finishes).
-   */
   function setAnalysisCountry(country: string): void {
     setAnalysisCountryState(country);
     if (!country) return;
@@ -1004,20 +964,6 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
       setTopRegion(cached.topRegion);
       return;
     }
-    // Already queued or actively being fetched in the background — the
-    // cache-sync effect above will pick up the result the moment it lands,
-    // no need to start a second fetch for it. If it's still just waiting in
-    // line (not the one currently in flight), bump it to the front so the
-    // drain effect processes it next — the user is looking at this country
-    // right now, it shouldn't sit behind whatever else happened to queue
-    // ahead of it.
-    // Not cached yet — whatever's currently displayed belongs to whichever
-    // country was selected before (or nothing, on the very first pick).
-    // Clear it now rather than leaving the previous country's table on
-    // screen: the panels only show their loading spinner when there's no
-    // data displayed, so without this a switch to a still-loading country
-    // silently kept showing the old country's rows with just the dropdown
-    // label reading "(analyzing…)" — no visible loading state at all.
     setRiskAssessment(null);
     setRanking(null);
     setFinalResult(null);
@@ -1033,13 +979,6 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
     analyzeForCountry(country);
   }
  
-  // Keeps the active riskAssessment/ranking/finalResult synced with
-  // whichever country is currently selected, whenever analysisCache
-  // changes — covers the case where a background prefetch for the
-  // currently-selected country finishes after setAnalysisCountry already
-  // deferred to it (see the `prefetchingCountries.has(country)` guard
-  // above), so the page updates the moment that data is ready instead of
-  // requiring another pick.
   useEffect(() => {
     if (!analysisCountryState) return;
     const cached = analysisCache[analysisCountryState];
@@ -1050,32 +989,9 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
       setOngoingTrialSites(cached.ongoingTrialSites);
       setTopRegion(cached.topRegion);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [analysisCache, analysisCountryState]);
  
-  // Defaults the shown country whenever the selected region "set" changes —
-  // and, unlike the old per-page effect this replaces, actually resolves
-  // data for it (via setAnalysisCountry) instead of just picking a label to
-  // display. Prefers topRegion.country when it's part of the set, since
-  // that's the one Run Analysis already analyzed for free at Stage 2 —
-  // otherwise falls back to the first selected country, same as before.
-  //
-  // Gated on `topRegion` (i.e. Run Analysis has actually completed once):
-  // checking a box in Step 1's Region/Country list changes `selectedCountries`
-  // immediately, long before the user has finished the form or clicked "Run
-  // Analysis" — without this gate, that alone would kick off a live
-  // Stages-4-8 analysis (ClinicalTrials.gov + LLM calls) the moment a
-  // checkbox is ticked, and unlock/populate Risk Register, Ranking, and
-  // Final Recommendation before the user ever asked for a run.
   useEffect(() => {
-    // While the initial Run Analysis stream is still going, handleSubmit
-    // itself is already driving topRegion/riskAssessment/ranking/
-    // finalResult and will seed analysisCountryState + analysisCache the
-    // moment Stage 8 completes — this effect firing mid-stream (topRegion
-    // is set as early as Stage 2, well before that) would kick off a
-    // second, redundant analyzeForCountry() race against the run still in
-    // flight. Wait for it to finish; analysisCountryState will already
-    // match by then, so the check below is a no-op rather than a fetch.
     if (running) return;
     if (!topRegion) return;
     if (selectedCountries.length === 0) {
@@ -1088,20 +1004,7 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
         : selectedCountries[0];
       setAnalysisCountry(preferred);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedCountries.join("|"), topRegion, running]);
- 
-  // Queues every selected country other than the one currently shown (and
-  // not already cached/in-flight) for a silent background analysis — this
-  // is what makes switching to ANY country in the set instant rather than
-  // just the default one. One at a time (not all at once): each call is a
-  // full Stages 4-8 run against live ClinicalTrials.gov + the LLM, and
-  // firing them all concurrently would just queue up behind the same rate
-  // limits with no benefit.
-  //
-  // Same `topRegion` gate as above and for the same reason — this must not
-  // start firing off live analyses for an entire selected region set before
-  // Run Analysis has ever been clicked.
   useEffect(() => {
     if (running) return;
     if (!topRegion || !form.indication || selectedCountries.length <= 1) return;
@@ -1116,17 +1019,11 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
       ...prev,
       ...missing.filter((c) => !prev.includes(c)),
     ]);
-    // Marked pending immediately (not only once analyzeForCountry actually
-    // starts fetching it) so `prefetchingCountries` means "queued or in
-    // flight" — the panels use it to show a loading state the instant a
-    // country is picked, rather than only once its turn in the queue
-    // arrives.
     setPrefetchingCountries((prev) => {
       const next = new Set(prev);
       missing.forEach((c) => next.add(c));
       return next;
     });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     running,
     topRegion,
@@ -1136,14 +1033,6 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
     analysisCountryState,
   ]);
  
-  // Drains prefetchQueue one country at a time. Deliberately does NOT skip
-  // `next` just because it happens to equal the currently-selected country:
-  // setAnalysisCountry bumps a still-queued country to the front instead of
-  // removing it when the user switches to it mid-queue (see above), so
-  // "queued" and "currently selected" are no longer mutually exclusive —
-  // this needs to actually run for it, not drop it silently (which would
-  // otherwise leave it stuck in prefetchingCountries forever, showing an
-  // endless loading state that never resolves).
   useEffect(() => {
     if (prefetchInFlightRef.current) return;
     if (prefetchQueue.length === 0) return;
@@ -1162,12 +1051,8 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
       prefetchInFlightRef.current = false;
       setPrefetchQueue((q) => q.filter((c) => c !== next));
     });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [prefetchQueue, analysisCache, analysisCountryState]);
  
-  // A fresh indication means a fresh region list and stale analyses for the
-  // old one — drop the cache and prefetch queue so a re-selected country
-  // name from a different indication can't serve mismatched cached data.
   useEffect(() => {
     setAnalysisCache({});
     setPrefetchQueue([]);

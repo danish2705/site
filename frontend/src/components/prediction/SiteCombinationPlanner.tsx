@@ -15,10 +15,6 @@ const STRATEGY_SHORT_LABEL: Record<
   balanced: "Balanced",
 };
 
-// Same palette as every risk/status badge elsewhere in the app (green =
-// good/low-risk, blue = informational, amber = a tradeoff/warning,
-// accent purple = the AI-recommended default) — used as a thin top accent
-// bar + a small badge on each strategy card.
 const STRATEGY_ACCENT: Record<SiteCombinationStrategyResult["strategy"], string> = {
   "lowest-risk-first": "var(--success)",
   "lowest-cost-first": "var(--info)",
@@ -26,13 +22,6 @@ const STRATEGY_ACCENT: Record<SiteCombinationStrategyResult["strategy"], string>
   balanced: "var(--primary)",
 };
 
-// Colored card background, matching the same green/blue/amber/purple
-// "-light" tinted-box treatment Final Recommendation already uses for its
-// Why-#1 boxes (.why-number-one-col--strengths/--watch/--conclusion —
-// success-light/warning-light/primary-light + a color-mix border tint).
-// lowest-cost-first uses --info directly since there's no --info-light
-// token defined; a matching low-opacity blue wash is used instead, the
-// same technique the app already uses in .final-why .why-risk.
 const STRATEGY_BG: Record<SiteCombinationStrategyResult["strategy"], string> = {
   "lowest-risk-first": "var(--success-light)",
   "lowest-cost-first": "rgba(37, 99, 235, 0.08)",

@@ -248,8 +248,6 @@ export function SiteMapProvider({ children }: { children: ReactNode }) {
         country: country || undefined,
         radiusMiles: SITE_MAP_RADIUS_MILES,
         ageGroups: form.ageGroups,
-        // Scoped mode: plot ONLY this trial's own disclosed sites — see
-        // PipelineContext's nctScope/runAnalysisFromNct.
         nctId: nctScope || undefined,
       });
       setData(res);

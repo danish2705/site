@@ -5,33 +5,11 @@ import AIRegionPrediction from "../prediction/AIRegionPrediction";
 import TopBar from "./TopBar";
 import HistoryModal from "../runs/HistoryModal";
 
-/**
- * Full-page Analysis Parameters form — replaces the old always-open sidebar
- * as the very first thing shown once the user picks "Enter Study Details
- * Manually" on the landing screen (the NCT search flow still skips this
- * entirely and jumps straight to the dashboard with zero form interaction).
- * "Start Analysis" sits bottom-right of the form; clicking it hands off to
- * the dashboard immediately (same pattern LandingScreen's NCT confirm-run
- * already uses) and kicks off the pipeline run behind RunAnalysisOverlay.
- * Once a run has happened, editing parameters again goes through
- * EditParametersModal (opened from TopBar) instead of this page.
- *
- * Two columns fill the page instead of the form alone floating in a mostly
- * empty page: the form on the left (~62%), and "Predict Region with AI" —
- * previously only reachable as a modal from the workflow nav's leading
- * "progress bar" tile — inline on the right (~38%), so a user can pick an
- * AI-suggested region without leaving this page or opening anything. Same
- * AIRegionPrediction component, same onApply wiring PredictRegionModal
- * already used (writes straight into form.regions); only the surrounding
- * chrome (modal -> plain panel) is different here.
- */
 export default function ParametersFormPage({
   onEnterDashboard,
   onGoToLanding,
 }: {
   onEnterDashboard: () => void;
-  /** Clicking the "Clinical Trial Site Selection" brand/logo returns to the
-      landing/start screen. Optional so this page still renders without it. */
   onGoToLanding?: () => void;
 }) {
   const { form, meta, setForm, runAnalysis } = usePipeline();

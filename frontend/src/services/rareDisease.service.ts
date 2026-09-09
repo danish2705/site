@@ -1,11 +1,6 @@
 import type { RareDiseaseDetail, RareDiseaseSearchResult } from "../types";
 import { apiJson } from "./api";
 
-/**
- * Rare Disease feature — live Orphanet + ClinicalTrials.gov data only, no
- * LLM estimates anywhere. See backend's controllers/rareDisease.controller.ts.
- */
-
 export function fetchRareDiseaseStatus(): Promise<{ configured: boolean }> {
   return apiJson<{ configured: boolean }>("/api/rare-disease/status");
 }

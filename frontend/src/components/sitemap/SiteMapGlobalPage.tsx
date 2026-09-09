@@ -131,10 +131,7 @@ export default function SiteMapGlobalPage() {
   const fallbackCountryOptions = allConfiguredCountries(regionOptions);
   const [selectedSiteId, setSelectedSiteId] = useState<string | null>(null);
 
-  // Clear a selection (and whatever preview/radius ring it drove) the
-  // moment a fresh search makes that site disappear from the map, rather
-  // than leaving a stale preview card open for a pin that's no longer shown.
-  useEffect(() => {
+   useEffect(() => {
     if (selectedSiteId && !allSites.some((s) => s.siteId === selectedSiteId)) {
       setSelectedSiteId(null);
     }
@@ -248,9 +245,6 @@ export default function SiteMapGlobalPage() {
         offset: [0, -10],
       });
       (marker as any).__siteData = s;
-      // Opens the in-place Site Preview Card below (state only — no route
-      // change), on top of Leaflet's own popup. Per redesign spec item 10,
-      // clicking a marker must never navigate the user away from the map.
       marker.on("click", () => setSelectedSiteId(s.siteId));
       clusterGroup.addLayer(marker);
       markerByIdRef.current.set(s.siteId, marker);
@@ -282,9 +276,6 @@ export default function SiteMapGlobalPage() {
   return (
     <div className="card">
       <div className="map-controls map-controls--flush">
-        {/* No tooltip here — this label sits at the very top of the card,
-            so a hover bubble that opens upward has nowhere to render and
-            just shows up as a box clipped above the viewport. */}
         <label className="map-field">
           {selectedCountries.length > 0 ? (
             <Select
@@ -394,12 +385,6 @@ export default function SiteMapGlobalPage() {
             </span>
           </div>
         </div>
-
-        {/* In-place Site Preview Card (redesign spec item 10): clicking a
-            marker sets selectedSiteId and shows this instead of navigating
-            anywhere else, so the map's pan/zoom/filter context is never
-            lost. Sits alongside Leaflet's own popup rather than replacing
-            it, since the popup is still useful while zoomed in. */}
         {selectedSite && (
           <div className="site-preview-card">
             <div className="site-preview-card-head">

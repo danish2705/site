@@ -326,19 +326,12 @@ export interface LiveTrialLandscapeResponse {
   country: string | null;
   activeCompetingTrials: number | null;
   facilities: LiveFacilityRow[];
-  /** Which OverallStatus values currently count toward activeCompetingTrials — see backend config.ts's competingTrials.statuses. Use this to badge each facility row as counted/not-counted rather than hardcoding the list here. */
   competingStatuses: string[];
   benchmark: LiveTrialBenchmark;
   fetchedAt: string;
   warnings: string[];
 }
 
-/**
- * Response for GET /api/nct-lookup/:nctId — the landing page's "Search by
- * NCT Number" auto-fill. Already normalized onto this app's own TrialForm
- * values (Phase/Age Group labels) by the backend — see backend's
- * controllers/nctLookup.controller.ts.
- */
 export interface NctLookupResponse {
   nctId: string;
   briefTitle: string | null;
@@ -350,19 +343,10 @@ export interface NctLookupResponse {
   enrollmentCount: number | null;
   enrollmentType: string | null;
   durationMonths: number | null;
-  /** Disclosed trial site countries — informational context only, not applied as a region/country filter (this app searches every configured region globally rather than assuming the best NEW site is wherever the original trial ran). */
   countries: string[];
   siteCount: number;
-  /** This study's own disclosed site/location list — when a caller opts into "scope everything to this one NCT" (see PipelineContext's runAnalysisFromNct), Ongoing Trials/Risk Assessment/Site Ranking/Site Map/Recommendation are all run against ONLY these facilities instead of the default broad indication-wide search. Empty when the study discloses no locations. */
   facilities: LiveFacilityRow[];
 }
-
-/* ---------------------------------------------------------------------- */
-/* Rare Disease feature — every field here is real, Orphanet/ClinicalTrials
-   .gov-sourced data (see backend's services/orphadata.client.ts). Nothing
-   in this feature is LLM-estimated; a section with nothing to show renders
-   empty with a warning instead of a filled-in guess. */
-/* ---------------------------------------------------------------------- */
 
 export interface RareDiseaseSearchResult {
   orphaCode: string;
@@ -415,7 +399,6 @@ export interface RareDiseaseDetail {
   };
 }
 
-/** One trial site plotted on the Site Map tab — see the backend's pipeline/liveMapData.ts for exactly what's live vs. synthetic vs. approximate in each field. */
 export interface MapSiteRow {
   siteId: string;
   siteName: string;
@@ -425,7 +408,6 @@ export interface MapSiteRow {
   status: string | null;
   lat: number;
   lng: number;
-  /** "live-google" if the backend has GOOGLE_MAPS_API_KEY configured and Google's geocode call succeeded; "live-nominatim" if the free OpenStreetMap lookup succeeded instead; "approximate" only if both live tiers were unavailable (not precisely geocoded). */
   coordsSource: "live-google" | "live-nominatim" | "approximate";
   radiusMiles: number;
   populationInRadius: number;
@@ -439,57 +421,29 @@ export interface MapSiteRow {
   riskLevel: "Low" | "Medium" | "High" | "Unknown";
   riskRationale: string;
   riskSource: "llm-estimated" | "unavailable";
-  /** Illustrative split of netAvailablePatients into treatment-stage buckets — NOT real claims data, see backend config.map.patientSegmentSplit. Null only if netAvailablePatients is 0. */
   patientSegments: PatientSegments | null;
   patientSegmentSource: "heuristic-illustrative";
-  /** Which distance tier decided this site's catchment radius — "live-google"/"live-osrm" mean real driving distance was used for every point counted, "approximate-haversine" means straight-line distance was used throughout, "mixed" means some of each, "none" means there were no candidate points to check. */
   catchmentDistanceSource:
     | "live-google"
     | "live-osrm"
     | "approximate-haversine"
     | "mixed"
     | "none";
-  /**
-   * netAvailablePatients further reduced by this site's own assumedConsentRate
-   * below — a second, distinct haircut from recruitmentRateAssumed above.
-   * This is the number the Site Combination Planner accumulates toward a
-   * target enrollment, not netAvailablePatients directly (100 eligible ≠
-   * 100 enrolled).
-   */
   recruitablePatients: number;
-  /** Per-site SYNTHETIC consent/conversion rate — a deterministic variation around the app's configured center (backend config.siteCombination.assumedConsentRate), not one flat rate applied identically to every site. See backend data/syntheticSiteCost.ts's syntheticConsentRateFor. */
   assumedConsentRate: number;
-  /** Deterministic SYNTHETIC per-site cost figure — see backend data/syntheticSiteCost.ts for why no live/LLM source exists for this. */
   siteCost: SyntheticSiteCost;
-  /**
-   * grossEligiblePatients minus netAvailablePatients — the "already enrolled
-   * in another trial for this indication" figure from requirement #1, made
-   * explicit as its own number (it was always folded silently into
-   * netAvailablePatients before). Always reconciles exactly:
-   * grossEligiblePatients = alreadyEnrolledPatients + netAvailablePatients.
-   */
   alreadyEnrolledPatients: number;
-  /**
-   * Requirement #4: a small (25-row), deterministic, illustrative SAMPLE of
-   * individual synthetic patient records for this site — every value
-   * fabricated, standing in for real per-patient EHR/claims/CTMS data that
-   * has no live public source. See backend data/syntheticPatients.ts.
-   */
   patientSample: SyntheticPatientRecord[];
-  /** 0-1 multiplier actually applied to this site's grossEligiblePatients for the selected Age Group(s). 1 = no narrowing (all ages). */
   ageEligibleFraction: number;
-  /** Which Age Group label(s) were actually applied to this site's numbers — empty when none were selected. */
   ageGroupsApplied: string[];
 }
 
-/** See MapSiteRow.siteCost. */
 export interface SyntheticSiteCost {
   baseCostUsd: number;
   perPatientCostUsd: number;
   costSource: "synthetic";
 }
 
-/** See MapSiteRow.patientSample. */
 export interface SyntheticPatientRecord {
   patientId: string;
   disease: string;
@@ -509,15 +463,12 @@ export interface PatientSegments {
 
 export interface LiveMapResponse {
   indication: string;
-  /** null = global search across every country ClinicalTrials.gov returned. */
   country: string | null;
   radiusMiles: number;
   sites: MapSiteRow[];
   warnings: string[];
   fetchedAt: string;
-  /** The Age Group label(s) the trial form had selected for this request — empty means "all ages" (no narrowing applied). */
   ageGroupsRequested: string[];
-  /** What the per-site age-eligibility adjustment is and isn't. null when ageGroupsRequested is empty. */
   ageEligibilityDisclosure: string | null;
 }
 
@@ -536,7 +487,6 @@ export interface CombinedCatchmentResponse {
 export interface SiteCombinationSelectedSite {
   siteId: string;
   siteName: string;
-  /** How many of this site's recruitable patients this strategy actually uses — may be less than recruitablePatientsAvailable when only a partial allocation is needed to reach the target. */
   patientsTaken: number;
   recruitablePatientsAvailable: number;
   riskScore: number | null;
@@ -554,7 +504,6 @@ export interface SiteCombinationStrategyResult {
   totalPatients: number;
   totalEstimatedCostUsd: number | null;
   averageRiskScore: number | null;
-  /** Sum, across every selected site, of (patientsTaken * riskScore / 100) — an expected count of at-risk patient-equivalents for this whole combination, not just a plain average of each site's score. Null if any selected site has no riskScore. */
   portfolioRiskScore: number | null;
   meetsTarget: boolean;
 }
@@ -562,7 +511,6 @@ export interface SiteCombinationStrategyResult {
 export interface SiteCombinationResponse {
   targetEnrollment: number;
   avgCostPerPatientUsd: number | null;
-  /** The app's configured CENTER consent-rate assumption — each site's own recruitablePatients actually used a per-site synthetic rate varying around this center (see MapSiteRow.assumedConsentRate), not this single flat number applied identically everywhere. */
   assumedConsentRate: number;
   strategies: SiteCombinationStrategyResult[];
   recommendedStrategy: SiteCombinationStrategyResult["strategy"] | null;
@@ -575,7 +523,6 @@ export interface OutreachDraft {
   siteName: string;
   city: string | null;
   country: string | null;
-  /** SYNTHETIC placeholder address — fabricated, not a real contact, and never actually sent to. */
   contactEmail: string;
   contactEmailSource: "synthetic";
   subject: string;
@@ -589,12 +536,9 @@ export interface OutreachDraftResponse {
 
 export interface EligibilityFilterOption {
   id: string;
-  /** Short checkbox phrase, kept <=45 characters server-side so it never needs truncating in the UI. */
   label: string;
-  /** Fuller clinical wording behind the short label — show this in a tooltip/title, not on the checkbox itself. Equal to `label` when there's nothing more to add. */
   detail: string;
   type: "inclusion" | "exclusion";
-  /** LLM-estimated % of the general indication population this single criterion alone would exclude — not cumulative with other filters, not a measured fact. */
   estimatedExcludedPercent: number;
 }
 

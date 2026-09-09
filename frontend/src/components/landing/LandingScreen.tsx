@@ -5,18 +5,8 @@ import { searchRareDiseases } from "../../services/rareDisease.service";
 import type { NctLookupResponse, RareDiseaseSearchResult, TrialForm } from "../../types";
 
 interface LandingScreenProps {
-  /** Leaves the landing screen and shows the normal Dashboard (workflow +
-      results) once an NCT-derived run has already been kicked off — see
-      handleConfirmRun below. Zero form interaction, so this skips the
-      Analysis Parameters form entirely. */
   onEnterDashboard: () => void;
-  /** "Enter Study Details Manually" goes here instead — the full-page
-      Analysis Parameters form (ParametersFormPage), not straight to the
-      dashboard, since there's nothing to run yet until that form is
-      submitted. */
   onStartManual: () => void;
-  /** Selecting a live Orphanet search result opens the Rare Disease page for
-      that ORPHAcode — see App.tsx's "rare-disease" entry mode. */
   onOpenRareDisease: (orphaCode: string) => void;
 }
 
@@ -34,29 +24,19 @@ function SearchIcon() {
 }
 
 function LandingIllustration() {
-  // Soft "cloud of blobs" + location pin — no external image asset. The
-  // main blob is a handful of overlapping, seam-free circles/ellipses (a
-  // cheap way to get an organic puffy shape without a hand-drawn path),
-  // plus a few smaller separate blobs scattered around it, matching the
-  // reference mockup's abstract map-illustration style. Rendered against a
-  // plain white panel (see .landing-left) so these soft --primary-light
-  // shapes read clearly instead of blending into a same-colored background.
+
   return (
     <svg viewBox="0 0 320 200" className="landing-illustration" aria-hidden="true">
-      {/* Main blob cluster */}
       <ellipse cx="160" cy="145" rx="105" ry="42" fill="var(--primary-light)" />
       <circle cx="95" cy="122" r="42" fill="var(--primary-light)" />
       <circle cx="225" cy="125" r="46" fill="var(--primary-light)" />
       <circle cx="160" cy="98" r="48" fill="var(--primary-light)" />
-
-      {/* Small scattered accent blobs */}
       <circle cx="42" cy="55" r="15" fill="var(--primary-light)" />
       <circle cx="26" cy="82" r="8" fill="var(--primary-light)" />
       <circle cx="278" cy="58" r="13" fill="var(--primary-light)" />
       <circle cx="296" cy="80" r="7" fill="var(--primary-light)" />
       <circle cx="252" cy="172" r="9" fill="var(--primary-light)" />
 
-      {/* Location pin */}
       <path
         d="M160 40c-24.3 0-44 19.7-44 44 0 33 44 76 44 76s44-43 44-76c0-24.3-19.7-44-44-44Z"
         fill="var(--primary)"
@@ -76,19 +56,11 @@ export default function LandingScreen({
   const [searching, setSearching] = useState(false);
   const [searchError, setSearchError] = useState<string | null>(null);
   const [lookupResult, setLookupResult] = useState<NctLookupResponse | null>(null);
-
-  // Rare Disease live search-as-you-type — real Orphanet nomenclature only,
-  // no pre-loaded list (unlike the Indication field's SearchableSelect,
-  // there's nothing sensible to pre-load here).
   const [rareQuery, setRareQuery] = useState("");
   const [rareOpen, setRareOpen] = useState(false);
   const [rareResults, setRareResults] = useState<RareDiseaseSearchResult[]>([]);
   const [rareLoading, setRareLoading] = useState(false);
   const [rareError, setRareError] = useState<string | null>(null);
-  // This is the last box on the page, so its dropdown often has nowhere to
-  // open downward into (see the flip logic RequirementChecklistPopover.tsx
-  // already uses for the same reason) — flips to open upward instead
-  // whenever there's more room above the input than below it.
   const [rareMenuFlip, setRareMenuFlip] = useState(false);
   const rareWrapRef = useRef<HTMLDivElement>(null);
   const rareInputWrapRef = useRef<HTMLDivElement>(null);
@@ -182,14 +154,7 @@ export default function LandingScreen({
       phase: lookupResult.phase ?? "",
       sampleSize: lookupResult.enrollmentCount ?? "",
       durationMonths: lookupResult.durationMonths ?? "",
-      // No live source for budget tier — this run is scoped to the trial's
-      // own disclosed sites (see runAnalysisFromNct), so cost is excluded
-      // from the scoring entirely rather than guessing a tier the trial
-      // never disclosed.
       budgetTier: "All",
-      // Left empty — the trial's own disclosed site countries drive this
-      // run instead (see runAnalysisFromNct/nctScope), not a manual region
-      // pre-selection.
       regions: [],
       ageGroups: lookupResult.ageGroups,
     };

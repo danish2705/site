@@ -7,17 +7,6 @@ import { fetchRareDiseaseDetail } from "../../services/rareDisease.service";
 import { fetchNctLookup } from "../../services/nctLookup.service";
 import type { RareDiseaseDetail, TrialForm } from "../../types";
 
-/**
- * Single page for the Rare Disease feature — deliberately shows ONLY live,
- * disclosed data (Orphanet nomenclature/epidemiology/natural history +
- * ClinicalTrials.gov trial/site cross-check). No LLM-estimated fields, no
- * requirement-matching/scoring pipeline like the main Analysis flow — see
- * backend's rareDisease.controller.ts and types.ts's RareDiseaseDetail.
- *
- * Uses the same TopBar as the rest of the app — clicking the brand/logo
- * goes back to the landing screen (onBack), so there's no separate "Back"
- * button cluttering the page itself.
- */
 export default function RareDiseasePage({
   orphaCode,
   onBack,
@@ -25,26 +14,14 @@ export default function RareDiseasePage({
 }: {
   orphaCode: string;
   onBack: () => void;
-  /** Same handoff LandingScreen's NCT flow uses — leaves this page for the
-      Dashboard once a trial-scoped run has been kicked off (see
-      handleRunAnalysisForTrial below). */
   onRunAnalysis: () => void;
 }) {
   const { runAnalysisFromNct } = usePipeline();
   const [detail, setDetail] = useState<RareDiseaseDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  // Hovering a trial row's "Run Analysis" button re-runs the exact same
-  // NCT-lookup flow as the landing page's "Search by NCT Number" box — just
-  // triggered from a trial this rare disease's own trial/site search
-  // already found, instead of the user typing the NCT id in by hand.
   const [runningNctId, setRunningNctId] = useState<string | null>(null);
   const [runLookupError, setRunLookupError] = useState<string | null>(null);
-
-  // Hovering the NCT ID link itself opens a small floating "Run Analysis"
-  // popover under it (portaled to <body>, positioned off the hovered
-  // link's own rect) — a short close-delay lets the pointer travel from the
-  // link down into the popover without it disappearing first.
   const [nctPopover, setNctPopover] = useState<{
     nctId: string;
     top: number;
@@ -86,9 +63,6 @@ export default function RareDiseasePage({
         phase: result.phase ?? "",
         sampleSize: result.enrollmentCount ?? "",
         durationMonths: result.durationMonths ?? "",
-        // Same reasoning as LandingScreen's handleConfirmRun — this run is
-        // scoped to the trial's own disclosed sites, so cost is excluded
-        // from scoring rather than guessing a tier the trial never disclosed.
         budgetTier: "All",
         regions: [],
         ageGroups: result.ageGroups,

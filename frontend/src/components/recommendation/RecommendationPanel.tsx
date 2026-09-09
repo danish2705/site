@@ -32,11 +32,6 @@ type LiveStatusFilter =
   | "WITHDRAWN"
   | "SUSPENDED";
 
-// Includes non-"live" statuses (COMPLETED etc.) so an NCT-scoped analysis
-// (see PipelineContext's nctScope) whose own disclosed site isn't currently
-// recruiting still has a status this picker — and this site's own default —
-// can actually match, instead of always falling back to "RECRUITING" and
-// 404ing when no candidate has that status.
 const STATUS_OPTIONS: { value: LiveStatusFilter; label: string }[] = [
   { value: "RECRUITING", label: "Recruiting" },
   { value: "NOT_YET_RECRUITING", label: "Not Yet Recruiting" },
@@ -75,22 +70,11 @@ export default function RecommendationPanel() {
     selectedCountries,
     regionOptions,
     prefetchingCountries,
-    // Shared across Risk Register/Ranking/Final Recommendation — picking a
-    // country here keeps the other two pages in sync, and (crucially) this
-    // state lives in the provider, not in this component, so navigating away
-    // from this tab and back does NOT reset it. This panel previously kept
-    // its own local `pageCountry` state, which reset to "" on every remount
-    // and briefly rendered the empty/loading state again even for a country
-    // that was already fully analyzed — that remount-reset was the flicker.
     analysisCountry: pageCountry,
     setAnalysisCountry: setPageCountry,
     finalResult: baseFinalResult,
   } = usePipeline();
   const [saveDialogOpen, setSaveDialogOpen] = useState(false);
-  // When the trial form has no region/country pre-selected (the NCT-lookup
-  // flow deliberately leaves this empty to search every region globally),
-  // fall back to every country this app is configured to search at all,
-  // rather than leaving the picker with nothing to show.
   const countryOptions =
     selectedCountries.length > 0
       ? selectedCountries
@@ -245,10 +229,6 @@ export default function RecommendationPanel() {
         </div>
       );
     }
-    // No result and nothing loading/erroring — either no country is picked
-    // yet, or (defensively) neither pickers below have anything to offer.
-    // Previously this returned null, leaving a blank white card with no
-    // explanation at all.
     return (
       <div className="card">
         <div className="pipeline-card-head map-controls map-controls--flush">
