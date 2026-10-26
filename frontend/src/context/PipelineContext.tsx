@@ -23,6 +23,7 @@ import type {
 import { STAGE_LIST } from "../constants/pipeline";
 import type { WorkflowStep } from "../constants/workflow";
 import { fetchMeta } from "../services/meta.service";
+import { deleteRun } from "../services/runs.service";
 import { streamRun, streamSiteAnalysis } from "../services/pipeline.service";
 import { fetchLiveTrialLandscape } from "../services/liveTrials.service";
 import { createRun, getRun, listRuns } from "../services/runs.service";
@@ -105,6 +106,15 @@ function emptyStages(): StagesMap {
 }
  
 export interface PipelineState {
+  // Deletion message shown in Saved Runs modal
+  deletionMessage: string | null;
+  // Type of the deletion message for styling: success or error
+  deletionMessageType: 'success' | 'error';
+  /**
+   * Delete a saved run by ID and update state
+   */
+  deleteSavedRun: (id: string) => Promise<void>;
+
   meta: MetaResponse | null;
   form: TrialForm;
   setForm: (updater: TrialForm | ((f: TrialForm) => TrialForm)) => void;
@@ -239,6 +249,9 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
   const runAbortRef = useRef<AbortController | null>(null);
  
   const [saveLabel, setSaveLabel] = useState("");
+  // State for deletion messages
+  const [deletionMessage, setDeletionMessage] = useState<string | null>(null);
+  const [deletionMessageType, setDeletionMessageType] = useState<'success' | 'error'>('success');
   const [saving, setSaving] = useState(false);
   const [saveMessage, setSaveMessage] = useState<string | null>(null);
   const [savedRuns, setSavedRuns] = useState<SavedRunSummary[] | null>(null);
@@ -303,6 +316,8 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
  
   async function loadSavedRuns() {
     setLoadingRuns(true);
+    // Clear any previous deletion messages
+    setDeletionMessage(null);
     try {
       setSavedRuns(await listRuns());
     } catch (err) {
@@ -860,6 +875,7 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
     setCountryErrors({});
   }, [form.indication]);
  
+  // Pipeline context value
   const value: PipelineState = {
     meta,
     form,
@@ -910,6 +926,25 @@ export function PipelineProvider({ children }: { children: ReactNode }) {
     canSave,
     handleSave,
     loadSavedRuns,
+    deletionMessage,
+    deletionMessageType,
+    async deleteSavedRun(id: string) {
+      // Clear previous message
+      setDeletionMessage(null);
+      try {
+        // Call API to delete
+        await deleteRun(id);
+        // Remove from list
+        setSavedRuns((runs) => runs ? runs.filter((r) => r.id !== id) : runs);
+        // Show success message
+        setDeletionMessageType('success');
+        setDeletionMessage(`Deleted saved run.`);
+      } catch (err) {
+        const message = (err as Error).message;
+        setDeletionMessageType('error');
+        setDeletionMessage(message);
+      }
+    },
     openSavedRun,
     openingRunId,
     openRunError,

@@ -3,7 +3,7 @@ import { usePipeline } from "../../hooks/usePipeline";
 import type { SavedRunSummary } from "../../types";
 import SavedRunModal from "./SavedRunModal";
 import ErrorBoundary from "../ui/ErrorBoundary";
-import { CloseIcon, EyeIcon, MailIcon, RefreshIcon } from "../ui/Icons";
+import { CloseIcon, EyeIcon, MailIcon, RefreshIcon, XIcon } from "../ui/Icons";
 
 function shareMailtoHref(r: SavedRunSummary): string {
   const subject = `Trial site recommendation — ${r.label || r.indication}`;
@@ -27,6 +27,9 @@ export default function HistoryModal({ onClose }: { onClose: () => void }) {
     loadingRuns,
     loadSavedRuns,
     openSavedRun,
+    deletionMessage,
+    deletionMessageType,
+    deleteSavedRun,
     openRun,
     setOpenRun,
     saveMessage,
@@ -39,7 +42,7 @@ export default function HistoryModal({ onClose }: { onClose: () => void }) {
     if (savedRuns === null && !loadingRuns) {
       loadSavedRuns();
     }
-  }, []);
+  }, [savedRuns, loadingRuns, loadSavedRuns]);
 
   return (
     <>
@@ -77,19 +80,19 @@ export default function HistoryModal({ onClose }: { onClose: () => void }) {
             </div>
           </div>
 
+          {deletionMessage && (
+            <p className={`save-message ${deletionMessageType}`}>{deletionMessage}</p>
+          )}
           {saveMessage && !canSave && (
             <p className="save-message error">{saveMessage}</p>
           )}
           {openRunError && (
-            <p className="save-message error">
-              Couldn't open that run: {openRunError}
-            </p>
+            <p className="save-message error">Couldn't open that run: {openRunError}</p>
           )}
 
           {savedRuns && savedRuns.length === 0 && (
             <p className="empty-note">
-              No saved runs yet. Run the pipeline, then use Save run on the
-              Recommendation step.
+              No saved runs yet. Run the pipeline, then use Save run on the Recommendation step.
             </p>
           )}
 
@@ -106,6 +109,7 @@ export default function HistoryModal({ onClose }: { onClose: () => void }) {
                     <th>Score</th>
                     <th>Sites</th>
                     <th>Action</th>
+                    <th>Delete</th>
                     <th>Share</th>
                   </tr>
                 </thead>
@@ -139,6 +143,22 @@ export default function HistoryModal({ onClose }: { onClose: () => void }) {
                         </button>
                       </td>
                       <td>
+                        <button
+                          type="button"
+                          className="btn-link row-icon-link icon-only"
+                          onClick={() => {
+                            const label = r.label ?? r.id;
+                            if (window.confirm(`Delete saved run "${label}"?`)) {
+                              deleteSavedRun(r.id);
+                            }
+                          }}
+                          data-tooltip="Delete"
+                          aria-label="Delete"
+                        >
+                          <XIcon className="btn-icon" />
+                        </button>
+                      </td>
+                      <td>
                         <a
                           className="btn-link row-icon-link icon-only"
                           href={shareMailtoHref(r)}
@@ -160,33 +180,17 @@ export default function HistoryModal({ onClose }: { onClose: () => void }) {
       {openRun && (
         <ErrorBoundary
           fallback={(error, reset) => (
-            <div
-              className="run-modal-backdrop"
-              onClick={() => {
-                reset();
-                setOpenRun(null);
-              }}
-            >
-              <div
-                className="run-modal"
-                onClick={(e) => e.stopPropagation()}
-                role="dialog"
-                aria-modal="true"
-              >
+            <div className="run-modal-backdrop" onClick={() => { reset(); setOpenRun(null); }}>
+              <div className="run-modal" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
                 <div className="run-modal-head">
                   <div>
                     <h2>Couldn't show this run</h2>
-                    <p className="muted">
-                      Something went wrong rendering its details.
-                    </p>
+                    <p className="muted">Something went wrong rendering its details.</p>
                   </div>
                   <button
                     type="button"
                     className="icon-close-btn"
-                    onClick={() => {
-                      reset();
-                      setOpenRun(null);
-                    }}
+                    onClick={() => { reset(); setOpenRun(null); }}
                     data-tooltip="Close"
                     aria-label="Close"
                   >
